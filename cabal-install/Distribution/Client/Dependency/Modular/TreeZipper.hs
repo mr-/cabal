@@ -30,6 +30,9 @@ data NodeType a =
   | FChoice     QFN a Bool Bool
   | SChoice     QSN a Bool
 
+
+data NodeContainer a = A a [a] | B a [(a,a)]
+
 data LeafType = 
     GoalChoice
   | Done        RevDepMap
@@ -41,6 +44,30 @@ data ContainerType a =          -- This should be constrained..
     PSQ I a
   | PSQ Bool a
   | PSQ OpenGoal a
+
+
+
+
+{-#LANGUAGE TypeFamilies, GADTs, DataKinds, PolyKinds, ExistentialQuantification#-}
+
+data X = S | I
+
+type family LeafType (x :: X ) :: *
+type instance LeafType S = String
+type instance LeafType I = Int
+
+type family NodeType (x :: X) (a :: *) :: *
+type instance NodeType S a = [Tree S a]
+type instance NodeType I a = [(Int,Tree I a)]
+
+data Tree s a where 
+ Node :: a -> NodeType s a -> Tree s a
+ Leaf :: LeafType s -> Tree s a
+ 
+data SomeTree a = forall s . SomeTree (Tree s a)
+
+
+
 
 data Treee a = LeafType | Node (NodeType a) (ContainerType (Treee a))
 
