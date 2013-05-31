@@ -25,13 +25,31 @@ data Tree a =
   -- special case of triviality we actually consider is if there are no new
   -- dependencies introduced by this node.
 
+
+data Path a = 
+    Top 
+  | LeafPoint LeafType 
+  | PChoicePoint (Path a) (PSQ I        (Tree a))   QPN a             (PSQ I        (Tree a))
+  | FChoicePoint (Path a) (PSQ Bool     (Tree a))   QFN a Bool Bool   (PSQ Bool     (Tree a))
+  | SChoicePoint (Path a) (PSQ Bool     (Tree a))   QSN a Bool        (PSQ Bool     (Tree a))
+  | GChoicePoint (Path a) (PSQ OpenGoal (Tree a))                     (PSQ OpenGoal (Tree a))
+
+-- Or maybe
+
+data Path a = 
+    Top 
+  | LeafPoint LeafType 
+  | PChoicePoint (Path a) (Container PChoice a)   (Label PChoice a)   (Container PChoice a)
+  | FChoicePoint (Path a) (Container FChoice a)   (Label FChoice a)   (Container PChoice a)
+  | SChoicePoint (Path a) (Container SChoice a)   (Label SChoice a)   (Container PChoice a)
+  | GChoicePoint (Path a) (Container GChoice a)   (Label GChoice a)   (Container PChoice a)
+
+
 data NodeType a =
     PChoice     QPN a
   | FChoice     QFN a Bool Bool
   | SChoice     QSN a Bool
 
-
-data NodeContainer a = A a [a] | B a [(a,a)]
 
 data LeafType = 
     GoalChoice
@@ -45,6 +63,12 @@ data ContainerType a =          -- This should be constrained..
   | PSQ Bool a
   | PSQ OpenGoal a
 
+
+data Treee a = LeafType | Node (NodeType a) (ContainerType (Treee a))
+
+data Path a = Top | Point (Path a) (ContainerType a) (NodeType a) (ContainerType a)
+
+data Pointer a = Pointer { tree :: Treee a, context :: Path a}
 
 
 
@@ -65,15 +89,6 @@ data Tree s a where
  Leaf :: LeafType s -> Tree s a
  
 data SomeTree a = forall s . SomeTree (Tree s a)
-
-
-
-
-data Treee a = LeafType | Node (NodeType a) (ContainerType (Treee a))
-
-data Path a = Top | Point (Path a) (ContainerType a) (NodeType a) (ContainerType a)
-
-data Pointer a = Pointer { tree :: Treee a, context :: Path a}
 
 
 converse :: Tree a -> Treee a
