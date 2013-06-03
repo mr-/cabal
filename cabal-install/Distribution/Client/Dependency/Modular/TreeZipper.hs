@@ -92,11 +92,7 @@ focusChild (CTOG key) (Pointer oldPath (GoalChoice psq)) = Pointer newPath <$> P
 focusChild _ _ = Nothing
 
 
-data ChildType =
-    CTP I 
-  | CTF Bool
-  | CTS Bool 
-  | CTOG OpenGoal
+data ChildType = CTP I | CTF Bool | CTS Bool | CTOG OpenGoal deriving (Show)
 
 children :: Pointer a -> Maybe [ChildType]
 children (Pointer _ (PChoice _ _ c))     = Just $ map CTP  $ P.keys c
