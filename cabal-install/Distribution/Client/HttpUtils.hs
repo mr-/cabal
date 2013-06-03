@@ -1,5 +1,5 @@
 -----------------------------------------------------------------------------
--- | Separate module for HTTP actions, using a proxy server if one exists 
+-- | Separate module for HTTP actions, using a proxy server if one exists
 -----------------------------------------------------------------------------
 module Distribution.Client.HttpUtils (
     DownloadResult(..),
@@ -48,7 +48,7 @@ trim :: String -> String
 trim = f . f
       where f = reverse . dropWhile isSpace
 
--- |Get the local proxy settings  
+-- |Get the local proxy settings
 --TODO: print info message when we're using a proxy based on verbosity
 proxy :: Verbosity -> IO Proxy
 proxy _verbosity = do
@@ -103,8 +103,10 @@ downloadURI verbosity uri path | uriScheme uri == "file:" = do
   -- hash matches to avoid unnecessary computation?
 downloadURI verbosity uri path = do
   let etagPath = path <.> "etag"
+  targetExists   <- doesFileExist path
   etagPathExists <- doesFileExist etagPath
-  etag <- if etagPathExists
+  -- In rare cases the target file doesn't exist, but the etag does.
+  etag <- if targetExists && etagPathExists
             then liftM Just $ readFile etagPath
             else return Nothing
 
@@ -116,8 +118,8 @@ downloadURI verbosity uri path = do
           (3,0,4) -> Right rsp
           (a,b,c) -> Left err
             where
-              err = ErrorMisc $ "Unsucessful HTTP code: " 
-                            ++ concatMap show [a,b,c]
+              err = ErrorMisc $ "Error HTTP code: "
+                                ++ concatMap show [a,b,c]
 
   -- Only write the etag if we get a 200 response code.
   -- A 304 still sends us an etag header.

@@ -102,7 +102,7 @@ import Distribution.Simple.Setup
          , buildCommand, BuildFlags(..), emptyBuildFlags
          , toFlag, fromFlag, fromFlagOrDefault, flagToMaybe )
 import qualified Distribution.Simple.Setup as Cabal
-         ( installCommand, InstallFlags(..), emptyInstallFlags
+         ( installCommand, InstallFlags(..), TestFlags(..), emptyInstallFlags
          , emptyTestFlags, testCommand, Flag(..) )
 import Distribution.Simple.Utils
          ( rawSystemExit, comparing, writeFileAtomic )
@@ -1203,10 +1203,13 @@ installUnpackedPackage verbosity buildLimit installLock numJobs
     }
     shouldHaddock    = fromFlag (installDocumentation installConfigFlags)
     haddockFlags' _   = haddockFlags {
-      haddockVerbosity = toFlag verbosity'
+      haddockVerbosity = toFlag verbosity',
+      haddockDistPref  = configDistPref configFlags
     }
     testsEnabled = fromFlag (configTests configFlags)
-    testFlags _ = Cabal.emptyTestFlags
+    testFlags _ = Cabal.emptyTestFlags {
+      Cabal.testDistPref = configDistPref configFlags
+    }
     installFlags _   = Cabal.emptyInstallFlags {
       Cabal.installDistPref  = configDistPref configFlags,
       Cabal.installVerbosity = toFlag verbosity'
