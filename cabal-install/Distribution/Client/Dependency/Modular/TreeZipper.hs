@@ -6,13 +6,17 @@ import Data.Foldable
 import Data.Traversable
 import Prelude hiding (foldr, mapM)
 
+import Data.List (break)
+
 import Distribution.Client.Dependency.Modular.Dependency
 import Distribution.Client.Dependency.Modular.Flag
 import Distribution.Client.Dependency.Modular.Package
-import Distribution.Client.Dependency.Modular.PSQ as P
+import Distribution.Client.Dependency.Modular.PSQ as P hiding (map)
 import Distribution.Client.Dependency.Modular.Version
+import Distribution.Client.Dependency.Modular.Tree
 
 
+{-
 data Tree a =
     PChoice     QPN a           (PSQ I        (Tree a))
   | FChoice     QFN a Bool Bool (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial, second Bool whether it's manual
@@ -20,29 +24,111 @@ data Tree a =
   | GoalChoice                  (PSQ OpenGoal (Tree a)) -- PSQ should never be empty
   | Done        RevDepMap
   | Fail        (ConflictSet QPN) FailReason
-  deriving (Eq, Show)
-  -- Above, a choice is called trivial if it clearly does not matter. The
-  -- special case of triviality we actually consider is if there are no new
-  -- dependencies introduced by this node.
+-}
 
 
 data Path a = 
     Top 
-  | LeafPoint LeafType 
-  | PChoicePoint (Path a) (PSQ I        (Tree a))   QPN a             (PSQ I        (Tree a))
-  | FChoicePoint (Path a) (PSQ Bool     (Tree a))   QFN a Bool Bool   (PSQ Bool     (Tree a))
-  | SChoicePoint (Path a) (PSQ Bool     (Tree a))   QSN a Bool        (PSQ Bool     (Tree a))
-  | GChoicePoint (Path a) (PSQ OpenGoal (Tree a))                     (PSQ OpenGoal (Tree a))
+  | PChoicePoint (Path a) (PSQ I        (Tree a))   I       QPN a             (PSQ I        (Tree a))
+  | FChoicePoint (Path a) (PSQ Bool     (Tree a))   Bool    QFN a Bool Bool   (PSQ Bool     (Tree a))
+  | SChoicePoint (Path a) (PSQ Bool     (Tree a))   Bool    QSN a Bool        (PSQ Bool     (Tree a))
+  | GChoicePoint (Path a) (PSQ OpenGoal (Tree a))   OpenGoal                  (PSQ OpenGoal (Tree a))
 
--- Or maybe
 
-data Path a = 
-    Top 
-  | LeafPoint LeafType 
-  | PChoicePoint (Path a) (Container PChoice a)   (Label PChoice a)   (Container PChoice a)
-  | FChoicePoint (Path a) (Container FChoice a)   (Label FChoice a)   (Container PChoice a)
-  | SChoicePoint (Path a) (Container SChoice a)   (Label SChoice a)   (Container PChoice a)
-  | GChoicePoint (Path a) (Container GChoice a)   (Label GChoice a)   (Container PChoice a)
+data Pointer a = Pointer { tree :: Tree a, context :: Path a}
+
+
+fromTree :: Tree a -> Pointer a
+fromTree t = Pointer t Top
+
+
+focusUp :: Pointer a -> Maybe (Pointer a)
+focusUp (Pointer t Top) = Nothing
+focusUp (Pointer t (PChoicePoint path left index q a right )) = Just $ Pointer newTree newPath
+  where newPath = path
+        newTree = PChoice q a newPSQ
+        newPSQ = left `pjoin` P.fromList [(index, t)] `pjoin` right
+focusUp (Pointer t (FChoicePoint path left index q a b1 b2 right)) = Just $ Pointer newTree newPath
+  where newPath = path
+        newTree = FChoice q a b1 b2 newPSQ
+        newPSQ = left `pjoin` P.fromList [(index, t)] `pjoin` right
+focusUp (Pointer t (SChoicePoint path left index q a b right)) = Just $ Pointer newTree newPath
+  where newPath = path
+        newTree = SChoice q a b newPSQ
+        newPSQ = left `pjoin` P.fromList [(index, t)] `pjoin` right
+focusUp (Pointer t (GChoicePoint path left index  right)) = Just $ Pointer newTree newPath
+  where newPath = path
+        newTree = GoalChoice  newPSQ
+        newPSQ = left `pjoin` P.fromList [(index, t)] `pjoin` right
+
+
+
+focusChild :: ChildType -> Pointer a -> Maybe (Pointer a)
+focusChild (CTP key) (Pointer oldTree@(PChoice q a psq) oldPath) = Just $ Pointer newTree newPath
+  where Just newTree = P.lookup key psq
+        newPath = PChoicePoint oldPath left key q a right
+        (left, right) = psplitAt key psq
+
+focusChild (CTF key) (Pointer oldTree@(FChoice q a b1 b2 psq) oldPath) = Just $ Pointer newTree newPath
+  where Just newTree = P.lookup key psq
+        newPath = FChoicePoint oldPath left key q a b1 b2 right
+        (left, right) = psplitAt key psq
+
+focusChild (CTS key) (Pointer oldTree@(SChoice q a b psq) oldPath) = Just $ Pointer newTree newPath
+  where Just newTree = P.lookup key psq
+        newPath = SChoicePoint oldPath left key q a b right
+        (left, right) = psplitAt key psq
+
+focusChild (CTOG key) (Pointer oldTree@(GoalChoice psq) oldPath) = Just $ Pointer newTree newPath
+  where Just newTree = P.lookup key psq
+        newPath = GChoicePoint oldPath left key right
+        (left, right) = psplitAt key psq
+focusChild _ _ = Nothing
+
+
+data ChildType =
+    CTP I 
+  | CTF Bool
+  | CTS Bool 
+  | CTOG OpenGoal
+
+children :: Pointer a -> Maybe ([ChildType])
+children (Pointer (PChoice _ _ c) _)     = Just $ map CTP $ P.keys c
+children (Pointer (FChoice _ _ _ _ c) _) = Just $ map CTF $ P.keys c 
+children (Pointer (SChoice _ _ _ c) _)   = Just $ map CTS $ P.keys c
+children (Pointer (GoalChoice c) _)      = Just $ map CTOG $ P.keys c
+children _ = Nothing
+
+
+
+-- That is going to PSQ.hs
+pjoin :: PSQ k v -> PSQ k v -> PSQ k v
+pjoin (PSQ a) (PSQ b) = PSQ (a ++ b)
+
+psplitAt :: (Eq k) => k -> PSQ k v -> (PSQ k v, PSQ k v) --everything is left if key is not found
+psplitAt key (PSQ l) = (PSQ left, PSQ right)
+  where (left, _:right)  = break (\(k,_)-> k == key) l
+
+
+{- 
+
+{ -#LANGUAGE TypeFamilies, GADTs, DataKinds, PolyKinds, ExistentialQuantification# - }
+
+data X = S | I
+
+type family LeafType (x :: X ) :: *
+type instance LeafType S = String
+type instance LeafType I = Int
+
+type family NodeType (x :: X) (a :: *) :: *
+type instance NodeType S a = [Tree S a]
+type instance NodeType I a = [(Int,Tree I a)]
+
+data Tree s a where 
+ Node :: a -> NodeType s a -> Tree s a
+ Leaf :: LeafType s -> Tree s a
+ 
+data SomeTree a = forall s . SomeTree (Tree s a)
 
 
 data NodeType a =
@@ -67,37 +153,6 @@ data ContainerType a =          -- This should be constrained..
 data Treee a = LeafType | Node (NodeType a) (ContainerType (Treee a))
 
 data Path a = Top | Point (Path a) (ContainerType a) (NodeType a) (ContainerType a)
-
-data Pointer a = Pointer { tree :: Treee a, context :: Path a}
-
-
-
-{-#LANGUAGE TypeFamilies, GADTs, DataKinds, PolyKinds, ExistentialQuantification#-}
-
-data X = S | I
-
-type family LeafType (x :: X ) :: *
-type instance LeafType S = String
-type instance LeafType I = Int
-
-type family NodeType (x :: X) (a :: *) :: *
-type instance NodeType S a = [Tree S a]
-type instance NodeType I a = [(Int,Tree I a)]
-
-data Tree s a where 
- Node :: a -> NodeType s a -> Tree s a
- Leaf :: LeafType s -> Tree s a
- 
-data SomeTree a = forall s . SomeTree (Tree s a)
-
-
-converse :: Tree a -> Treee a
-converse = undefined
-
-
-
-{- 
-
 type Forest a = [Tree a]
 
 data Tree a = Item a | Node a (Forest a)
