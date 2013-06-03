@@ -10,7 +10,7 @@ module Distribution.Client.Dependency.Modular.PSQ where
 import Control.Applicative
 import Data.Foldable
 import Data.Function
-import Data.List as S hiding (foldr)
+import Data.List as S hiding (foldr, splitAt)
 import Data.Traversable
 import Prelude hiding (foldr)
 
@@ -25,6 +25,7 @@ instance Foldable (PSQ k) where
 
 instance Traversable (PSQ k) where
   traverse f (PSQ xs) = PSQ <$> traverse (\ (k, v) -> (\ x -> (k, x)) <$> f v) xs
+
 
 keys :: PSQ k v -> [k]
 keys (PSQ xs) = fmap fst xs
@@ -101,3 +102,18 @@ null (PSQ xs) = S.null xs
 
 toList :: PSQ k a -> [(k, a)]
 toList (PSQ xs) = xs
+
+
+data PSQContext k v = PSQContext (PSQ k v) k (PSQ k v)  
+
+joinPSQ :: PSQ k v -> PSQ k v -> PSQ k v
+joinPSQ (PSQ a) (PSQ b) = PSQ (a ++ b)
+
+joinContext :: v -> PSQContext k v -> PSQ k v
+joinContext value (PSQContext left key right) = left `joinPSQ` fromList [(key, value)] `joinPSQ` right 
+
+splitAt :: (Eq k) => k -> PSQ k v -> (PSQ k v, PSQ k v) --everything is left if key is not found
+splitAt key (PSQ l) = (PSQ left, PSQ right)
+  where (left, _:right)  = break (\(k,_)-> k == key) l
+
+

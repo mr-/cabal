@@ -27,12 +27,13 @@ data Tree a =
 -}
 
 
+
 data Path a = 
     Top 
-  | PChoicePoint (Path a) (PSQ I        (Tree a))   I       QPN a             (PSQ I        (Tree a))
-  | FChoicePoint (Path a) (PSQ Bool     (Tree a))   Bool    QFN a Bool Bool   (PSQ Bool     (Tree a))
-  | SChoicePoint (Path a) (PSQ Bool     (Tree a))   Bool    QSN a Bool        (PSQ Bool     (Tree a))
-  | GChoicePoint (Path a) (PSQ OpenGoal (Tree a))   OpenGoal                  (PSQ OpenGoal (Tree a))
+  | PChoicePoint (Path a) (PSQContext I (Tree a))           QPN a
+  | FChoicePoint (Path a) (PSQContext Bool (Tree a))        QFN a Bool Bool
+  | SChoicePoint (Path a) (PSQContext Bool (Tree a))        QSN a Bool  
+  | GChoicePoint (Path a) (PSQContext OpenGoal (Tree a))    
 
 
 data Pointer a = Pointer { tree :: Tree a, context :: Path a}
@@ -44,45 +45,49 @@ fromTree t = Pointer t Top
 
 focusUp :: Pointer a -> Maybe (Pointer a)
 focusUp (Pointer t Top) = Nothing
-focusUp (Pointer t (PChoicePoint path left index q a right )) = Just $ Pointer newTree newPath
+focusUp (Pointer t (PChoicePoint path context q a )) = Just $ Pointer newTree newPath
   where newPath = path
         newTree = PChoice q a newPSQ
-        newPSQ = left `pjoin` P.fromList [(index, t)] `pjoin` right
-focusUp (Pointer t (FChoicePoint path left index q a b1 b2 right)) = Just $ Pointer newTree newPath
+        newPSQ  = P.joinContext t context
+focusUp (Pointer t (FChoicePoint path context q a b1 b2 )) = Just $ Pointer newTree newPath
   where newPath = path
         newTree = FChoice q a b1 b2 newPSQ
-        newPSQ = left `pjoin` P.fromList [(index, t)] `pjoin` right
-focusUp (Pointer t (SChoicePoint path left index q a b right)) = Just $ Pointer newTree newPath
+        newPSQ  = P.joinContext t context
+focusUp (Pointer t (SChoicePoint path context q a b )) = Just $ Pointer newTree newPath
   where newPath = path
         newTree = SChoice q a b newPSQ
-        newPSQ = left `pjoin` P.fromList [(index, t)] `pjoin` right
-focusUp (Pointer t (GChoicePoint path left index  right)) = Just $ Pointer newTree newPath
+        newPSQ  = P.joinContext t context
+focusUp (Pointer t (GChoicePoint path context)) = Just $ Pointer newTree newPath
   where newPath = path
         newTree = GoalChoice  newPSQ
-        newPSQ = left `pjoin` P.fromList [(index, t)] `pjoin` right
+        newPSQ  = P.joinContext t context
 
 
 
 focusChild :: ChildType -> Pointer a -> Maybe (Pointer a)
 focusChild (CTP key) (Pointer oldTree@(PChoice q a psq) oldPath) = Just $ Pointer newTree newPath
   where Just newTree = P.lookup key psq
-        newPath = PChoicePoint oldPath left key q a right
-        (left, right) = psplitAt key psq
+        newPath = PChoicePoint oldPath context q a
+        (left, right) = P.splitAt key psq
+        context = PSQContext left key right
 
 focusChild (CTF key) (Pointer oldTree@(FChoice q a b1 b2 psq) oldPath) = Just $ Pointer newTree newPath
   where Just newTree = P.lookup key psq
-        newPath = FChoicePoint oldPath left key q a b1 b2 right
-        (left, right) = psplitAt key psq
+        newPath = FChoicePoint oldPath context q a b1 b2
+        (left, right) = P.splitAt key psq
+        context = PSQContext left key right
 
 focusChild (CTS key) (Pointer oldTree@(SChoice q a b psq) oldPath) = Just $ Pointer newTree newPath
   where Just newTree = P.lookup key psq
-        newPath = SChoicePoint oldPath left key q a b right
-        (left, right) = psplitAt key psq
+        newPath = SChoicePoint oldPath context q a b
+        (left, right) = P.splitAt key psq
+        context = PSQContext left key right
 
 focusChild (CTOG key) (Pointer oldTree@(GoalChoice psq) oldPath) = Just $ Pointer newTree newPath
   where Just newTree = P.lookup key psq
-        newPath = GChoicePoint oldPath left key right
-        (left, right) = psplitAt key psq
+        newPath = GChoicePoint oldPath context
+        (left, right) = P.splitAt key psq
+        context = PSQContext left key right
 focusChild _ _ = Nothing
 
 
@@ -93,21 +98,14 @@ data ChildType =
   | CTOG OpenGoal
 
 children :: Pointer a -> Maybe ([ChildType])
-children (Pointer (PChoice _ _ c) _)     = Just $ map CTP $ P.keys c
-children (Pointer (FChoice _ _ _ _ c) _) = Just $ map CTF $ P.keys c 
-children (Pointer (SChoice _ _ _ c) _)   = Just $ map CTS $ P.keys c
+children (Pointer (PChoice _ _ c) _)     = Just $ map CTP  $ P.keys c
+children (Pointer (FChoice _ _ _ _ c) _) = Just $ map CTF  $ P.keys c 
+children (Pointer (SChoice _ _ _ c) _)   = Just $ map CTS  $ P.keys c
 children (Pointer (GoalChoice c) _)      = Just $ map CTOG $ P.keys c
 children _ = Nothing
 
 
 
--- That is going to PSQ.hs
-pjoin :: PSQ k v -> PSQ k v -> PSQ k v
-pjoin (PSQ a) (PSQ b) = PSQ (a ++ b)
-
-psplitAt :: (Eq k) => k -> PSQ k v -> (PSQ k v, PSQ k v) --everything is left if key is not found
-psplitAt key (PSQ l) = (PSQ left, PSQ right)
-  where (left, _:right)  = break (\(k,_)-> k == key) l
 
 
 {- 
