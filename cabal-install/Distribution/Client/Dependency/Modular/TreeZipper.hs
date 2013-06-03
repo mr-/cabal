@@ -36,58 +36,59 @@ data Path a =
   | GChoicePoint (Path a) (PSQContext OpenGoal (Tree a))    
 
 
-data Pointer a = Pointer { tree :: Tree a, context :: Path a}
+data Pointer a = Pointer { context :: Path a, tree :: Tree a }
 
 
 fromTree :: Tree a -> Pointer a
-fromTree t = Pointer t Top
+fromTree t = Pointer Top t
+
+
+toTree :: Pointer a -> Tree a
+toTree (Pointer _ t ) = t
 
 
 focusUp :: Pointer a -> Maybe (Pointer a)
-focusUp (Pointer t Top) = Nothing
-focusUp (Pointer t (PChoicePoint path context q a )) = Just $ Pointer newTree newPath
-  where newPath = path
-        newTree = PChoice q a newPSQ
+focusUp (Pointer Top t) = Nothing
+
+focusUp (Pointer (PChoicePoint path context q a ) t) = Just $ Pointer path newTree
+  where newTree = PChoice q a newPSQ
         newPSQ  = P.joinContext t context
-focusUp (Pointer t (FChoicePoint path context q a b1 b2 )) = Just $ Pointer newTree newPath
-  where newPath = path
-        newTree = FChoice q a b1 b2 newPSQ
+
+focusUp (Pointer (FChoicePoint path context q a b1 b2 ) t) = Just $ Pointer path newTree
+  where newTree = FChoice q a b1 b2 newPSQ
         newPSQ  = P.joinContext t context
-focusUp (Pointer t (SChoicePoint path context q a b )) = Just $ Pointer newTree newPath
-  where newPath = path
-        newTree = SChoice q a b newPSQ
+
+focusUp (Pointer (SChoicePoint path context q a b ) t) = Just $ Pointer path newTree
+  where newTree = SChoice q a b newPSQ
         newPSQ  = P.joinContext t context
-focusUp (Pointer t (GChoicePoint path context)) = Just $ Pointer newTree newPath
-  where newPath = path
-        newTree = GoalChoice  newPSQ
+
+focusUp (Pointer (GChoicePoint path context) t) = Just $ Pointer path newTree
+  where newTree = GoalChoice  newPSQ
         newPSQ  = P.joinContext t context
 
 
 
 focusChild :: ChildType -> Pointer a -> Maybe (Pointer a)
-focusChild (CTP key) (Pointer oldTree@(PChoice q a psq) oldPath) = Just $ Pointer newTree newPath
-  where Just newTree = P.lookup key psq
-        newPath = PChoicePoint oldPath context q a
+focusChild (CTP key) (Pointer oldPath (PChoice q a psq)) = Pointer newPath <$> P.lookup key psq
+  where newPath = PChoicePoint oldPath context q a
         (left, right) = P.splitAt key psq
         context = PSQContext left key right
 
-focusChild (CTF key) (Pointer oldTree@(FChoice q a b1 b2 psq) oldPath) = Just $ Pointer newTree newPath
-  where Just newTree = P.lookup key psq
-        newPath = FChoicePoint oldPath context q a b1 b2
+focusChild (CTF key) (Pointer oldPath (FChoice q a b1 b2 psq)) = Pointer newPath <$> P.lookup key psq
+  where newPath = FChoicePoint oldPath context q a b1 b2
         (left, right) = P.splitAt key psq
         context = PSQContext left key right
 
-focusChild (CTS key) (Pointer oldTree@(SChoice q a b psq) oldPath) = Just $ Pointer newTree newPath
-  where Just newTree = P.lookup key psq
-        newPath = SChoicePoint oldPath context q a b
+focusChild (CTS key) (Pointer oldPath (SChoice q a b psq)) = Pointer newPath <$> P.lookup key psq
+  where newPath = SChoicePoint oldPath context q a b
         (left, right) = P.splitAt key psq
         context = PSQContext left key right
 
-focusChild (CTOG key) (Pointer oldTree@(GoalChoice psq) oldPath) = Just $ Pointer newTree newPath
-  where Just newTree = P.lookup key psq
-        newPath = GChoicePoint oldPath context
+focusChild (CTOG key) (Pointer oldPath (GoalChoice psq)) = Pointer newPath <$> P.lookup key psq
+  where newPath = GChoicePoint oldPath context
         (left, right) = P.splitAt key psq
         context = PSQContext left key right
+
 focusChild _ _ = Nothing
 
 
@@ -97,11 +98,11 @@ data ChildType =
   | CTS Bool 
   | CTOG OpenGoal
 
-children :: Pointer a -> Maybe ([ChildType])
-children (Pointer (PChoice _ _ c) _)     = Just $ map CTP  $ P.keys c
-children (Pointer (FChoice _ _ _ _ c) _) = Just $ map CTF  $ P.keys c 
-children (Pointer (SChoice _ _ _ c) _)   = Just $ map CTS  $ P.keys c
-children (Pointer (GoalChoice c) _)      = Just $ map CTOG $ P.keys c
+children :: Pointer a -> Maybe [ChildType]
+children (Pointer _ (PChoice _ _ c))     = Just $ map CTP  $ P.keys c
+children (Pointer _ (FChoice _ _ _ _ c)) = Just $ map CTF  $ P.keys c 
+children (Pointer _ (SChoice _ _ _ c))   = Just $ map CTS  $ P.keys c
+children (Pointer _ (GoalChoice c))      = Just $ map CTOG $ P.keys c
 children _ = Nothing
 
 
