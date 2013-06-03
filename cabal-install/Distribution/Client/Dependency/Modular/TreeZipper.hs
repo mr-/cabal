@@ -5,9 +5,7 @@ import Control.Monad hiding (mapM)
 import Data.Foldable
 import Data.Traversable
 import Prelude hiding (foldr, mapM)
-
 import Data.List (break)
-
 import Distribution.Client.Dependency.Modular.Dependency
 import Distribution.Client.Dependency.Modular.Flag
 import Distribution.Client.Dependency.Modular.Package
