@@ -1,5 +1,10 @@
 module Distribution.Client.SolveTree where
 
+{-
+This module is supposed to catch the the tree in the same way the log would be generated.
+That way it is also rather unmaintainable. Because every change in Install, Solver, Dependency.. has to be mirrored here.
+Later I want the other functions to return the tree. (Either or Tuple)
+-}
 
 
 
