@@ -776,8 +776,9 @@ data InstallFlags = InstallFlags {
     installBuildReports     :: Flag ReportLevel,
     installSymlinkBinDir    :: Flag FilePath,
     installOneShot          :: Flag Bool,
-    installNumJobs          :: Flag (Maybe Int)
-  }
+    installNumJobs          :: Flag (Maybe Int),
+    installInteractive      :: Flag Bool
+  } deriving (Show)
 
 defaultInstallFlags :: InstallFlags
 defaultInstallFlags = InstallFlags {
@@ -800,7 +801,8 @@ defaultInstallFlags = InstallFlags {
     installBuildReports    = Flag NoReports,
     installSymlinkBinDir   = mempty,
     installOneShot         = Flag False,
-    installNumJobs         = mempty
+    installNumJobs         = mempty,
+    installInteractive     = Flag False
   }
   where
     docIndexFile = toPathTemplate ("$datadir" </> "doc" </> "index.html")
@@ -894,6 +896,11 @@ installOptions showOrParseArgs =
       [ option [] ["reinstall"]
           "Install even if it means installing the same version again."
           installReinstall (\v flags -> flags { installReinstall = v })
+          (yesNoOpt showOrParseArgs)
+
+      , option [] ["interactive"]
+          "Install interactively/point-and-shoot-style."
+          installInteractive (\v flags -> flags { installInteractive = v })
           (yesNoOpt showOrParseArgs)
 
       , option [] ["avoid-reinstalls"]
@@ -992,7 +999,8 @@ instance Monoid InstallFlags where
     installBuildReports    = mempty,
     installSymlinkBinDir   = mempty,
     installOneShot         = mempty,
-    installNumJobs         = mempty
+    installNumJobs         = mempty,
+    installInteractive     = mempty
   }
   mappend a b = InstallFlags {
     installDocumentation   = combine installDocumentation,
@@ -1014,7 +1022,8 @@ instance Monoid InstallFlags where
     installBuildReports    = combine installBuildReports,
     installSymlinkBinDir   = combine installSymlinkBinDir,
     installOneShot         = combine installOneShot,
-    installNumJobs         = combine installNumJobs
+    installNumJobs         = combine installNumJobs,
+    installInteractive     = combine installInteractive
   }
     where combine field = field a `mappend` field b
 

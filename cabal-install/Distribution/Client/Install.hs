@@ -171,8 +171,8 @@ install
 install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
   globalFlags configFlags configExFlags installFlags haddockFlags
   userTargets0 = do
-
     installContext <- makeInstallContext verbosity args (Just userTargets0)
+    if (fromFlag (installInteractive installFlags)) then putStrLn "Got interactive" else putStrLn "Got nothing.. :-("
     installPlan    <- foldProgress logMsg die return =<<
                       makeInstallPlan verbosity args installContext
 
