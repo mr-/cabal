@@ -55,6 +55,7 @@ module Distribution.Client.Dependency (
     hideInstalledPackagesSpecificByInstalledPackageId,
     hideInstalledPackagesSpecificBySourcePackageId,
     hideInstalledPackagesAllVersions,
+    interpretPackagesPreference,
   ) where
 
 import Distribution.Client.Dependency.TopDown

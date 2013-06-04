@@ -134,6 +134,9 @@ import Distribution.Verbosity as Verbosity
          ( Verbosity, showForCabal, normal, verbose )
 import Distribution.Simple.BuildPaths ( exeExtension )
 
+
+import Distribution.Client.SolveTree (makeInstallPlanTree)
+
 --TODO:
 -- * assign flags to packages individually
 --   * complain about flags that do not apply to any package given as target
@@ -172,11 +175,17 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
   globalFlags configFlags configExFlags installFlags haddockFlags
   userTargets0 = do
     installContext <- makeInstallContext verbosity args (Just userTargets0)
-    if (fromFlag (installInteractive installFlags)) then putStrLn "Got interactive" else putStrLn "Got nothing.. :-("
-    installPlan    <- foldProgress logMsg die return =<<
-                      makeInstallPlan verbosity args installContext
 
-    processInstallPlan verbosity args installContext installPlan
+    if (fromFlag (installInteractive installFlags)) 
+      then 
+        do putStrLn "Got interactive"
+           let planTree = makeInstallPlanTree verbosity args installContext
+           putStrLn "And got the plantree!"
+      else 
+       do installPlan    <- foldProgress logMsg die return =<<
+                   makeInstallPlan verbosity args installContext
+
+          processInstallPlan verbosity args installContext installPlan
   where
     args :: InstallArgs
     args = (packageDBs, repos, comp, platform, conf, useSandbox, mSandboxPkgInfo,
