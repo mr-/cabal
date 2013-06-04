@@ -41,7 +41,7 @@ import Distribution.Simple.Program (ProgramConfiguration)
 import qualified Distribution.Simple.PackageIndex as PackageIndexPlan
 import Distribution.Simple.PackageIndex (PackageIndex)
 import Distribution.Simple.Setup
-         ( HaddockFlags(..),  fromFlag, fromFlagOrDefault )n
+         ( HaddockFlags(..),  fromFlag, fromFlagOrDefault )
 
 import Distribution.Verbosity as Verbosity
          ( Verbosity )
