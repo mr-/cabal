@@ -4,17 +4,22 @@ import System.Console.Haskeline (outputStrLn, getInputLine, runInputT,
                                  defaultSettings, InputT)
 
 import Distribution.Client.Dependency.Modular.TreeZipper
-        (Pointer(..), ChildType, fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot)
+        (Pointer(..), ChildType(..), fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot)
 
 
 import Distribution.Client.Dependency.Modular.Dependency 
-                (QGoalReasonChain)
+                (QGoalReasonChain, GoalReason(..), OpenGoal(..), showOpenGoal)
+
 
 import Distribution.Client.Dependency.Modular.Tree (Tree(..))
 
 import Distribution.Client.Interactive.Parser
 
 import Data.Maybe (fromJust, fromMaybe)
+
+import Distribution.Client.Dependency.Modular.Package(I(..), Loc(..), showQPN, showPI)
+import Distribution.Client.Dependency.Modular.Flag(showQSN, showQFN)
+import Distribution.Client.Dependency.Modular.Version (showVer)
 
 runInteractive :: Tree QGoalReasonChain -> IO ()
 runInteractive searchTree = do 
@@ -24,12 +29,29 @@ runInteractive searchTree = do
         loop :: Maybe (Pointer QGoalReasonChain) -> InputT IO ()
         loop Nothing = outputStrLn "Bye bye"
         loop (Just treePointer) = do
-            let choices = generateChoices treePointer
             outputStrLn $ "Node: " ++ ( showNodeFromTree $ toTree treePointer )
             outputStrLn "Choices: "
-            outputStrLn $ unlines $ map show choices
+            outputStrLn $ showChoices treePointer
             tP <- handleCommand treePointer
             loop tP
+
+showChoices :: Pointer QGoalReasonChain -> String
+showChoices treePointer = unlines $ map (\(x,y) -> "(" ++ show x ++ ")  " ++ showChild y) $ generateChoices treePointer
+
+--data ChildType = CTP I | CTF Bool | CTS Bool | CTOG OpenGoal deriving (Show)
+--data I = I Ver Loc
+--data Loc = Inst PId | InRepo
+--data OpenGoal = OpenGoal (FlaggedDep QPN) QGoalReasonChain
+
+
+showChild :: ChildType -> String
+showChild (CTP (I ver (Inst _))) = "Version " ++ (showVer ver) ++ "\t(Installed)"
+showChild (CTP (I ver (InRepo))) = "Version " ++ (showVer ver)
+showChild (CTF bool) = show bool
+showChild (CTS bool) = show bool
+showChild (CTOG opengoal) = "OpenGoal: " ++ showOpenGoal opengoal
+--showChild (CTOG (OpenGoal flagged qgoalreasonchain)) = "OpenGoal: " ++ (show flagged) 
+--                                        ++ " Reason: " ++ (show $ head qgoalreasonchain) 
 
 
 generateChoices :: Pointer a -> [(Int, ChildType)]
@@ -68,14 +90,40 @@ interpretCommand _ Auto = Left "auto is not implemented yet."
 
 
 showNodeFromTree :: Tree QGoalReasonChain -> String
-showNodeFromTree (PChoice qpn a _)           = "PChoice: QPN: " ++ (show qpn) ++ "\n\t QGoalReason: " ++ (show $ head a)
-showNodeFromTree (FChoice qfn a b1 b2 _)     = "FChoice: QFN: " ++ (show qfn) ++ "\n\t QGoalReason: " ++ (show $ head a) 
+showNodeFromTree (PChoice qpn a _)           = "PChoice: QPN: " ++ (showQPN qpn) ++ "\n\t QGoalReason: " ++ (showGoalReason a)
+showNodeFromTree (FChoice qfn a b1 b2 _)     = "FChoice: QFN: " ++ (showQFN qfn) ++ "\n\t QGoalReason: " ++ (showGoalReason a) 
                                                     ++ "\n\t Bools: " ++ (show (b1, b2))
-showNodeFromTree (SChoice qsn a b _)         = "SChoice: QSN: " ++ (show qsn) ++ "\n\t QGoalReason: " ++ (show $ head a) 
+showNodeFromTree (SChoice qsn a b _)         = "SChoice: QSN: " ++ (showQSN qsn) ++ "\n\t QGoalReason: " ++ (showGoalReason a) 
                                                     ++ "\n\t Bool " ++ (show b)
 showNodeFromTree (GoalChoice _)              = "GoalChoice"
 showNodeFromTree (Done rdm)                  = "Done RevDepMap " ++ (show rdm)
 showNodeFromTree (Fail cfs fr)               = "Fail " ++ (show (cfs, fr))
+
+
+
+{-
+type QGoalReason = GoalReason QPN
+data GoalReason qpn =
+    UserGoal
+  | PDependency (PI qpn)
+  | FDependency (FN qpn) Bool
+  | SDependency (SN qpn)
+  deriving (Eq, Show)
+
+data PI qpn = PI qpn I
+data I = I Ver Loc
+
+data FN qpn = FN (PI qpn) Flag
+-- | Flag identifier. Just a string.
+type Flag = FlagName
+
+
+data SN qpn = SN (PI qpn) OptionalStanza
+-}
+
+showGoalReason :: QGoalReasonChain -> String
+showGoalReason ((PDependency pi ):_) = "Depended by: " ++ (showPI pi)
+showGoalReason (x:_) = show x
 
 {-
 data Tree a =

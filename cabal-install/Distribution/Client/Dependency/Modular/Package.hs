@@ -1,6 +1,6 @@
 module Distribution.Client.Dependency.Modular.Package
   (module Distribution.Client.Dependency.Modular.Package,
-   module Distribution.Package) where
+   module Distribution.Package, showQPN, showPI) where
 
 import Data.List as L
 import Data.Map as M
