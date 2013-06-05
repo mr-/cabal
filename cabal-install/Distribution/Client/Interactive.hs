@@ -4,7 +4,7 @@ import System.Console.Haskeline (outputStrLn, getInputLine, runInputT,
                                  defaultSettings, InputT)
 
 import Distribution.Client.Dependency.Modular.TreeZipper
-        (Pointer(..), fromTree, toTree, ChildType, children, focusChild, focusUp, isRoot)
+        (Pointer(..), ChildType, fromTree, toTree,  children, focusChild, focusUp, isRoot)
 
 
 import Distribution.Client.Dependency.Modular.Dependency 
@@ -16,8 +16,6 @@ import Distribution.Client.Interactive.Parser
 
 import Data.Maybe (fromJust, fromMaybe)
 
-type Choices = [(Int, ChildType)]
-
 runInteractive :: Tree QGoalReasonChain -> IO ()
 runInteractive searchTree = do 
     putStrLn "Welcome to cabali!"
@@ -26,43 +24,45 @@ runInteractive searchTree = do
         loop :: Maybe (Pointer QGoalReasonChain) -> InputT IO ()
         loop Nothing = outputStrLn "Bye bye"
         loop (Just treePointer) = do
-            let choices = zip [1..] (fromMaybe [] $ children treePointer)
+            let choices = generateChoices treePointer
             outputStrLn $ "Node: " ++ ( showNodeFromTree $ toTree treePointer )
             outputStrLn "Choices: "
             outputStrLn $ unlines $ map show choices
-            tP <- handleCommand treePointer choices
+            tP <- handleCommand treePointer
             loop tP
 
 
+generateChoices :: Pointer a -> [(Int, ChildType)]
+generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)
 
-
-handleCommand :: Pointer QGoalReasonChain -> Choices -> InputT IO (Maybe (Pointer QGoalReasonChain))
-handleCommand  treePointer choices = do
+handleCommand :: Pointer QGoalReasonChain -> InputT IO (Maybe (Pointer QGoalReasonChain))
+handleCommand  treePointer = do
   inp <- getInputLine "> "
   case inp of
     Nothing -> return Nothing 
-    Just text  -> case readExpr text >>= \cmd -> interpretExpression cmd treePointer choices of
+    Just text  -> case readExpr text >>= \cmd -> interpretExpression cmd treePointer of
                           Left s  -> do outputStrLn s
-                                        handleCommand treePointer choices
+                                        handleCommand treePointer 
                           Right t -> return (Just t)
 
 
-interpretExpression :: Expression -> Pointer QGoalReasonChain -> Choices -> Either String (Pointer QGoalReasonChain)
-interpretExpression [] _ _ = error "Internal Error in interpretExpression"
-interpretExpression [cmd] treePos choices = interpretCommand treePos cmd choices
-interpretExpression (x:xs) treePos choices = interpretCommand treePos x choices >>= (\t -> interpretExpression xs t choices)
+interpretExpression :: Expression -> Pointer QGoalReasonChain ->  Either String (Pointer QGoalReasonChain)
+interpretExpression [] _ = error "Internal Error in interpretExpression"
+interpretExpression [cmd] treePos = interpretCommand treePos cmd
+interpretExpression (x:xs) treePos = interpretCommand treePos x >>= interpretExpression xs
 
-interpretCommand :: Pointer QGoalReasonChain -> Command -> Choices -> Either String (Pointer QGoalReasonChain)
-interpretCommand _ ToTop _ = Left "top is not implemented yet."
-interpretCommand treePointer Up _ | isRoot treePointer  = Left "We are at the top"
-interpretCommand treePointer Up _ = Right $ fromJust $ focusUp treePointer
+interpretCommand :: Pointer QGoalReasonChain -> Command -> Either String (Pointer QGoalReasonChain)
+interpretCommand _ ToTop = Left "top is not implemented yet."
+interpretCommand treePointer Up | isRoot treePointer  = Left "We are at the top"
+interpretCommand treePointer Up = Right $ fromJust $ focusUp treePointer
 
-interpretCommand treePointer (Go n) choices = case focused of
+interpretCommand treePointer (Go n) = case focused of
                                                 Nothing -> Left "No such child"
                                                 Just subPointer -> Right subPointer
             where focused = lookup n choices >>= \foo -> focusChild foo treePointer
+                  choices = generateChoices treePointer
 
-interpretCommand _ Auto _ = Left "auto is not implemented yet."
+interpretCommand _ Auto = Left "auto is not implemented yet."
 
 
 
