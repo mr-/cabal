@@ -5,7 +5,7 @@ import Text.Parsec.Char
 import Control.Applicative hiding ((<|>))
 
 type Expression = [Command]
-data Command =  Auto Int | Up | ToTop | Go Int deriving (Read, Show)
+data Command =  Auto | Up | ToTop | Go Int deriving (Read, Show)
 
 
 parseNullary :: String -> Parser String
@@ -19,7 +19,7 @@ parseUnary str = do _ <- string str
     where digits = many1 digit
 
 parseCmd :: Parser Command 
-parseCmd =  Auto  <$> parseUnary "auto"
+parseCmd =  Auto  <$ parseNullary "auto"
         <|> Go  <$> parseUnary "go"
         <|> Up  <$ parseNullary "up"
         <|> ToTop <$ parseNullary "top"

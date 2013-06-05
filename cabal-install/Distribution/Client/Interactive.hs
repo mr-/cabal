@@ -27,7 +27,8 @@ runInteractive searchTree = do
         loop Nothing = outputStrLn "Bye bye"
         loop (Just treePointer) = do
             let choices = zip [1..] (fromMaybe [] $ children treePointer)
-            outputStrLn $ "Node: " ++ ( maybe "Nothing" show $ getNodeFromTree $ toTree treePointer )
+            outputStrLn $ "Node: " ++ ( showNodeFromTree $ toTree treePointer )
+            outputStrLn "Choices: "
             outputStrLn $ unlines $ map show choices
             tP <- handleCommand treePointer choices
             loop tP
@@ -52,7 +53,7 @@ interpretExpression [cmd] treePos choices = interpretCommand treePos cmd choices
 interpretExpression (x:xs) treePos choices = interpretCommand treePos x choices >>= (\t -> interpretExpression xs t choices)
 
 interpretCommand :: Pointer QGoalReasonChain -> Command -> Choices -> Either String (Pointer QGoalReasonChain)
-interpretCommand _ ToTop _ = undefined
+interpretCommand _ ToTop _ = Left "top is not implemented yet."
 interpretCommand treePointer Up _ | isRoot treePointer  = Left "We are at the top"
 interpretCommand treePointer Up _ = Right $ fromJust $ focusUp treePointer
 
@@ -61,13 +62,28 @@ interpretCommand treePointer (Go n) choices = case focused of
                                                 Just subPointer -> Right subPointer
             where focused = lookup n choices >>= \foo -> focusChild foo treePointer
 
-interpretCommand _ (Auto _) _ = undefined
+interpretCommand _ Auto _ = Left "auto is not implemented yet."
 
 
 
 
-getNodeFromTree :: Tree a -> Maybe a
-getNodeFromTree (PChoice _ a _)     = Just a
-getNodeFromTree (FChoice _ a _ _ _) = Just a
-getNodeFromTree (SChoice _ a _ _)   = Just a
-getNodeFromTree _                   = Nothing
+showNodeFromTree :: (Show a) =>  Tree a -> String
+showNodeFromTree (PChoice qpn a _)           = "PChoice: QPN: " ++ (show qpn) ++ "\n\t QGoalReasonChain: " ++ (show a)
+showNodeFromTree (FChoice qfn a b1 b2 _)     = "FChoice: QFN: " ++ (show qfn) ++ "\n\t QGoalReasonChain: " ++ (show a) 
+                                                    ++ "\n\t Bools: " ++ (show (b1, b2))
+showNodeFromTree (SChoice qsn a b _)         = "SChoice: QSN: " ++ (show qsn) ++ "\n\t QGoalReasonChain: " ++ (show a) 
+                                                    ++ "\n\t Bool " ++ (show b)
+showNodeFromTree (GoalChoice _)              = "GoalChoice"
+showNodeFromTree (Done rdm)                  = "Done RevDepMap " ++ (show rdm)
+showNodeFromTree (Fail cfs fr)               = "Fail " ++ (show (cfs, fr))
+
+{-
+data Tree a =
+    PChoice     QPN a           (PSQ I        (Tree a))
+  | FChoice     QFN a Bool Bool (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial, second Bool whether it's manual
+  | SChoice     QSN a Bool      (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial
+  | GoalChoice                  (PSQ OpenGoal (Tree a)) -- PSQ should never be empty
+  | Done        RevDepMap
+  | Fail        (ConflictSet QPN) FailReason
+  deriving (Eq, Show)
+-}
