@@ -92,6 +92,7 @@ focusChild (CTOG key) (Pointer oldPath (GoalChoice psq)) = Pointer newPath <$> P
 
 focusChild _ _ = Nothing
 
+focusRoot treePointer = maybe treePointer focusRoot (focusUp treePointer)
 
 data ChildType = CTP I | CTF Bool | CTS Bool | CTOG OpenGoal deriving (Show)
 

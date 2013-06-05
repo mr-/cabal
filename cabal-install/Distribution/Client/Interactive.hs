@@ -4,7 +4,7 @@ import System.Console.Haskeline (outputStrLn, getInputLine, runInputT,
                                  defaultSettings, InputT)
 
 import Distribution.Client.Dependency.Modular.TreeZipper
-        (Pointer(..), ChildType, fromTree, toTree,  children, focusChild, focusUp, isRoot)
+        (Pointer(..), ChildType, fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot)
 
 
 import Distribution.Client.Dependency.Modular.Dependency 
@@ -52,7 +52,7 @@ interpretExpression [cmd] treePos = interpretCommand treePos cmd
 interpretExpression (x:xs) treePos = interpretCommand treePos x >>= interpretExpression xs
 
 interpretCommand :: Pointer QGoalReasonChain -> Command -> Either String (Pointer QGoalReasonChain)
-interpretCommand _ ToTop = Left "top is not implemented yet."
+interpretCommand treePointer ToTop = Right $ focusRoot treePointer
 interpretCommand treePointer Up | isRoot treePointer  = Left "We are at the top"
 interpretCommand treePointer Up = Right $ fromJust $ focusUp treePointer
 
@@ -67,11 +67,11 @@ interpretCommand _ Auto = Left "auto is not implemented yet."
 
 
 
-showNodeFromTree :: (Show a) =>  Tree a -> String
-showNodeFromTree (PChoice qpn a _)           = "PChoice: QPN: " ++ (show qpn) ++ "\n\t QGoalReasonChain: " ++ (show a)
-showNodeFromTree (FChoice qfn a b1 b2 _)     = "FChoice: QFN: " ++ (show qfn) ++ "\n\t QGoalReasonChain: " ++ (show a) 
+showNodeFromTree :: Tree QGoalReasonChain -> String
+showNodeFromTree (PChoice qpn a _)           = "PChoice: QPN: " ++ (show qpn) ++ "\n\t QGoalReason: " ++ (show $ head a)
+showNodeFromTree (FChoice qfn a b1 b2 _)     = "FChoice: QFN: " ++ (show qfn) ++ "\n\t QGoalReason: " ++ (show $ head a) 
                                                     ++ "\n\t Bools: " ++ (show (b1, b2))
-showNodeFromTree (SChoice qsn a b _)         = "SChoice: QSN: " ++ (show qsn) ++ "\n\t QGoalReasonChain: " ++ (show a) 
+showNodeFromTree (SChoice qsn a b _)         = "SChoice: QSN: " ++ (show qsn) ++ "\n\t QGoalReason: " ++ (show $ head a) 
                                                     ++ "\n\t Bool " ++ (show b)
 showNodeFromTree (GoalChoice _)              = "GoalChoice"
 showNodeFromTree (Done rdm)                  = "Done RevDepMap " ++ (show rdm)
