@@ -4,13 +4,13 @@ import System.Console.Haskeline (outputStrLn, getInputLine, runInputT,
                                  defaultSettings, InputT)
 
 import Distribution.Client.Dependency.Modular.TreeZipper
-        (Pointer(..), fromTree, ChildType, children, focusChild, focusUp, isRoot)
+        (Pointer(..), fromTree, toTree, ChildType, children, focusChild, focusUp, isRoot)
 
 
 import Distribution.Client.Dependency.Modular.Dependency 
                 (QGoalReasonChain)
 
-import Distribution.Client.Dependency.Modular.Tree (Tree)
+import Distribution.Client.Dependency.Modular.Tree (Tree(..))
 
 import Distribution.Client.Interactive.Parser
 
@@ -27,6 +27,7 @@ runInteractive searchTree = do
         loop Nothing = outputStrLn "Bye bye"
         loop (Just treePointer) = do
             let choices = zip [1..] (fromMaybe [] $ children treePointer)
+            outputStrLn $ "Node: " ++ ( maybe "Nothing" show $ getNodeFromTree $ toTree treePointer )
             outputStrLn $ unlines $ map show choices
             tP <- handleCommand treePointer choices
             loop tP
@@ -61,3 +62,12 @@ interpretCommand treePointer (Go n) choices = case focused of
             where focused = lookup n choices >>= \foo -> focusChild foo treePointer
 
 interpretCommand _ (Auto _) _ = undefined
+
+
+
+
+getNodeFromTree :: Tree a -> Maybe a
+getNodeFromTree (PChoice _ a _)     = Just a
+getNodeFromTree (FChoice _ a _ _ _) = Just a
+getNodeFromTree (SChoice _ a _ _)   = Just a
+getNodeFromTree _                   = Nothing
