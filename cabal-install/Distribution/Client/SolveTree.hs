@@ -1,4 +1,4 @@
-module Distribution.Client.SolveTree where
+module Distribution.Client.SolveTree (makeInstallPlanTree) where
 
 {-
 This module is supposed to catch the the tree in the same way the log would be generated.
@@ -14,7 +14,10 @@ import Data.Map as M hiding (map, null)
 import Distribution.Client.Dependency.Types
 
 import Distribution.Client.Dependency.Modular.Builder
-import Distribution.Client.Dependency.Modular.Dependency
+
+import Distribution.Client.Dependency.Modular.Dependency 
+--QGoalReasonChain
+
 import Distribution.Client.Dependency.Modular.Index
 import Distribution.Client.Dependency.Modular.Package
 import qualified Distribution.Client.Dependency.Modular.Preference as P

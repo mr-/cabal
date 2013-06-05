@@ -44,6 +44,9 @@ fromTree t = Pointer Top t
 toTree :: Pointer a -> Tree a
 toTree (Pointer _ t ) = t
 
+isRoot :: Pointer a -> Bool
+isRoot (Pointer Top _ ) = True
+isRoot _                = False
 
 focusUp :: Pointer a -> Maybe (Pointer a)
 focusUp (Pointer Top t) = Nothing
