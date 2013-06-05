@@ -328,10 +328,10 @@ sandboxDelete verbosity _sandboxFlags globalFlags = do
       let isNonDefaultConfigLocation =
             pkgEnvFile /= (curDir </> sandboxPackageEnvironmentFile)
 
-      if isNonDefaultConfigLocation
-        then warn verbosity $ "Sandbox config file is in non-default location: '"
-                    ++ pkgEnvFile ++ "'.\n Please delete manually."
-        else removeFile pkgEnvFile
+--      if isNonDefaultConfigLocation
+--        then warn $ "Sandbox config file is in non-default location: '"
+--                    ++ pkgEnvFile ++ "'.\n Please delete manually."
+--        else removeFile pkgEnvFile
 
       -- Remove the sandbox directory, unless we're using a shared sandbox.
       let isNonDefaultSandboxLocation =
