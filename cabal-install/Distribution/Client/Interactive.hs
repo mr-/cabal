@@ -122,8 +122,11 @@ data SN qpn = SN (PI qpn) OptionalStanza
 -}
 
 showGoalReason :: QGoalReasonChain -> String
-showGoalReason ((PDependency pi ):_) = "Depended by: " ++ (showPI pi)
-showGoalReason (x:_) = show x
+showGoalReason ((PDependency piqpn ):_) = "PDependency (depended by): " ++ (showPI piqpn)
+showGoalReason ((FDependency fnqpn b):_) = "FDependency: " ++ showQFN fnqpn  ++ " Bool: " ++ show b
+showGoalReason ((SDependency snqpn):_) = "SDependency " ++ showQSN snqpn
+showGoalReason (UserGoal:_) = "UserGoal"
+showGoalReason [] = error "Empty QGoalReasonChain - this should never happen, I think"
 
 {-
 data Tree a =
