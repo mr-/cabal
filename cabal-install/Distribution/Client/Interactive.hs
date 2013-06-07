@@ -8,18 +8,22 @@ import Distribution.Client.Dependency.Modular.TreeZipper
 
 
 import Distribution.Client.Dependency.Modular.Dependency 
-                (QGoalReasonChain, GoalReason(..), OpenGoal(..), showOpenGoal)
+                (QGoalReasonChain, GoalReason(..), OpenGoal(..), showOpenGoal, showVar, RevDepMap, showDep)
 
 
-import Distribution.Client.Dependency.Modular.Tree (Tree(..))
+import Distribution.Client.Dependency.Modular.Tree (Tree(..), FailReason(..))
 
 import Distribution.Client.Interactive.Parser
 
 import Data.Maybe (fromJust, fromMaybe)
 
-import Distribution.Client.Dependency.Modular.Package(I(..), Loc(..), showQPN, showPI)
+import Distribution.Client.Dependency.Modular.Package(I(..), Loc(..), showQPN, showPI, unPN)
 import Distribution.Client.Dependency.Modular.Flag(showQSN, showQFN)
-import Distribution.Client.Dependency.Modular.Version (showVer)
+import Distribution.Client.Dependency.Modular.Version (showVer, showVR)
+
+import Data.Set (toList)
+import Prelude hiding (or)
+import qualified Data.Map as Map
 
 runInteractive :: Tree QGoalReasonChain -> IO ()
 runInteractive searchTree = do 
@@ -31,32 +35,12 @@ runInteractive searchTree = do
         loop (Just treePointer) = do
             outputStrLn $ "Node: " ++ ( showNodeFromTree $ toTree treePointer )
             outputStrLn "Choices: "
-            outputStrLn $ showChoices treePointer
+            outputStrLn $ displayChoices treePointer `or` "None"
             tP <- handleCommand treePointer
             loop tP
+        "" `or` s = s
+        s  `or` _ = s
 
-showChoices :: Pointer QGoalReasonChain -> String
-showChoices treePointer = unlines $ map (\(x,y) -> makeEntry x y) $ generateChoices treePointer
-  where makeEntry n child = "(" ++ show n ++ ")  " ++ showChild child ++ " " ++ fromMaybe "" (failReason child)
-        failReason child | isFail (focusChild child treePointer) = Just "(fails)"
-        failReason _ = Nothing
-        isFail (Just (Pointer _ (Fail _ _))) = True
-        isFail _ = False
-
---data ChildType = CTP I | CTF Bool | CTS Bool | CTOG OpenGoal deriving (Show)
---data I = I Ver Loc
---data Loc = Inst PId | InRepo
---data OpenGoal = OpenGoal (FlaggedDep QPN) QGoalReasonChain
-
-
-showChild :: ChildType -> String
-showChild (CTP (I ver (Inst _))) = "Version " ++ (showVer ver) ++ "\t(Installed)"
-showChild (CTP (I ver (InRepo))) = "Version " ++ (showVer ver)
-showChild (CTF bool) = show bool
-showChild (CTS bool) = show bool
-showChild (CTOG opengoal) = "OpenGoal: " ++ showOpenGoal opengoal
---showChild (CTOG (OpenGoal flagged qgoalreasonchain)) = "OpenGoal: " ++ (show flagged) 
---                                        ++ " Reason: " ++ (show $ head qgoalreasonchain) 
 
 
 generateChoices :: Pointer a -> [(Int, ChildType)]
@@ -90,12 +74,37 @@ interpretCommand treePointer (Go n) = case focused of
                   choices = generateChoices treePointer
 interpretCommand treePointer Empty = case choices of 
                           [(_, child)] -> Right $ fromJust $ focusChild child treePointer
-                          otherwise    -> Left "Ambiguous choice"
+                          _            -> Left "Ambiguous choice"
             where choices = generateChoices treePointer
 
 interpretCommand _ Auto = Left "auto is not implemented yet."
 
 
+
+
+
+displayChoices :: Pointer QGoalReasonChain -> String
+displayChoices treePointer = unlines $ map (\(x,y) -> makeEntry x y) $ generateChoices treePointer
+  where makeEntry n child = "(" ++ show n ++ ")  " ++ showChild child ++ " " ++ fromMaybe "" (failReason child)
+        failReason child | isFail (focusChild child treePointer) = Just "\t(fails)"
+        failReason _ = Nothing
+        isFail (Just (Pointer _ (Fail _ _))) = True
+        isFail _ = False
+
+--data ChildType = CTP I | CTF Bool | CTS Bool | CTOG OpenGoal deriving (Show)
+--data I = I Ver Loc
+--data Loc = Inst PId | InRepo
+--data OpenGoal = OpenGoal (FlaggedDep QPN) QGoalReasonChain
+
+
+showChild :: ChildType -> String
+showChild (CTP (I ver (Inst _))) = "Version " ++ (showVer ver) ++ "\t(Installed)"
+showChild (CTP (I ver (InRepo))) = "Version " ++ (showVer ver)
+showChild (CTF bool) = show bool
+showChild (CTS bool) = show bool
+showChild (CTOG opengoal) = "OpenGoal: " ++ showOpenGoal opengoal
+--showChild (CTOG (OpenGoal flagged qgoalreasonchain)) = "OpenGoal: " ++ (show flagged) 
+--                                        ++ " Reason: " ++ (show $ head qgoalreasonchain) 
 
 
 showNodeFromTree :: Tree QGoalReasonChain -> String
@@ -105,11 +114,43 @@ showNodeFromTree (FChoice qfn a b1 b2 _)     = "FChoice: QFN: " ++ (showQFN qfn)
 showNodeFromTree (SChoice qsn a b _)         = "SChoice: QSN: " ++ (showQSN qsn) ++ "\n\t QGoalReason: " ++ (showGoalReason a) 
                                                     ++ "\n\t Bool " ++ (show b)
 showNodeFromTree (GoalChoice _)              = "GoalChoice"
-showNodeFromTree (Done rdm)                  = "Done RevDepMap " ++ (show rdm)
-showNodeFromTree (Fail cfs fr)               = "Fail " ++ (show (cfs, fr))
+showNodeFromTree (Done rdm)                  = "Done! \nRevDepMap: \n" ++  (showRevDepMap rdm)
+showNodeFromTree (Fail cfs fr)               = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
+  where showConflictSet s = show $ map showVar (toList s) 
 
 
+showRevDepMap :: RevDepMap -> String
+showRevDepMap rdm =  unlines $ map handleKey (Map.keys rdm)
+  where handleKey key = (showQPN key) ++ ": " ++ (values key)
+        values key = show (map showQPN (fromJust $ Map.lookup key rdm))
 
+{-
+data FailReason = InconsistentInitialConstraints
+                | Conflicting [Dep QPN]
+                | CannotInstall
+                | CannotReinstall
+                | Shadowed
+                | Broken
+                | GlobalConstraintVersion VR
+                | GlobalConstraintInstalled
+                | GlobalConstraintSource
+                | GlobalConstraintFlag
+                | ManualFlag
+                | BuildFailureNotInIndex PN
+                | MalformedFlagChoice QFN
+                | MalformedStanzaChoice QSN
+                | EmptyGoalChoice
+                | Backjump
+  deriving (Eq, Show)
+-}
+
+showFailReason :: FailReason -> String
+showFailReason (Conflicting depQPN)         = "Conflicting: "             ++ (show $ map showDep depQPN)
+showFailReason (MalformedFlagChoice qfn)    = "MalformedFlagChoice: "     ++ (showQFN qfn)
+showFailReason (MalformedStanzaChoice qsn)  = "MalformedStanzaChoice: "   ++ (showQSN qsn)
+showFailReason (BuildFailureNotInIndex pn)  = "BuildFailureNotInIndex: "  ++ (unPN pn)
+showFailReason (GlobalConstraintVersion vr) = "GlobalConstraintVersion: " ++ (showVR vr)
+showFailReason x = show x
 {-
 type QGoalReason = GoalReason QPN
 data GoalReason qpn =
@@ -133,7 +174,7 @@ data SN qpn = SN (PI qpn) OptionalStanza
 showGoalReason :: QGoalReasonChain -> String
 showGoalReason ((PDependency piqpn ):_) = "PDependency (depended by): " ++ (showPI piqpn)
 showGoalReason ((FDependency fnqpn b):_) = "FDependency: " ++ showQFN fnqpn  ++ " Bool: " ++ show b
-showGoalReason ((SDependency snqpn):_) = "SDependency " ++ showQSN snqpn
+showGoalReason ((SDependency snqpn):_) = "SDependency: " ++ showQSN snqpn
 showGoalReason (UserGoal:_) = "UserGoal"
 showGoalReason [] = error "Empty QGoalReasonChain - this should never happen, I think"
 
