@@ -36,7 +36,12 @@ runInteractive searchTree = do
             loop tP
 
 showChoices :: Pointer QGoalReasonChain -> String
-showChoices treePointer = unlines $ map (\(x,y) -> "(" ++ show x ++ ")  " ++ showChild y) $ generateChoices treePointer
+showChoices treePointer = unlines $ map (\(x,y) -> makeEntry x y) $ generateChoices treePointer
+  where makeEntry n child = "(" ++ show n ++ ")  " ++ showChild child ++ " " ++ fromMaybe "" (failReason child)
+        failReason child | isFail (focusChild child treePointer) = Just "(fails)"
+        failReason _ = Nothing
+        isFail (Just (Pointer _ (Fail _ _))) = True
+        isFail _ = False
 
 --data ChildType = CTP I | CTF Bool | CTS Bool | CTOG OpenGoal deriving (Show)
 --data I = I Ver Loc
@@ -83,6 +88,10 @@ interpretCommand treePointer (Go n) = case focused of
                                                 Just subPointer -> Right subPointer
             where focused = lookup n choices >>= \foo -> focusChild foo treePointer
                   choices = generateChoices treePointer
+interpretCommand treePointer Empty = case choices of 
+                          [(_, child)] -> Right $ fromJust $ focusChild child treePointer
+                          otherwise    -> Left "Ambiguous choice"
+            where choices = generateChoices treePointer
 
 interpretCommand _ Auto = Left "auto is not implemented yet."
 
