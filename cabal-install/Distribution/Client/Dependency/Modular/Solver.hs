@@ -14,6 +14,9 @@ import Distribution.Client.Dependency.Modular.Message
 import Distribution.Client.Dependency.Modular.Package
 import qualified Distribution.Client.Dependency.Modular.Preference as P
 import Distribution.Client.Dependency.Modular.Validate
+import Distribution.Client.Dependency.Modular.Tree        (Tree)
+import Data.Maybe (fromJust)
+
 
 -- | Various options for the modular solver.
 data SolverConfig = SolverConfig {
@@ -29,15 +32,20 @@ solve :: SolverConfig ->   -- solver parameters
          (PN -> PackagePreferences) -> -- preferences
          Map PN [PackageConstraint] -> -- global constraints
          [PN] ->                       -- global goals
-         Log Message (Assignment, RevDepMap)
-solve sc idx userPrefs userConstraints userGoals =
-  explorePhase     $
-  heuristicsPhase  $
-  preferencesPhase $
-  validationPhase  $
-  prunePhase       $
-  buildPhase
+         (Log Message (Assignment, RevDepMap), Maybe (Tree QGoalReasonChain))
+solve sc idx userPrefs userConstraints userGoals = (slog, tree)
   where
+
+    slog = explorePhase      $
+          heuristicsPhase   $ 
+          fromJust tree
+
+    tree = Just             $
+           preferencesPhase $
+           validationPhase  $
+           prunePhase       $
+           buildPhase
+  
     explorePhase     = exploreTreeLog . backjump
     heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        if preferEasyGoalChoices sc

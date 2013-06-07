@@ -2,27 +2,44 @@ module Distribution.Client.Interactive.Parser (readExpr, Expression, Command(..)
 
 import Text.ParserCombinators.Parsec hiding (spaces)
 import Text.Parsec.Char
-import Control.Applicative hiding ((<|>))
+import Control.Applicative hiding ((<|>), optional, empty)
 
 type Expression = [Command]
-data Command =  Auto | Up | ToTop | Go Int deriving (Read, Show)
+data Command =  Empty | Auto | Up | ToTop | Go Int deriving (Read, Show)
 
 
-parseNullary :: String -> Parser String
-parseNullary = string 
+parseNullary :: String -> Parser ()
+parseNullary s = optSpaces >> string s >> optSpaces
 
 parseUnary :: String -> Parser Int
-parseUnary str = do _ <- string str
+parseUnary str = do _ <- optSpaces
+                    _ <- string str
                     _ <- many1 space 
                     d <- digits
+                    _ <- optSpaces
                     return (read d)
     where digits = many1 digit
 
+parseDigit :: Parser Int
+parseDigit = do _ <- optSpaces
+                d <- many1 digit
+                _ <- optSpaces
+                return (read d)
+
+optSpaces :: Parser ()
+optSpaces = optional (many1 space)
+
+empty :: Parser ()
+empty = optSpaces >> eof
+
+
 parseCmd :: Parser Command 
-parseCmd =  Auto  <$ parseNullary "auto"
-        <|> Go  <$> parseUnary "go"
-        <|> Up  <$ parseNullary "up"
-        <|> ToTop <$ parseNullary "top"
+parseCmd =  Auto    <$ parseNullary "auto"
+        <|> Go      <$> parseUnary "go"
+        <|> Up      <$ parseNullary "up"
+        <|> ToTop   <$ parseNullary "top"
+        <|> Go      <$> parseDigit
+        <|> Empty   <$ empty
 
 parseExpr :: Parser Expression
 parseExpr = sepBy1 parseCmd sep
