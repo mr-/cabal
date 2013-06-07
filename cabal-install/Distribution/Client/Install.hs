@@ -178,8 +178,9 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
   globalFlags configFlags configExFlags installFlags haddockFlags
   userTargets0 = do
     installContext <- makeInstallContext verbosity args (Just userTargets0)
-
-    if (fromFlag (installInteractive installFlags)) 
+    solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags))
+              (compilerId comp)
+    if (fromFlag (installInteractive installFlags) && solver == Modular) --this should rather be an error.. 
       then 
         do 
            planTree <- makeInstallPlanTree verbosity args installContext

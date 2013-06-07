@@ -90,8 +90,25 @@ type InstallArgs = ( PackageDBStack
 
 
 
+{- Install.hs
+makeInstallPlan :: Verbosity -> InstallArgs -> InstallContext
+                -> IO (Progress String String InstallPlan)
+makeInstallPlan verbosity
+  (_, _, comp, platform, _, _, mSandboxPkgInfo,
+   _, configFlags, configExFlags, installFlags,
+   _)
+  (installedPkgIndex, sourcePkgDb,
+   _, pkgSpecifiers) = do
 
-makeInstallPlanTree :: Verbosity -> InstallArgs -> InstallContext
+    solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags))
+              (compilerId comp)
+    notice verbosity "Resolving dependencies..."
+    return $ planPackages comp platform mSandboxPkgInfo solver
+      configFlags configExFlags installFlags
+      installedPkgIndex sourcePkgDb pkgSpecifiers
+-}
+
+makeInstallPlanTree :: Verbosity -> InstallArgs -> InstallContext 
                 -> IO (Tree.Tree QGoalReasonChain)
 makeInstallPlanTree verbosity
   (_, _, comp, platform, _, _, mSandboxPkgInfo,
@@ -107,6 +124,20 @@ makeInstallPlanTree verbosity
       installedPkgIndex sourcePkgDb pkgSpecifiers
 
 
+
+{-Install.hs
+planPackages :: Compiler
+             -> Platform
+             -> Maybe SandboxPackageInfo
+             -> Solver
+             -> ConfigFlags
+             -> ConfigExFlags
+             -> InstallFlags
+             -> PackageIndex
+             -> SourcePackageDb
+             -> [PackageSpecifier SourcePackage]
+             -> Progress String String InstallPlan
+-}
 
 
 planPackagesTree :: Compiler
@@ -195,6 +226,13 @@ planPackagesTree comp platform mSandboxPkgInfo solver
 
 
 
+{-Dependency.hs
+resolveDependencies :: Platform
+                    -> CompilerId
+                    -> Solver
+                    -> DepResolverParams
+                    -> Progress String String InstallPlan
+-}
 resolveDependenciesTree :: Platform
                     -> CompilerId
                     -> Solver
@@ -233,6 +271,11 @@ resolveDependenciesTree platform comp  solver params =
                     (S.fromList targets) defpref prefs
 
 
+{-Modular.hs
+(over runSolver)
+modularResolver :: SolverConfig -> DependencyResolver
+-}
+
 modularResolverTree :: SolverConfig 
                        -> Platform
                        -> CompilerId
@@ -263,6 +306,14 @@ modularResolverTree sc (Platform arch os) cid iidx sidx pprefs pcs pns =
       pcName (PackageConstraintStanzas   pn _) = pn
 
 
+{- Solver.hs
+solve :: SolverConfig ->   -- solver parameters
+         Index ->          -- all available packages as an index
+         (PN -> PackagePreferences) -> -- preferences
+         Map PN [PackageConstraint] -> -- global constraints
+         [PN] ->                       -- global goals
+         Log Message (Assignment, RevDepMap)
+-}
 
 solveTree :: SolverConfig ->   -- solver parameters
          Index ->          -- all available packages as an index
@@ -278,7 +329,7 @@ solveTree sc idx userPrefs userConstraints userGoals =
   buildPhase
   where
     --explorePhase     = exploreTreeLog . backjump
-    heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
+    heuristicsPhase  = -- P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        if preferEasyGoalChoices sc
                          then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
                          else P.preferBaseGoalChoice
