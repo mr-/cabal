@@ -16,6 +16,7 @@ module Distribution.Client.Dependency (
     -- * The main package dependency resolver
     chooseSolver,
     resolveDependencies,
+    resolveDependencies',
     Progress(..),
     foldProgress,
 
@@ -94,6 +95,9 @@ import Distribution.Text
          ( display )
 import Distribution.Verbosity
          ( Verbosity )
+
+import Distribution.Client.Dependency.Modular.Dependency  (QGoalReasonChain)
+import Distribution.Client.Dependency.Modular.Tree        (Tree)
 
 import Data.List (maximumBy, foldl')
 import Data.Maybe (fromMaybe)
@@ -381,25 +385,32 @@ runSolver Modular = modularResolver
 -- a 'Progress' structure that can be unfolded to provide progress information,
 -- logging messages and the final result or an error.
 --
+
 resolveDependencies :: Platform
-                    -> CompilerId
-                    -> Solver
-                    -> DepResolverParams
-                    -> Progress String String InstallPlan
+                     -> CompilerId
+                     -> Solver
+                     -> DepResolverParams
+                     -> Progress String String InstallPlan
+resolveDependencies a b c d = fst (resolveDependencies' a b c d)
+
+resolveDependencies' :: Platform
+                     -> CompilerId
+                     -> Solver
+                     -> DepResolverParams
+                     -> (Progress String String InstallPlan, Maybe (Tree QGoalReasonChain))
 
     --TODO: is this needed here? see dontUpgradeBasePackage
-resolveDependencies platform comp _solver params
+resolveDependencies' platform comp _solver params
   | null (depResolverTargets params)
-  = return (mkInstallPlan platform comp [])
+  = (return (mkInstallPlan platform comp []), Nothing)
 
-resolveDependencies platform comp  solver params =
-
-    fmap (mkInstallPlan platform comp)
-  $ runSolver solver (SolverConfig reorderGoals indGoals noReinstalls
+resolveDependencies' platform comp  solver params =
+    (fmap (mkInstallPlan platform comp) log, tree)
+  where
+    (log, tree) = runSolver solver (SolverConfig reorderGoals indGoals noReinstalls
                       shadowing maxBkjumps)
                      platform comp installedPkgIndex sourcePkgIndex
                      preferences constraints targets
-  where
     DepResolverParams
       targets constraints
       prefs defpref

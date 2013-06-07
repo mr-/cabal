@@ -31,7 +31,7 @@ import Data.List
          ( unfoldr, nub, sort, (\\) )
 import qualified Data.Set as S
 import Data.Maybe
-         ( isJust, fromMaybe, maybeToList )
+         ( isJust, fromMaybe, maybeToList, fromJust )
 import Control.Exception as Exception
          ( bracket, handleJust )
 import Control.Exception as Exception
@@ -134,11 +134,14 @@ import Distribution.Text
 import Distribution.Verbosity as Verbosity
          ( Verbosity, showForCabal, normal, verbose )
 import Distribution.Simple.BuildPaths ( exeExtension )
+import Distribution.Client.Dependency.Modular.Dependency  (QGoalReasonChain)
+import Distribution.Client.Dependency.Modular.Tree        (Tree)
 
 
-import Distribution.Client.SolveTree (makeInstallPlanTree)
+--import Distribution.Client.SolveTree (makeInstallPlanTree)
 
 import Distribution.Client.Interactive (runInteractive)
+import Control.Applicative ( (<$>) )
 
 --TODO:
 -- * assign flags to packages individually
@@ -180,14 +183,13 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
     installContext <- makeInstallContext verbosity args (Just userTargets0)
     solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags))
               (compilerId comp)
+    (plan, planTree) <- makeInstallPlan' verbosity args installContext
     if (fromFlag (installInteractive installFlags) && solver == Modular) --this should rather be an error.. 
       then 
         do 
-           planTree <- makeInstallPlanTree verbosity args installContext
-           runInteractive planTree
+           runInteractive $ fromJust planTree
       else 
-       do installPlan    <- foldProgress logMsg die return =<<
-                   makeInstallPlan verbosity args installContext
+       do installPlan    <- foldProgress logMsg die return plan
 
           processInstallPlan verbosity args installContext installPlan
   where
@@ -252,7 +254,11 @@ makeInstallContext verbosity
 -- | Make an install plan given install context and install arguments.
 makeInstallPlan :: Verbosity -> InstallArgs -> InstallContext
                 -> IO (Progress String String InstallPlan)
-makeInstallPlan verbosity
+makeInstallPlan verbosity iargs icontext = fst <$> (makeInstallPlan' verbosity iargs icontext)
+
+makeInstallPlan' :: Verbosity -> InstallArgs -> InstallContext
+                -> IO (Progress String String InstallPlan, Maybe (Tree QGoalReasonChain))
+makeInstallPlan' verbosity
   (_, _, comp, platform, _, _, mSandboxPkgInfo,
    _, configFlags, configExFlags, installFlags,
    _)
@@ -262,7 +268,7 @@ makeInstallPlan verbosity
     solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags))
               (compilerId comp)
     notice verbosity "Resolving dependencies..."
-    return $ planPackages comp platform mSandboxPkgInfo solver
+    return $ planPackages' comp platform mSandboxPkgInfo solver
       configFlags configExFlags installFlags
       installedPkgIndex sourcePkgDb pkgSpecifiers
 
@@ -301,16 +307,35 @@ planPackages :: Compiler
              -> Progress String String InstallPlan
 planPackages comp platform mSandboxPkgInfo solver
              configFlags configExFlags installFlags
+             installedPkgIndex sourcePkgDb pkgSpecifiers = progress 
+             where 
+              (progress, _) = planPackages' comp platform mSandboxPkgInfo solver
+                                                  configFlags configExFlags installFlags
+                                                  installedPkgIndex sourcePkgDb pkgSpecifiers
+
+
+planPackages' :: Compiler
+             -> Platform
+             -> Maybe SandboxPackageInfo
+             -> Solver
+             -> ConfigFlags
+             -> ConfigExFlags
+             -> InstallFlags
+             -> PackageIndex
+             -> SourcePackageDb
+             -> [PackageSpecifier SourcePackage]
+             -> (Progress String String InstallPlan, Maybe (Tree QGoalReasonChain))
+planPackages' comp platform mSandboxPkgInfo solver
+             configFlags configExFlags installFlags
              installedPkgIndex sourcePkgDb pkgSpecifiers =
 
-        resolveDependencies
-          platform (compilerId comp)
-          solver
-          resolverParams
-
-    >>= if onlyDeps then pruneInstallPlan pkgSpecifiers else return
+    (progress >>= if onlyDeps then pruneInstallPlan pkgSpecifiers else return, tree)
 
   where
+    (progress, tree) = resolveDependencies'
+                       platform (compilerId comp)
+                       solver
+                       resolverParams
     resolverParams =
 
         setMaxBackjumps (if maxBackjumps < 0 then Nothing
