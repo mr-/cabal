@@ -108,6 +108,12 @@ runLogIO x =
     putStr (unlines $ showMessages (const True) True ms)
     return r
 
+
+showLog :: Log Message a -> String
+showLog x = unlines $ showMessages (const True) True ms
+    where (ms, _) = runLog x
+    
+
 failWith :: m -> Log m a
 failWith m = Step m (Fail ())
 

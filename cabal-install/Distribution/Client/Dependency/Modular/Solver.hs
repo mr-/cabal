@@ -33,15 +33,14 @@ solve :: SolverConfig ->   -- solver parameters
          Map PN [PackageConstraint] -> -- global constraints
          [PN] ->                       -- global goals
          (Log Message (Assignment, RevDepMap), Maybe (Tree QGoalReasonChain))
-solve sc idx userPrefs userConstraints userGoals = (slog, tree)
+solve sc idx userPrefs userConstraints userGoals = (slog, Just tree)
   where
 
-    slog = explorePhase      $
+    slog = explorePhase     $
           heuristicsPhase   $ 
-          fromJust tree
+          tree
 
-    tree = Just             $
-           preferencesPhase $
+    tree = preferencesPhase $
            validationPhase  $
            prunePhase       $
            buildPhase

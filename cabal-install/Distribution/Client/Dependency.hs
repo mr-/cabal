@@ -409,9 +409,9 @@ resolveDependencies' platform comp _solver params
   = (return (mkInstallPlan platform comp []), Nothing)
 
 resolveDependencies' platform comp  solver params =
-    (fmap (mkInstallPlan platform comp) log, tree)
+    (fmap (mkInstallPlan platform comp) solveLog, tree)
   where
-    (log, tree) = runSolver solver (SolverConfig reorderGoals indGoals noReinstalls
+    (solveLog, tree) = runSolver solver (SolverConfig reorderGoals indGoals noReinstalls
                       shadowing maxBkjumps)
                      platform comp installedPkgIndex sourcePkgIndex
                      preferences constraints targets

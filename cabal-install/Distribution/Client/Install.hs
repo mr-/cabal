@@ -31,7 +31,7 @@ import Data.List
          ( unfoldr, nub, sort, (\\) )
 import qualified Data.Set as S
 import Data.Maybe
-         ( isJust, fromMaybe, maybeToList, fromJust )
+         ( isJust, fromMaybe, maybeToList )
 import Control.Exception as Exception
          ( bracket, handleJust )
 import Control.Exception as Exception
@@ -181,18 +181,18 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
   globalFlags configFlags configExFlags installFlags haddockFlags
   userTargets0 = do
     installContext <- makeInstallContext verbosity args (Just userTargets0)
-    solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags))
-              (compilerId comp)
-    (plan, planTree) <- makeInstallPlan' verbosity args installContext
-    if (fromFlag (installInteractive installFlags) && solver == Modular) --this should rather be an error.. 
-      then 
-        do 
-           runInteractive $ fromJust planTree
-      else 
-       do installPlan    <- foldProgress logMsg die return plan
+    if fromFlag (installInteractive installFlags)
+      then do 
+        installFoo verbosity args installContext
+      else do
+        installPlan    <- foldProgress logMsg die return =<<
+                      makeInstallPlan verbosity args installContext
 
-          processInstallPlan verbosity args installContext installPlan
+        processInstallPlan verbosity args installContext installPlan
   where
+    installFoo v a i = do
+      (_, planTree) <- makeInstallPlan' v a i
+      runInteractive planTree
     args :: InstallArgs
     args = (packageDBs, repos, comp, platform, conf, useSandbox, mSandboxPkgInfo,
             globalFlags, configFlags, configExFlags, installFlags,

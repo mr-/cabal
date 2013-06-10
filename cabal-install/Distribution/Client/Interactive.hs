@@ -8,7 +8,7 @@ import Distribution.Client.Dependency.Modular.TreeZipper
 
 
 import Distribution.Client.Dependency.Modular.Dependency 
-                (QGoalReasonChain, GoalReason(..), OpenGoal(..), showOpenGoal, showVar, RevDepMap, showDep)
+                (QGoalReasonChain, GoalReason(..), showOpenGoal, showVar, RevDepMap, showDep)
 
 
 import Distribution.Client.Dependency.Modular.Tree (Tree(..), FailReason(..))
@@ -25,15 +25,22 @@ import Data.Set (toList)
 import Prelude hiding (or)
 import qualified Data.Map as Map
 
-runInteractive :: Tree QGoalReasonChain -> IO ()
-runInteractive searchTree = do 
+import Distribution.Client.Dependency.Modular.Explore (exploreTreeLog, backjump)
+import Distribution.Client.Dependency.Modular.Log (showLog)
+import qualified Distribution.Client.Dependency.Modular.Preference as P
+
+
+runInteractive :: Maybe (Tree QGoalReasonChain) -> IO ()
+runInteractive Nothing =
+    putStrLn "Ooops.. you chose the wrong solver"
+runInteractive (Just searchTree) = do 
     putStrLn "Welcome to cabali!"
     runInputT defaultSettings (loop $ Just $ fromTree searchTree)
   where 
         loop :: Maybe (Pointer QGoalReasonChain) -> InputT IO ()
         loop Nothing = outputStrLn "Bye bye"
         loop (Just treePointer) = do
-            outputStrLn $ "Node: " ++ ( showNodeFromTree $ toTree treePointer )
+            outputStrLn $ "Node: " ++ showNodeFromTree ( toTree treePointer )
             outputStrLn "Choices: "
             outputStrLn $ displayChoices treePointer `or` "None"
             tP <- handleCommand treePointer
@@ -77,14 +84,20 @@ interpretCommand treePointer Empty = case choices of
                           _            -> Left "Ambiguous choice"
             where choices = generateChoices treePointer
 
-interpretCommand _ Auto = Left "auto is not implemented yet."
-
+interpretCommand treePointer Auto = Left fooString
+  where 
+    fooString = showLog $ explorePhase $ heuristicsPhase (tree treePointer)
+    explorePhase     = exploreTreeLog . backjump
+    heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
+                       if False
+                         then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
+                         else P.preferBaseGoalChoice
 
 
 
 
 displayChoices :: Pointer QGoalReasonChain -> String
-displayChoices treePointer = unlines $ map (\(x,y) -> makeEntry x y) $ generateChoices treePointer
+displayChoices treePointer = unlines $ map (uncurry makeEntry) $ generateChoices treePointer
   where makeEntry n child = "(" ++ show n ++ ")  " ++ showChild child ++ " " ++ fromMaybe "" (failReason child)
         failReason child | isFail (focusChild child treePointer) = Just "\t(fails)"
         failReason _ = Nothing
@@ -98,8 +111,8 @@ displayChoices treePointer = unlines $ map (\(x,y) -> makeEntry x y) $ generateC
 
 
 showChild :: ChildType -> String
-showChild (CTP (I ver (Inst _))) = "Version " ++ (showVer ver) ++ "\t(Installed)"
-showChild (CTP (I ver (InRepo))) = "Version " ++ (showVer ver)
+showChild (CTP (I ver (Inst _))) = "Version " ++ showVer ver ++ "\t(Installed)"
+showChild (CTP (I ver InRepo)) = "Version " ++ showVer ver
 showChild (CTF bool) = show bool
 showChild (CTS bool) = show bool
 showChild (CTOG opengoal) = "OpenGoal: " ++ showOpenGoal opengoal
@@ -108,21 +121,21 @@ showChild (CTOG opengoal) = "OpenGoal: " ++ showOpenGoal opengoal
 
 
 showNodeFromTree :: Tree QGoalReasonChain -> String
-showNodeFromTree (PChoice qpn a _)           = "PChoice: QPN: " ++ (showQPN qpn) ++ "\n\t QGoalReason: " ++ (showGoalReason a)
-showNodeFromTree (FChoice qfn a b1 b2 _)     = "FChoice: QFN: " ++ (showQFN qfn) ++ "\n\t QGoalReason: " ++ (showGoalReason a) 
-                                                    ++ "\n\t Bools: " ++ (show (b1, b2))
-showNodeFromTree (SChoice qsn a b _)         = "SChoice: QSN: " ++ (showQSN qsn) ++ "\n\t QGoalReason: " ++ (showGoalReason a) 
-                                                    ++ "\n\t Bool " ++ (show b)
+showNodeFromTree (PChoice qpn a _)           = "PChoice: QPN: " ++ showQPN qpn ++ "\n\t QGoalReason: " ++ showGoalReason a
+showNodeFromTree (FChoice qfn a b1 b2 _)     = "FChoice: QFN: " ++ showQFN qfn ++ "\n\t QGoalReason: " ++ showGoalReason a 
+                                                    ++ "\n\t Bools: " ++ show (b1, b2)
+showNodeFromTree (SChoice qsn a b _)         = "SChoice: QSN: " ++ showQSN qsn ++ "\n\t QGoalReason: " ++ showGoalReason a 
+                                                    ++ "\n\t Bool " ++ show b
 showNodeFromTree (GoalChoice _)              = "GoalChoice"
-showNodeFromTree (Done rdm)                  = "Done! \nRevDepMap: \n" ++  (showRevDepMap rdm)
+showNodeFromTree (Done rdm)                  = "Done! \nRevDepMap: \n" ++  showRevDepMap rdm
 showNodeFromTree (Fail cfs fr)               = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
   where showConflictSet s = show $ map showVar (toList s) 
 
 
 showRevDepMap :: RevDepMap -> String
-showRevDepMap rdm =  unlines $ map handleKey (Map.keys rdm)
-  where handleKey key = (showQPN key) ++ ": " ++ (values key)
-        values key = show (map showQPN (fromJust $ Map.lookup key rdm))
+showRevDepMap rdm =  unlines $ map showKey (Map.keys rdm)
+  where showKey key = showQPN key ++ ": " ++ showValues key
+        showValues key = show (map showQPN (fromJust $ Map.lookup key rdm))
 
 {-
 data FailReason = InconsistentInitialConstraints
@@ -145,11 +158,11 @@ data FailReason = InconsistentInitialConstraints
 -}
 
 showFailReason :: FailReason -> String
-showFailReason (Conflicting depQPN)         = "Conflicting: "             ++ (show $ map showDep depQPN)
-showFailReason (MalformedFlagChoice qfn)    = "MalformedFlagChoice: "     ++ (showQFN qfn)
-showFailReason (MalformedStanzaChoice qsn)  = "MalformedStanzaChoice: "   ++ (showQSN qsn)
-showFailReason (BuildFailureNotInIndex pn)  = "BuildFailureNotInIndex: "  ++ (unPN pn)
-showFailReason (GlobalConstraintVersion vr) = "GlobalConstraintVersion: " ++ (showVR vr)
+showFailReason (Conflicting depQPN)         = "Conflicting: "             ++ show (map showDep depQPN)
+showFailReason (MalformedFlagChoice qfn)    = "MalformedFlagChoice: "     ++ showQFN qfn
+showFailReason (MalformedStanzaChoice qsn)  = "MalformedStanzaChoice: "   ++ showQSN qsn
+showFailReason (BuildFailureNotInIndex pn)  = "BuildFailureNotInIndex: "  ++ unPN pn
+showFailReason (GlobalConstraintVersion vr) = "GlobalConstraintVersion: " ++ showVR vr
 showFailReason x = show x
 {-
 type QGoalReason = GoalReason QPN
@@ -172,9 +185,9 @@ data SN qpn = SN (PI qpn) OptionalStanza
 -}
 
 showGoalReason :: QGoalReasonChain -> String
-showGoalReason ((PDependency piqpn ):_) = "PDependency (depended by): " ++ (showPI piqpn)
-showGoalReason ((FDependency fnqpn b):_) = "FDependency: " ++ showQFN fnqpn  ++ " Bool: " ++ show b
-showGoalReason ((SDependency snqpn):_) = "SDependency: " ++ showQSN snqpn
+showGoalReason (PDependency piqpn :_) = "PDependency (depended by): " ++ showPI piqpn
+showGoalReason (FDependency fnqpn b : _) = "FDependency: " ++ showQFN fnqpn  ++ " Bool: " ++ show b
+showGoalReason (SDependency snqpn :_) = "SDependency: " ++ showQSN snqpn
 showGoalReason (UserGoal:_) = "UserGoal"
 showGoalReason [] = error "Empty QGoalReasonChain - this should never happen, I think"
 
