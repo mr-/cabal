@@ -18,6 +18,7 @@ module Distribution.Client.Sandbox (
     dumpPackageEnvironment,
     withSandboxBinDirOnSearchPath,
 
+    getSandboxConfigFilePath,
     loadConfigOrSandboxConfig,
     initPackageDBIfNeeded,
     maybeWithSandboxDirOnSearchPath,
@@ -164,8 +165,8 @@ getPkgEnvDir globalFlags = do
 
 -- | Return the path to the sandbox config file - either the default or the one
 -- specified with @--sandbox-config-file@.
-getPkgEnvFilePath :: GlobalFlags -> IO FilePath
-getPkgEnvFilePath globalFlags = do
+getSandboxConfigFilePath :: GlobalFlags -> IO FilePath
+getSandboxConfigFilePath globalFlags = do
   let sandboxConfigFileFlag = globalSandboxConfigFile globalFlags
   case sandboxConfigFileFlag of
     NoFlag -> do pkgEnvDir <- getCurrentDirectory
@@ -179,7 +180,7 @@ getPkgEnvFilePath globalFlags = do
 tryLoadSandboxConfig :: Verbosity -> GlobalFlags
                         -> IO (FilePath, PackageEnvironment)
 tryLoadSandboxConfig verbosity globalFlags = do
-  path <- getPkgEnvFilePath globalFlags
+  path <- getSandboxConfigFilePath globalFlags
   tryLoadSandboxPackageEnvironmentFile verbosity path
     (globalConfigFile globalFlags)
 
@@ -299,7 +300,7 @@ sandboxInit verbosity sandboxFlags globalFlags = do
   (comp, platform, _) <- configCompilerAux (savedConfigureFlags userConfig)
 
   -- Create the package environment file.
-  pkgEnvFile <- getPkgEnvFilePath globalFlags
+  pkgEnvFile <- getSandboxConfigFilePath globalFlags
   createPackageEnvironmentFile verbosity sandboxDir pkgEnvFile
     NoComments comp platform
   (_, pkgEnv) <- tryLoadSandboxConfig verbosity globalFlags
@@ -321,7 +322,7 @@ sandboxDelete verbosity _sandboxFlags globalFlags = do
     NoSandbox -> die "Not in a sandbox."
     UseSandbox sandboxDir -> do
       curDir     <- getCurrentDirectory
-      pkgEnvFile <- getPkgEnvFilePath globalFlags
+      pkgEnvFile <- getSandboxConfigFilePath globalFlags
 
       -- Remove the @cabal.sandbox.config@ file, unless it's in a non-standard
       -- location.
@@ -429,11 +430,7 @@ sandboxDeleteSource verbosity buildTreeRefs _sandboxFlags globalFlags = do
   indexFile            <- tryGetIndexFilePath (pkgEnvSavedConfig pkgEnv)
 
   withRemoveTimestamps sandboxDir $ do
-    -- FIXME: path canonicalisation is done in addBuildTreeRefs, but we do it
-    -- twice because of the timestamps file.
-    buildTreeRefs' <- mapM tryCanonicalizePath buildTreeRefs
-    Index.removeBuildTreeRefs verbosity indexFile buildTreeRefs'
-    return buildTreeRefs'
+    Index.removeBuildTreeRefs verbosity indexFile buildTreeRefs
 
 -- | Entry point for the 'cabal sandbox list-sources' command.
 sandboxListSources :: Verbosity -> SandboxFlags -> GlobalFlags
@@ -651,8 +648,9 @@ maybeReinstallAddSourceDeps verbosity numJobsFlag configFlags' globalFlags' = do
 
       -- Actually reinstall the modified add-source deps.
       let config         = pkgEnvSavedConfig pkgEnv
-          configFlags    = mappendSomeSavedFlags configFlags' $
-                           savedConfigureFlags config
+          configFlags    = savedConfigureFlags config
+                           `mappendSomeSavedFlags`
+                           configFlags'
           configExFlags  = defaultConfigExFlags
                            `mappend` savedConfigureExFlags config
           installFlags'  = defaultInstallFlags
@@ -673,24 +671,28 @@ maybeReinstallAddSourceDeps verbosity numJobsFlag configFlags' globalFlags' = do
 
   where
 
-    -- NOTE: we can't simply `mappend` configFlags' because we don't want to
-    -- auto-enable things like 'library-profiling' for all add-source
-    -- dependencies even if the user has passed '--enable-library-profiling' to
-    -- 'cabal configure'. These options are supposed to be set in
-    -- 'cabal.config'.
+    -- NOTE: we can't simply do @sandboxConfigFlags `mappend` savedFlags@
+    -- because we don't want to auto-enable things like 'library-profiling' for
+    -- all add-source dependencies even if the user has passed
+    -- '--enable-library-profiling' to 'cabal configure'. These options are
+    -- supposed to be set in 'cabal.config'.
     mappendSomeSavedFlags :: ConfigFlags -> ConfigFlags -> ConfigFlags
-    mappendSomeSavedFlags savedFlags configFlags =
-      configFlags {
-        configHcFlavor   = configHcFlavor configFlags
-                           `mappend` configHcFlavor savedFlags,
-        configHcPath     = configHcPath configFlags
-                           `mappend` configHcPath savedFlags,
-        configHcPkg      = configHcPkg configFlags
-                           `mappend` configHcPkg savedFlags,
-        -- NOTE: since configPackageDBs is a list instead of a flag, we override
-        -- instead of mappending. We know that the list is not empty since it
-        -- was passed to us from 'configure' (see 'setPackageDB' in 'Main.hs').
-        configPackageDBs = configPackageDBs savedFlags
+    mappendSomeSavedFlags sandboxConfigFlags savedFlags =
+      sandboxConfigFlags {
+        configHcFlavor     = configHcFlavor sandboxConfigFlags
+                             `mappend` configHcFlavor savedFlags,
+        configHcPath       = configHcPath sandboxConfigFlags
+                             `mappend` configHcPath savedFlags,
+        configHcPkg        = configHcPkg sandboxConfigFlags
+                             `mappend` configHcPkg savedFlags,
+        configProgramPaths = configProgramPaths sandboxConfigFlags
+                             `mappend` configProgramPaths savedFlags,
+        configProgramArgs  = configProgramArgs sandboxConfigFlags
+                             `mappend` configProgramArgs savedFlags
+        -- NOTE: We don't touch the @configPackageDBs@ field because
+        -- @sandboxConfigFlags@ contains the sandbox location which was set when
+        -- creating @cabal.sandbox.config@.
+        -- FIXME: Is this compatible with the 'inherit' feature?
         }
 
 --

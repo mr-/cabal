@@ -74,6 +74,7 @@ import Distribution.Client.Sandbox            (sandboxInit
                                               ,sandboxHcPkg
                                               ,dumpPackageEnvironment
 
+                                              ,getSandboxConfigFilePath
                                               ,loadConfigOrSandboxConfig
                                               ,initPackageDBIfNeeded
                                               ,maybeWithSandboxDirOnSearchPath
@@ -90,6 +91,7 @@ import Distribution.Client.Sandbox.PackageEnvironment
 import Distribution.Client.Sandbox.Timestamp  (maybeAddCompilerTimestampRecord)
 import Distribution.Client.Sandbox.Types      (UseSandbox(..), whenUsingSandbox)
 import Distribution.Client.Init               (initCabal)
+import Distribution.Client.Utils              (moreRecentFile)
 import qualified Distribution.Client.Win32SelfUpgrade as Win32SelfUpgrade
 
 import Distribution.Simple.Command
@@ -99,7 +101,8 @@ import Distribution.Simple.Compiler
          ( Compiler(..) )
 import Distribution.Simple.Configure
          ( checkPersistBuildConfigOutdated, configCompilerAux
-         , ConfigStateFileErrorType(..), tryGetPersistBuildConfig )
+         , ConfigStateFileErrorType(..), localBuildInfoFile
+         , tryGetPersistBuildConfig )
 import qualified Distribution.Simple.LocalBuildInfo as LBI
 import Distribution.Simple.Program (defaultProgramConfiguration)
 import qualified Distribution.Simple.Setup as Cabal
@@ -342,14 +345,18 @@ reconfigure :: Verbosity    -- ^ Verbosity setting
 reconfigure verbosity distPref     addConfigFlags extraArgs globalFlags
             skipAddSourceDepsCheck numJobsFlag    checkFlags = do
   eLbi <- tryGetPersistBuildConfig distPref
-
   case eLbi of
+    Left (err, errCode) -> onNoBuildConfig err errCode
+    Right lbi           -> onBuildConfig lbi
+
+  where
 
     -- We couldn't load the saved package config file.
     --
     -- If we're in a sandbox: add-source deps don't have to be reinstalled
     -- (since we don't know the compiler & platform).
-    Left (err, errCode) -> do
+    onNoBuildConfig :: String -> ConfigStateFileErrorType -> IO UseSandbox
+    onNoBuildConfig err errCode = do
       let msg = case errCode of
             ConfigStateFileMissing    -> "Package has never been configured."
             ConfigStateFileCantParse  -> "Saved package config file seems "
@@ -370,14 +377,21 @@ reconfigure verbosity distPref     addConfigFlags extraArgs globalFlags
     --
     -- If we're in a sandbox: reinstall the modified add-source deps and
     -- force reconfigure if we did.
-    Right lbi -> do
+    onBuildConfig :: LBI.LocalBuildInfo -> IO UseSandbox
+    onBuildConfig lbi = do
       let configFlags = LBI.configFlags lbi
-          flags = mconcat [configFlags, addConfigFlags, distVerbFlags]
-          savedDistPref = fromFlagOrDefault
-                          (useDistPref defaultSetupScriptOptions)
-                          (configDistPref configFlags)
+          flags       = mconcat [configFlags, addConfigFlags, distVerbFlags]
+
+      -- Was the sandbox created after the package was already configured? We
+      -- may need to skip reinstallation of add-source deps and force
+      -- reconfigure.
+      isSandboxConfigNewer <- checkSandboxConfigNewer
+      let skipAddSourceDepsCheck'
+            | isSandboxConfigNewer = SkipAddSourceDepsCheck
+            | otherwise            = skipAddSourceDepsCheck
+
       (useSandbox, depsReinstalled) <-
-        case skipAddSourceDepsCheck of
+        case skipAddSourceDepsCheck' of
         DontSkipAddSourceDepsCheck     ->
           maybeReinstallAddSourceDeps verbosity numJobsFlag flags globalFlags
         SkipAddSourceDepsCheck -> do
@@ -385,10 +399,50 @@ reconfigure verbosity distPref     addConfigFlags extraArgs globalFlags
                              globalFlags mempty
           return (useSandbox, NoDepsReinstalled)
 
-      -- Determine what message, if any, to display to the user if
-      -- reconfiguration is required.
-      message <- case depsReinstalled of
-        ReinstalledSomeDeps -> return $! Just $! reinstalledDepsMessage
+      mMsg <- determineMessageToShow lbi configFlags depsReinstalled
+                                     isSandboxConfigNewer
+      case mMsg of
+
+        -- No message for the user indicates that reconfiguration
+        -- is not required.
+        Nothing -> return useSandbox
+
+        -- Show the message and reconfigure.
+        Just msg -> do
+          notice verbosity msg
+          configureAction (flags, defaultConfigExFlags)
+            extraArgs globalFlags
+          return useSandbox
+
+    -- Is @cabal.sandbox.config@ newer than @dist/setup-config@? Then we need to
+    -- force-reconfigure without reinstalling add-source deps (the sandbox was
+    -- created after the package was already configured).
+    checkSandboxConfigNewer :: IO Bool
+    checkSandboxConfigNewer = do
+      sandboxConfig  <- getSandboxConfigFilePath globalFlags
+      let buildConfig = localBuildInfoFile distPref
+      sandboxConfigExists <- doesFileExist sandboxConfig
+      if sandboxConfigExists
+        then sandboxConfig `moreRecentFile` buildConfig
+        else return False
+
+    -- Determine what message, if any, to display to the user if reconfiguration
+    -- is required.
+    determineMessageToShow :: LBI.LocalBuildInfo -> ConfigFlags
+                            -> WereDepsReinstalled -> Bool
+                            -> IO (Maybe String)
+    determineMessageToShow _   _           _               True =
+      -- The sandbox was created after the package was already configured.
+      return $! Just $! sandboxConfigNewerMessage
+
+    determineMessageToShow lbi configFlags depsReinstalled False = do
+      let savedDistPref = fromFlagOrDefault
+                          (useDistPref defaultSetupScriptOptions)
+                          (configDistPref configFlags)
+      case depsReinstalled of
+        ReinstalledSomeDeps ->
+          -- Some add-source deps were reinstalled.
+          return $! Just $! reinstalledDepsMessage
         NoDepsReinstalled ->
           case checkFlags configFlags of
             -- Flag required by the caller is not set.
@@ -410,25 +464,17 @@ reconfigure verbosity distPref     addConfigFlags extraArgs globalFlags
                             then Just $! outdatedMessage pdFile
                             else Nothing
 
-      case message of
-
-        -- No message for the user indicates that reconfiguration
-        -- is not required.
-        Nothing -> return useSandbox
-
-        Just msg -> do
-          notice verbosity msg
-          configureAction (flags, defaultConfigExFlags)
-            extraArgs globalFlags
-          return useSandbox
-  where
     defaultFlags = mappend addConfigFlags distVerbFlags
     distVerbFlags = mempty
         { configVerbosity = toFlag verbosity
-        , configDistPref = toFlag distPref
+        , configDistPref  = toFlag distPref
         }
     reconfiguringMostRecent = " Re-configuring with most recently used options."
     configureManually       = " If this fails, please run configure manually."
+    sandboxConfigNewerMessage =
+        "The sandbox was created after the package was already configured."
+        ++ reconfiguringMostRecent
+        ++ configureManually
     distPrefMessage =
         "Package previously configured with different \"dist\" prefix."
         ++ reconfiguringMostRecent
@@ -498,8 +544,8 @@ installAction (configFlags, configExFlags, installFlags, haddockFlags)
   -- FIXME: Passing 'SandboxPackageInfo' to install unconditionally here means
   -- that 'cabal install some-package' inside a sandbox will sometimes reinstall
   -- modified add-source deps, even if they are not among the dependencies of
-  -- 'some-package'. Probably not a big problem since 'build', 'test' etc are
-  -- already reinstalling modified add-source deps.
+  -- 'some-package'. This can also prevent packages that depend on older
+  -- versions of add-source'd packages from building (see #1362).
   maybeWithSandboxPackageInfo verbosity configFlags'' globalFlags'
                               comp platform conf useSandbox $ \mSandboxPkgInfo ->
                               maybeWithSandboxDirOnSearchPath useSandbox $
