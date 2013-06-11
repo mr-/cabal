@@ -26,12 +26,12 @@ data Tree a =
 
 
 
-data Path a = 
-    Top 
+data Path a =
+    Top
   | PChoicePoint (Path a) (PSQContext I (Tree a))           QPN a
   | FChoicePoint (Path a) (PSQContext Bool (Tree a))        QFN a Bool Bool
-  | SChoicePoint (Path a) (PSQContext Bool (Tree a))        QSN a Bool  
-  | GChoicePoint (Path a) (PSQContext OpenGoal (Tree a))    
+  | SChoicePoint (Path a) (PSQContext Bool (Tree a))        QSN a Bool
+  | GChoicePoint (Path a) (PSQContext OpenGoal (Tree a))
 
 
 data Pointer a = Pointer { context :: Path a, tree :: Tree a }
@@ -69,45 +69,51 @@ focusUp (Pointer (GChoicePoint path context) t) = Just $ Pointer path newTree
 
 
 
+data ChildType = CTP I
+               | CTF Bool
+               | CTS Bool
+               | CTOG OpenGoal    deriving (Show)
+
+
+
 focusChild :: ChildType -> Pointer a -> Maybe (Pointer a)
-focusChild (CTP key) (Pointer oldPath (PChoice q a psq)) = Pointer newPath <$> P.lookup key psq
-  where newPath = PChoicePoint oldPath context q a
-        (left, right) = P.splitAt key psq
-        context = PSQContext left key right
+focusChild (CTP key)  (Pointer oldPath (PChoice q a psq))        = Pointer newPath <$> P.lookup key psq
+  where newPath = PChoicePoint oldPath newContext q a
+        newContext = P.makeContextAt key psq
 
-focusChild (CTF key) (Pointer oldPath (FChoice q a b1 b2 psq)) = Pointer newPath <$> P.lookup key psq
-  where newPath = FChoicePoint oldPath context q a b1 b2
-        (left, right) = P.splitAt key psq
-        context = PSQContext left key right
 
-focusChild (CTS key) (Pointer oldPath (SChoice q a b psq)) = Pointer newPath <$> P.lookup key psq
-  where newPath = SChoicePoint oldPath context q a b
-        (left, right) = P.splitAt key psq
-        context = PSQContext left key right
+focusChild (CTF key)  (Pointer oldPath (FChoice q a b1 b2 psq))  = Pointer newPath <$> P.lookup key psq
+  where newPath = FChoicePoint oldPath newContext q a b1 b2
+        newContext = P.makeContextAt key psq
 
-focusChild (CTOG key) (Pointer oldPath (GoalChoice psq)) = Pointer newPath <$> P.lookup key psq
-  where newPath = GChoicePoint oldPath context
-        (left, right) = P.splitAt key psq
-        context = PSQContext left key right
+
+focusChild (CTS key)  (Pointer oldPath (SChoice q a b psq))      = Pointer newPath <$> P.lookup key psq
+  where newPath = SChoicePoint oldPath newContext q a b
+        newContext = P.makeContextAt key psq
+
+
+focusChild (CTOG key) (Pointer oldPath (GoalChoice psq))         = Pointer newPath <$> P.lookup key psq
+  where newPath = GChoicePoint oldPath newContext
+        newContext = P.makeContextAt key psq
 
 focusChild _ _ = Nothing
 
+focusRoot :: Pointer a -> Pointer a
 focusRoot treePointer = maybe treePointer focusRoot (focusUp treePointer)
 
-data ChildType = CTP I | CTF Bool | CTS Bool | CTOG OpenGoal deriving (Show)
 
 children :: Pointer a -> Maybe [ChildType]
-children (Pointer _ (PChoice _ _ c))     = Just $ map CTP  $ P.keys c
-children (Pointer _ (FChoice _ _ _ _ c)) = Just $ map CTF  $ P.keys c 
-children (Pointer _ (SChoice _ _ _ c))   = Just $ map CTS  $ P.keys c
-children (Pointer _ (GoalChoice c))      = Just $ map CTOG $ P.keys c
-children _ = Nothing
+children (Pointer _ (PChoice _ _     c)) = Just $ map CTP  $ P.keys c
+children (Pointer _ (FChoice _ _ _ _ c)) = Just $ map CTF  $ P.keys c
+children (Pointer _ (SChoice _ _ _   c)) = Just $ map CTS  $ P.keys c
+children (Pointer _ (GoalChoice      c)) = Just $ map CTOG $ P.keys c
+children _                               = Nothing
 
 
 
 
 
-{- 
+{-
 
 { -#LANGUAGE TypeFamilies, GADTs, DataKinds, PolyKinds, ExistentialQuantification# - }
 
@@ -121,10 +127,10 @@ type family NodeType (x :: X) (a :: *) :: *
 type instance NodeType S a = [Tree S a]
 type instance NodeType I a = [(Int,Tree I a)]
 
-data Tree s a where 
+data Tree s a where
  Node :: a -> NodeType s a -> Tree s a
  Leaf :: LeafType s -> Tree s a
- 
+
 data SomeTree a = forall s . SomeTree (Tree s a)
 
 
@@ -134,7 +140,7 @@ data NodeType a =
   | SChoice     QSN a Bool
 
 
-data LeafType = 
+data LeafType =
     GoalChoice
   | Done        RevDepMap
   | Fail        (ConflictSet QPN) FailReason
@@ -154,14 +160,14 @@ type Forest a = [Tree a]
 
 data Tree a = Item a | Node a (Forest a)
 
-data Path a = Top | Point (Path a) (Forest a) a (Forest a) 
+data Path a = Top | Point (Path a) (Forest a) a (Forest a)
 
 
 data Pointer a = Pointer {tree :: Tree a, context :: Path a}
 
 
 expr :: Tree String
-expr = Node "+" [ Node "*" [ Item "a", Item "b"], 
+expr = Node "+" [ Node "*" [ Item "a", Item "b"],
     Node "*" [ Item "c", Item "d"] ]
 
 
@@ -173,11 +179,11 @@ focusChild n (Pointer (Node a children) path) = case splitChildren [] children n
     Nothing -> Nothing
     Just (l':ls',r') -> Just $ Pointer l' $ (Point path ls' a r')
     _ -> Nothing
-focusChild _ _ = Nothing 
+focusChild _ _ = Nothing
 
 focusLeft :: Pointer a -> Maybe (Pointer a)
 focusLeft c@(Pointer t p) = case p of
-    Point path (l:ls) a r -> Just $ Pointer l (Point path ls a (t:r)) 
+    Point path (l:ls) a r -> Just $ Pointer l (Point path ls a (t:r))
     _ -> Nothing
 
 focusUp :: Pointer a -> Maybe (Pointer a)
@@ -193,7 +199,7 @@ splitChildren _ _ _         = Nothing
 main :: IO ()
 main = do
     putStrLn $ drawTree $ tree $ fromJust $ focusChild 1 (fromTree expr) >>= focusChild 1 >>= focusUp >>= focusUp
-    putStrLn $ drawTree $ tree $ fromJust $ focusUp =<< focusUp =<< focusChild 1 =<< focusChild 1 (fromTree expr) 
+    putStrLn $ drawTree $ tree $ fromJust $ focusUp =<< focusUp =<< focusChild 1 =<< focusChild 1 (fromTree expr)
 
 
 
@@ -204,7 +210,7 @@ drawTree  = unlines . draw
 
 draw :: (Show a) => Tree a -> [String]
 draw (Item x) = [show x]
-draw (Node x l) = show x : drawSubTrees l 
+draw (Node x l) = show x : drawSubTrees l
     where   drawSubTrees [] = []
             drawSubTrees [t] =
                 "|" : shift "`- " "   " (draw t)

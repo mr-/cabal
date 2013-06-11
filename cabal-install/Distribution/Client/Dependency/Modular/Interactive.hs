@@ -1,23 +1,23 @@
-module Distribution.Client.Interactive where
+module Distribution.Client.Dependency.Modular.Interactive where
 
-import System.Console.Haskeline (outputStrLn, getInputLine, runInputT, 
+import System.Console.Haskeline (outputStrLn, getInputLine, runInputT,
                                  defaultSettings, InputT)
 
 import Distribution.Client.Dependency.Modular.TreeZipper
         (Pointer(..), ChildType(..), fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot)
 
 
-import Distribution.Client.Dependency.Modular.Dependency 
+import Distribution.Client.Dependency.Modular.Dependency
                 (QGoalReasonChain, GoalReason(..), showOpenGoal, showVar, RevDepMap, showDep)
 
 
 import Distribution.Client.Dependency.Modular.Tree (Tree(..), FailReason(..))
 
-import Distribution.Client.Interactive.Parser
+import Distribution.Client.Dependency.Modular.Interactive.Parser
 
 import Data.Maybe (fromJust, fromMaybe)
 
-import Distribution.Client.Dependency.Modular.Package(I(..), Loc(..), showQPN, showPI, unPN)
+import Distribution.Client.Dependency.Modular.Package (I(..), Loc(..), showQPN, showPI, unPN)
 import Distribution.Client.Dependency.Modular.Flag(showQSN, showQFN)
 import Distribution.Client.Dependency.Modular.Version (showVer, showVR)
 
@@ -30,13 +30,16 @@ import Distribution.Client.Dependency.Modular.Log (showLog)
 import qualified Distribution.Client.Dependency.Modular.Preference as P
 
 
+-- In the long run, I don't think we should have such a (relatively useless) welcome message.
+-- Some basic help would be more informative.
+
 runInteractive :: Maybe (Tree QGoalReasonChain) -> IO ()
 runInteractive Nothing =
     putStrLn "Ooops.. you chose the wrong solver"
-runInteractive (Just searchTree) = do 
+runInteractive (Just searchTree) = do
     putStrLn "Welcome to cabali!"
     runInputT defaultSettings (loop $ Just $ fromTree searchTree)
-  where 
+  where
         loop :: Maybe (Pointer QGoalReasonChain) -> InputT IO ()
         loop Nothing = outputStrLn "Bye bye"
         loop (Just treePointer) = do
@@ -45,6 +48,8 @@ runInteractive (Just searchTree) = do
             outputStrLn $ displayChoices treePointer `or` "None"
             tP <- handleCommand treePointer
             loop tP
+
+        or :: String -> String -> String
         "" `or` s = s
         s  `or` _ = s
 
@@ -57,35 +62,40 @@ handleCommand :: Pointer QGoalReasonChain -> InputT IO (Maybe (Pointer QGoalReas
 handleCommand  treePointer = do
   inp <- getInputLine "> "
   case inp of
-    Nothing -> return Nothing 
+    Nothing    -> return Nothing
     Just text  -> case readExpr text >>= \cmd -> interpretExpression cmd treePointer of
-                          Left s  -> do outputStrLn s
-                                        handleCommand treePointer 
-                          Right t -> return (Just t)
+                    Left s  -> do outputStrLn s
+                                  handleCommand treePointer
+                    Right t -> return (Just t)
 
 
 interpretExpression :: Expression -> Pointer QGoalReasonChain ->  Either String (Pointer QGoalReasonChain)
-interpretExpression [] _ = error "Internal Error in interpretExpression"
-interpretExpression [cmd] treePos = interpretCommand treePos cmd
-interpretExpression (x:xs) treePos = interpretCommand treePos x >>= interpretExpression xs
+interpretExpression []      _        = error "Internal Error in interpretExpression"
+interpretExpression [cmd]   treePos  = interpretCommand treePos cmd
+interpretExpression (x:xs)  treePos  = interpretCommand treePos x >>= interpretExpression xs
+
 
 interpretCommand :: Pointer QGoalReasonChain -> Command -> Either String (Pointer QGoalReasonChain)
 interpretCommand treePointer ToTop = Right $ focusRoot treePointer
+
 interpretCommand treePointer Up | isRoot treePointer  = Left "We are at the top"
-interpretCommand treePointer Up = Right $ fromJust $ focusUp treePointer
+interpretCommand treePointer Up                       = Right $ fromJust $ focusUp treePointer
 
 interpretCommand treePointer (Go n) = case focused of
-                                                Nothing -> Left "No such child"
-                                                Just subPointer -> Right subPointer
-            where focused = lookup n choices >>= \foo -> focusChild foo treePointer
-                  choices = generateChoices treePointer
-interpretCommand treePointer Empty = case choices of 
-                          [(_, child)] -> Right $ fromJust $ focusChild child treePointer
-                          _            -> Left "Ambiguous choice"
-            where choices = generateChoices treePointer
+                                        Nothing -> Left "No such child"
+                                        Just subPointer -> Right subPointer
+  where focused = lookup n choices >>= \foo -> focusChild foo treePointer
+        choices = generateChoices treePointer
 
-interpretCommand treePointer Auto = Left fooString
-  where 
+interpretCommand treePointer Empty =  case choices of
+                                        [(_, child)] -> Right $ fromJust $ focusChild child treePointer
+                                        _             -> Left "Ambiguous choice"
+  where choices = generateChoices treePointer
+
+interpretCommand _ Auto = Left "Not defined yet"
+
+interpretCommand treePointer AutoLog = Left fooString
+  where
     fooString = showLog $ explorePhase $ heuristicsPhase (tree treePointer)
     explorePhase     = exploreTreeLog . backjump
     heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
@@ -98,11 +108,17 @@ interpretCommand treePointer Auto = Left fooString
 
 displayChoices :: Pointer QGoalReasonChain -> String
 displayChoices treePointer = unlines $ map (uncurry makeEntry) $ generateChoices treePointer
-  where makeEntry n child = "(" ++ show n ++ ")  " ++ showChild child ++ " " ++ fromMaybe "" (failReason child)
-        failReason child | isFail (focusChild child treePointer) = Just "\t(fails)"
-        failReason _ = Nothing
-        isFail (Just (Pointer _ (Fail _ _))) = True
-        isFail _ = False
+  where
+    makeEntry :: Int -> ChildType -> String
+    makeEntry n child = "(" ++ show n ++ ")  " ++ showChild child ++ " " ++ fromMaybe "" (failReason child)
+
+    failReason :: ChildType -> Maybe String
+    failReason child | isFail (focusChild child treePointer)  = Just "\t(fails)"
+    failReason _                                              = Nothing
+
+    isFail :: Maybe (Pointer QGoalReasonChain) -> Bool
+    isFail (Just (Pointer _ (Fail _ _)))  = True
+    isFail _                              = False
 
 --data ChildType = CTP I | CTF Bool | CTS Bool | CTOG OpenGoal deriving (Show)
 --data I = I Ver Loc
@@ -116,20 +132,20 @@ showChild (CTP (I ver InRepo)) = "Version " ++ showVer ver
 showChild (CTF bool) = show bool
 showChild (CTS bool) = show bool
 showChild (CTOG opengoal) = "OpenGoal: " ++ showOpenGoal opengoal
---showChild (CTOG (OpenGoal flagged qgoalreasonchain)) = "OpenGoal: " ++ (show flagged) 
---                                        ++ " Reason: " ++ (show $ head qgoalreasonchain) 
+--showChild (CTOG (OpenGoal flagged qgoalreasonchain)) = "OpenGoal: " ++ (show flagged)
+--                                        ++ " Reason: " ++ (show $ head qgoalreasonchain)
 
 
 showNodeFromTree :: Tree QGoalReasonChain -> String
 showNodeFromTree (PChoice qpn a _)           = "PChoice: QPN: " ++ showQPN qpn ++ "\n\t QGoalReason: " ++ showGoalReason a
-showNodeFromTree (FChoice qfn a b1 b2 _)     = "FChoice: QFN: " ++ showQFN qfn ++ "\n\t QGoalReason: " ++ showGoalReason a 
+showNodeFromTree (FChoice qfn a b1 b2 _)     = "FChoice: QFN: " ++ showQFN qfn ++ "\n\t QGoalReason: " ++ showGoalReason a
                                                     ++ "\n\t Bools: " ++ show (b1, b2)
-showNodeFromTree (SChoice qsn a b _)         = "SChoice: QSN: " ++ showQSN qsn ++ "\n\t QGoalReason: " ++ showGoalReason a 
+showNodeFromTree (SChoice qsn a b _)         = "SChoice: QSN: " ++ showQSN qsn ++ "\n\t QGoalReason: " ++ showGoalReason a
                                                     ++ "\n\t Bool " ++ show b
 showNodeFromTree (GoalChoice _)              = "GoalChoice"
 showNodeFromTree (Done rdm)                  = "Done! \nRevDepMap: \n" ++  showRevDepMap rdm
 showNodeFromTree (Fail cfs fr)               = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
-  where showConflictSet s = show $ map showVar (toList s) 
+  where showConflictSet s = show $ map showVar (toList s)
 
 
 showRevDepMap :: RevDepMap -> String
@@ -190,6 +206,12 @@ showGoalReason (FDependency fnqpn b : _) = "FDependency: " ++ showQFN fnqpn  ++ 
 showGoalReason (SDependency snqpn :_) = "SDependency: " ++ showQSN snqpn
 showGoalReason (UserGoal:_) = "UserGoal"
 showGoalReason [] = error "Empty QGoalReasonChain - this should never happen, I think"
+
+-- We should also try to make output between the interactive solver and the -v3 trace similar.
+-- So these display functions should go into other modules, so that they can be reused from
+-- multiple positions in the code.
+
+
 
 {-
 data Tree a =

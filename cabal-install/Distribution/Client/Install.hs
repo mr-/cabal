@@ -140,7 +140,7 @@ import Distribution.Client.Dependency.Modular.Tree        (Tree)
 
 --import Distribution.Client.SolveTree (makeInstallPlanTree)
 
-import Distribution.Client.Interactive (runInteractive)
+import Distribution.Client.Dependency.Modular.Interactive (runInteractive)
 import Control.Applicative ( (<$>) )
 
 --TODO:
@@ -182,7 +182,7 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
   userTargets0 = do
     installContext <- makeInstallContext verbosity args (Just userTargets0)
     if fromFlag (installInteractive installFlags)
-      then do 
+      then do
         installFoo verbosity args installContext
       else do
         installPlan    <- foldProgress logMsg die return =<<
@@ -190,7 +190,7 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
 
         processInstallPlan verbosity args installContext installPlan
   where
-    installFoo v a i = do
+    installFoo v a i = do --this exists just so I don't have to export the types from Install.hs, which would lead to a cycle..
       (_, planTree) <- makeInstallPlan' v a i
       runInteractive planTree
     args :: InstallArgs
@@ -307,8 +307,8 @@ planPackages :: Compiler
              -> Progress String String InstallPlan
 planPackages comp platform mSandboxPkgInfo solver
              configFlags configExFlags installFlags
-             installedPkgIndex sourcePkgDb pkgSpecifiers = progress 
-             where 
+             installedPkgIndex sourcePkgDb pkgSpecifiers = progress
+             where
               (progress, _) = planPackages' comp platform mSandboxPkgInfo solver
                                                   configFlags configExFlags installFlags
                                                   installedPkgIndex sourcePkgDb pkgSpecifiers

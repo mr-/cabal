@@ -408,13 +408,16 @@ resolveDependencies' platform comp _solver params
   | null (depResolverTargets params)
   = (return (mkInstallPlan platform comp []), Nothing)
 
+-- I would have expected that returning Nothing for the tree encodes failure. But
+-- this does not seem to be the case here ... In the case of having no targets,
+-- wouldn't we expect an empty, but successful tree?
+-- True. But what is the empty successfull tree? Done Map.empty ?
+
 resolveDependencies' platform comp  solver params =
     (fmap (mkInstallPlan platform comp) solveLog, tree)
   where
-    (solveLog, tree) = runSolver solver (SolverConfig reorderGoals indGoals noReinstalls
-                      shadowing maxBkjumps)
-                     platform comp installedPkgIndex sourcePkgIndex
-                     preferences constraints targets
+    (solveLog, tree) = runSolver solver (SolverConfig reorderGoals indGoals noReinstalls shadowing maxBkjumps)
+                                        platform comp installedPkgIndex sourcePkgIndex preferences constraints targets
     DepResolverParams
       targets constraints
       prefs defpref

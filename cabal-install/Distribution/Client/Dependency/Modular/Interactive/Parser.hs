@@ -1,11 +1,11 @@
-module Distribution.Client.Interactive.Parser (readExpr, Expression, Command(..) )where
+module Distribution.Client.Dependency.Modular.Interactive.Parser (readExpr, Expression, Command(..) )where
 
 import Text.ParserCombinators.Parsec hiding (spaces)
 import Text.Parsec.Char
 import Control.Applicative hiding ((<|>), optional, empty)
 
 type Expression = [Command]
-data Command =  Empty | Auto | Up | ToTop | Go Int deriving (Read, Show)
+data Command =  AutoLog | Empty | Auto | Up | ToTop | Go Int deriving (Read, Show)
 
 
 parseNullary :: String -> Parser ()
@@ -14,7 +14,7 @@ parseNullary s = optSpaces >> string s >> optSpaces
 parseUnary :: String -> Parser Int
 parseUnary str = do _ <- optSpaces
                     _ <- string str
-                    _ <- many1 space 
+                    _ <- many1 space
                     d <- digits
                     _ <- optSpaces
                     return (read d)
@@ -32,9 +32,11 @@ optSpaces = optional (many1 space)
 empty :: Parser ()
 empty = optSpaces >> eof
 
-
-parseCmd :: Parser Command 
-parseCmd =  Auto    <$ parseNullary "auto"
+--ToDo: Better parser! (I.e. parseNullary "auto" should not have "autoLog" pass)
+-- failing parsers should not consume stuf..
+parseCmd :: Parser Command
+parseCmd =  AutoLog <$ parseNullary "log"
+        <|> Auto    <$ parseNullary "auto"
         <|> Go      <$> parseUnary "go"
         <|> Up      <$ parseNullary "up"
         <|> ToTop   <$ parseNullary "top"
@@ -43,7 +45,7 @@ parseCmd =  Auto    <$ parseNullary "auto"
 
 parseExpr :: Parser Expression
 parseExpr = sepBy1 parseCmd sep
-    where sep = spaces >> char ',' >> spaces 
+    where sep = spaces >> char ',' >> spaces
 
 readExpr :: String -> Either String Expression
 readExpr input = case parse parseExpr "" input of

@@ -67,7 +67,7 @@ casePSQ (PSQ xs) n c =
     (k, v) : ys -> c k v (PSQ ys)
 
 splits :: PSQ k a -> PSQ k (a, PSQ k a)
-splits = go id 
+splits = go id
   where
     go f xs = casePSQ xs
         (PSQ [])
@@ -103,17 +103,17 @@ null (PSQ xs) = S.null xs
 toList :: PSQ k a -> [(k, a)]
 toList (PSQ xs) = xs
 
-
-data PSQContext k v = PSQContext (PSQ k v) k (PSQ k v)  
+-- left in reverse order to make going left constant time?
+data PSQContext k v = PSQContext (PSQ k v) k (PSQ k v)
 
 joinPSQ :: PSQ k v -> PSQ k v -> PSQ k v
 joinPSQ (PSQ a) (PSQ b) = PSQ (a ++ b)
 
 joinContext :: v -> PSQContext k v -> PSQ k v
-joinContext value (PSQContext left key right) = left `joinPSQ` fromList [(key, value)] `joinPSQ` right 
+joinContext value (PSQContext left key right) = left `joinPSQ` fromList [(key, value)] `joinPSQ` right
 
-splitAt :: (Eq k) => k -> PSQ k v -> (PSQ k v, PSQ k v) --everything is left if key is not found
-splitAt key (PSQ l) = (PSQ left, PSQ right)
+makeContextAt :: (Eq k) => k -> PSQ k v -> PSQContext k v  --everything is left if key is not found
+makeContextAt key (PSQ l) = PSQContext (PSQ left) key (PSQ right)
   where (left, _:right)  = break (\(k,_)-> k == key) l
 
 
