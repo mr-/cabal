@@ -193,6 +193,8 @@ transPtrs :: Pointer QGoalReasonChain -> Pointer (Maybe (ConflictSet QPN)) -> Ma
 transPtrs qptr (Pointer ctx _) = walk (reverse $ pathToList ctx) qptr
 
 -- | Interface.
+-- If this one gets the correct treePointer instead of fromTree t, there's no need
+-- for these stuid calculations..
 exploreTreeLogPtr :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, Pointer (Maybe (ConflictSet QPN)), RevDepMap)
 exploreTreeLogPtr t = exploreLogPtr t (A M.empty M.empty M.empty, fromTree t )
 
