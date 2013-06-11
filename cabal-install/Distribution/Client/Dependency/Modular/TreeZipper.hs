@@ -34,7 +34,22 @@ data Path a =
   | GChoicePoint (Path a) (PSQContext OpenGoal (Tree a))
 
 
-data Pointer a = Pointer { context :: Path a, tree :: Tree a }
+data Pointer a = Pointer { pointerContext :: Path a, pointerTree :: Tree a }
+
+type WrongWayPath = [ChildType]
+
+pathToList :: Path a -> WrongWayPath
+pathToList Top = []
+pathToList (PChoicePoint path context _ _     ) = CTP  (P.contextKey context) : pathToList path
+pathToList (FChoicePoint path context _ _ _ _ ) = CTF  (P.contextKey context) : pathToList path
+pathToList (SChoicePoint path context _ _ _   ) = CTS  (P.contextKey context) : pathToList path
+pathToList (GChoicePoint path context         ) = CTOG (P.contextKey context) : pathToList path
+
+
+walk :: WrongWayPath -> Pointer a -> Maybe (Pointer a)
+walk (x:y:ys) treePointer = focusChild x treePointer >>= walk (y:ys)
+walk [x]      treePointer = focusChild x treePointer
+walk []       _           = Nothing
 
 
 fromTree :: Tree a -> Pointer a

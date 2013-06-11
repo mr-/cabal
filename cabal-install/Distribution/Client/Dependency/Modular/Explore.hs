@@ -5,6 +5,7 @@ import Data.Foldable
 import Data.List as L
 import Data.Map as M
 import Data.Set as S
+import Data.Maybe (fromJust)
 
 import Distribution.Client.Dependency.Modular.Assignment
 import Distribution.Client.Dependency.Modular.Dependency
@@ -13,6 +14,7 @@ import Distribution.Client.Dependency.Modular.Message
 import Distribution.Client.Dependency.Modular.Package
 import Distribution.Client.Dependency.Modular.PSQ as P
 import Distribution.Client.Dependency.Modular.Tree
+import Distribution.Client.Dependency.Modular.TreeZipper
 
 -- | Backjumping.
 --
@@ -147,3 +149,56 @@ exploreTree t = explore t (A M.empty M.empty M.empty)
 -- | Interface.
 exploreTreeLog :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, RevDepMap)
 exploreTreeLog t = exploreLog t (A M.empty M.empty M.empty)
+
+
+
+-- | Version of 'explore' that returns a 'Log'.
+exploreLogPtr :: Tree (Maybe (ConflictSet QPN)) ->
+              ((Assignment, Pointer  (Maybe (ConflictSet QPN))) ->
+                Log Message (Assignment, Pointer (Maybe (ConflictSet QPN)), RevDepMap))
+exploreLogPtr = cata go
+  where
+    go (FailF c fr)          _           = failWith (Failure c fr)
+    go (DoneF rdm)           (a,treePtr)           = succeedWith Success (a, treePtr, rdm)
+    go (PChoiceF qpn c     ts) (A pa fa sa, treePtr)   =
+      backjumpInfo c $
+      asum $                                      -- try children in order,
+      P.mapWithKey                                -- when descending ...
+        (\ k r -> tryWith (TryP (PI qpn k)) $     -- log and ...
+                    r (A (M.insert qpn k pa) fa sa, fromJust $ focusChild (CTP k) treePtr)) -- record the pkg choice
+      ts
+    go (FChoiceF qfn c _ _ ts) (A pa fa sa, treePtr)   =
+      backjumpInfo c $
+      asum $                                      -- try children in order,
+      P.mapWithKey                                -- when descending ...
+        (\ k r -> tryWith (TryF qfn k) $          -- log and ...
+                    r (A pa (M.insert qfn k fa) sa, fromJust $ focusChild (CTF k) treePtr)) -- record the pkg choice
+      ts
+    go (SChoiceF qsn c _   ts) (A pa fa sa, treePtr)   =
+      backjumpInfo c $
+      asum $                                      -- try children in order,
+      P.mapWithKey                                -- when descending ...
+        (\ k r -> tryWith (TryS qsn k) $          -- log and ...
+                    r (A pa fa (M.insert qsn k sa), fromJust $ focusChild (CTS k) treePtr)) -- record the pkg choice
+      ts
+    go (GoalChoiceF        ts) (a, treePtr)           =
+      casePSQ ts
+        (failWith (Failure S.empty EmptyGoalChoice))   -- empty goal choice is an internal error
+        (\ k v _xs -> continueWith (Next (close k)) (v (a, fromJust $ focusChild (CTOG k) treePtr )))     -- commit to the first goal choice
+
+
+
+
+transPtrs :: Pointer QGoalReasonChain -> Pointer (Maybe (ConflictSet QPN)) -> Maybe (Pointer QGoalReasonChain)
+transPtrs qptr (Pointer ctx _) = walk (reverse $ pathToList ctx) qptr
+
+-- | Interface.
+exploreTreeLogPtr :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, Pointer (Maybe (ConflictSet QPN)), RevDepMap)
+exploreTreeLogPtr t = exploreLogPtr t (A M.empty M.empty M.empty, fromTree t )
+
+
+runTreeLogPtr :: Pointer QGoalReasonChain -> Log Message (Assignment, Pointer (Maybe (ConflictSet QPN)), RevDepMap)
+                    -> Either String (Pointer QGoalReasonChain)
+runTreeLogPtr originalPtr l = case runLog l of
+                    (ms, Nothing)              -> Left $ unlines $ showMessages (const True) True ms
+                    (_, Just (_, treePtr, _))  -> Right $ fromJust $ transPtrs originalPtr treePtr

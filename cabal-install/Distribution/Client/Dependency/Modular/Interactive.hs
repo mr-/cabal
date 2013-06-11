@@ -29,6 +29,7 @@ import Distribution.Client.Dependency.Modular.Explore (exploreTreeLog, backjump)
 import Distribution.Client.Dependency.Modular.Log (showLog)
 import qualified Distribution.Client.Dependency.Modular.Preference as P
 
+import Distribution.Client.Dependency.Modular.Explore
 
 -- In the long run, I don't think we should have such a (relatively useless) welcome message.
 -- Some basic help would be more informative.
@@ -89,14 +90,23 @@ interpretCommand treePointer (Go n) = case focused of
 
 interpretCommand treePointer Empty =  case choices of
                                         [(_, child)] -> Right $ fromJust $ focusChild child treePointer
-                                        _             -> Left "Ambiguous choice"
+                                        _            -> Left "Ambiguous choice"
   where choices = generateChoices treePointer
 
-interpretCommand _ Auto = Left "Not defined yet"
+interpretCommand treePointer Auto = runTreeLogPtr treePointer foo
+    where
+    foo              = explorePhase $ heuristicsPhase (pointerTree treePointer)
+    explorePhase     = exploreTreeLogPtr . backjump
+    heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
+                       if False
+                         then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
+                         else P.preferBaseGoalChoice
+
+
 
 interpretCommand treePointer AutoLog = Left fooString
   where
-    fooString = showLog $ explorePhase $ heuristicsPhase (tree treePointer)
+    fooString = showLog $ explorePhase $ heuristicsPhase (pointerTree treePointer)
     explorePhase     = exploreTreeLog . backjump
     heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        if False

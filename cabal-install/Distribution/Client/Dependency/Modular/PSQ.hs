@@ -104,7 +104,7 @@ toList :: PSQ k a -> [(k, a)]
 toList (PSQ xs) = xs
 
 -- left in reverse order to make going left constant time?
-data PSQContext k v = PSQContext (PSQ k v) k (PSQ k v)
+data PSQContext k v = PSQContext {contextLefts :: (PSQ k v), contextKey ::  k, contextRights ::  (PSQ k v)}
 
 joinPSQ :: PSQ k v -> PSQ k v -> PSQ k v
 joinPSQ (PSQ a) (PSQ b) = PSQ (a ++ b)
