@@ -163,14 +163,20 @@ exploreTreeLog t = transform $ exploreTreePtrLog (fromTree t) t
     fromDone (Pointer _ _)          = error "Uhoh.. Internal error in exploreTreeLog. Have you tried turning it off and on again?"
 
 
--- | Interface. -- It is important that conflictTree is a subtree of pointerTree (offsetPtr)
+-- | Interface. -- This finds a path in offsetPtr while traversing conflictTree.
+                -- It is important that conflictTree is a subtree of offsetPtr's tree
                 -- Or else it fails with a fromJust error :->
+                -- This should definitely be handled differently..
+                -- Maybe: data Subtree = Foo (Pointer a) (Tree b)
+                -- Or something..
 exploreTreePtrLog :: Pointer a -> Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, Pointer a)
 exploreTreePtrLog offsetPtr conflictTree = explorePtrLog conflictTree (A M.empty M.empty M.empty, offsetPtr )
 
 
+-- Where, oh where should you go? Here is Ok, I guess.. Now this module knows how to make Log Message (...) and it also knows
+-- how to get information out of it.
 -- Maybe we would also like the Assignment?
-runTreePtrLog :: Log Message (Assignment, Pointer a) -> Either String (Assignment, (Pointer a))
+runTreePtrLog :: Log Message (Assignment, Pointer a) -> Either String (Assignment, Pointer a)
 runTreePtrLog l = case runLog l of
                     (ms, Nothing)                    -> Left $ unlines $ showMessages (const True) True ms
                     (_, Just (assignment, treePtr))  -> Right (assignment, treePtr)

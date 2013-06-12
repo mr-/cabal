@@ -104,7 +104,7 @@ interpretCommand treePointer Empty =  case choices of
 
 interpretCommand treePointer Auto = snd <$> runTreePtrLog treePtrLog
   where
-    treePtrLog       = explorePhase $ heuristicsPhase (pointerTree treePointer)
+    treePtrLog       = explorePhase $ heuristicsPhase (toTree treePointer)
     explorePhase     = exploreTreePtrLog treePointer . backjump
     heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        if False
@@ -113,7 +113,7 @@ interpretCommand treePointer Auto = snd <$> runTreePtrLog treePtrLog
 
 interpretCommand treePointer AutoLog = Left fooString
   where
-    fooString = showLog $ explorePhase $ heuristicsPhase (pointerTree treePointer)
+    fooString = showLog $ explorePhase $ heuristicsPhase (toTree treePointer)
     explorePhase     = exploreTreeLog . backjump
     heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        if False

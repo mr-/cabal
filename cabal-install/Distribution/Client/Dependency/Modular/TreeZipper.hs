@@ -2,15 +2,11 @@ module Distribution.Client.Dependency.Modular.TreeZipper where
 
 import Control.Applicative
 import Control.Monad hiding (mapM)
---import Data.Foldable
---import Data.Traversable
 import Prelude hiding (foldr, mapM)
---import Data.List (break)
 import Distribution.Client.Dependency.Modular.Dependency
 import Distribution.Client.Dependency.Modular.Flag
 import Distribution.Client.Dependency.Modular.Package
 import Distribution.Client.Dependency.Modular.PSQ as P hiding (map)
---import Distribution.Client.Dependency.Modular.Version
 import Distribution.Client.Dependency.Modular.Tree
 
 
@@ -34,9 +30,14 @@ data Path a =
   | GChoicePoint (Path a) (PSQContext OpenGoal (Tree a))
 
 
-data Pointer a = Pointer { pointerContext :: Path a, pointerTree :: Tree a }
+data Pointer a = Pointer { toPath :: Path a, toTree :: Tree a }
 
 type WrongWayPath = [ChildType]
+type OneWayPath   = [ChildType]
+
+wrongToOne :: WrongWayPath -> OneWayPath
+wrongToOne = reverse
+
 
 pathToList :: Path a -> WrongWayPath
 pathToList Top = []
@@ -46,19 +47,14 @@ pathToList (SChoicePoint path context _ _ _   ) = CTS  (P.contextKey context) : 
 pathToList (GChoicePoint path context         ) = CTOG (P.contextKey context) : pathToList path
 
 
---It actually assumes a OneWayPath...
-walk :: WrongWayPath -> Pointer a -> Maybe (Pointer a)
-walk (x:y:ys) treePointer = focusChild x treePointer >>= walk (y:ys)
-walk [x]      treePointer = focusChild x treePointer
-walk []       _           = Nothing
+walk :: OneWayPath -> Pointer a -> Maybe (Pointer a)
+walk []     _           = Nothing
+walk [x]    treePointer = focusChild x treePointer
+walk (x:xs) treePointer = focusChild x treePointer >>= walk xs
 
 
 fromTree :: Tree a -> Pointer a
 fromTree t = Pointer Top t
-
-
-toTree :: Pointer a -> Tree a
-toTree (Pointer _ t ) = t
 
 isRoot :: Pointer a -> Bool
 isRoot (Pointer Top _ ) = True
