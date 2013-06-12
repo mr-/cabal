@@ -32,8 +32,12 @@ import Distribution.Client.Dependency.Modular.Explore (exploreTreeLog, exploreTr
 
 import Control.Applicative ( (<$>) )
 
--- In the long run, I don't think we should have such a (relatively useless) welcome message.
--- Some basic help would be more informative.
+
+data UIState a = UIState {uiPointer :: (Pointer a), uiBreakPoints :: [(String, Pointer a)]}
+-- Better uiBreakPoints :: [(String, Pointer a -> Bool)]
+
+-- features: cut
+--           autoTill breakpoint (breakPoint in the new sense)
 
 runInteractive :: Maybe (Tree QGoalReasonChain) -> IO ()
 runInteractive Nothing =
@@ -48,16 +52,16 @@ runInteractive (Just searchTree) = do
     putStrLn "auto -- starts the automatic solver"
     putStrLn ",    -- chains commands (e.g. 1,1,1,1,top does nothing)"
 
-    runInputT defaultSettings (loop $ Just $ fromTree searchTree)
+    runInputT defaultSettings (loop $ Just $ UIState (fromTree searchTree) [])
   where
-        loop :: Maybe (Pointer QGoalReasonChain) -> InputT IO ()
+        loop :: Maybe (UIState QGoalReasonChain) -> InputT IO ()
         loop Nothing = outputStrLn "Bye bye"
-        loop (Just treePointer) = do
-            outputStrLn $ "Node: " ++ showNodeFromTree ( toTree treePointer )
+        loop (Just uiState) = do
+            outputStrLn $ "Node: " ++ showNodeFromTree ( toTree $ uiPointer uiState )
             outputStrLn "Choices: "
-            outputStrLn $ displayChoices treePointer `or` "None"
-            tP <- handleCommand treePointer
-            loop tP
+            outputStrLn $ displayChoices (uiPointer uiState) `or` "None"
+            uiS <- handleCommand uiState
+            loop uiS
 
         or :: String -> String -> String
         "" `or` s = s
@@ -68,41 +72,43 @@ runInteractive (Just searchTree) = do
 generateChoices :: Pointer a -> [(Int, ChildType)]
 generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)
 
-handleCommand :: Pointer QGoalReasonChain -> InputT IO (Maybe (Pointer QGoalReasonChain))
-handleCommand  treePointer = do
+handleCommand :: UIState QGoalReasonChain -> InputT IO (Maybe (UIState QGoalReasonChain))
+handleCommand uiState = do
   inp <- getInputLine "> "
   case inp of
     Nothing    -> return Nothing
-    Just text  -> case readExpr text >>= \cmd -> interpretExpression cmd treePointer of
+    Just text  -> case readExpr text >>= \cmd -> interpretExpression cmd uiState of
                     Left s  -> do outputStrLn s
-                                  handleCommand treePointer
-                    Right t -> return (Just t)
+                                  handleCommand uiState
+                    Right t -> return $ Just t
 
 
-interpretExpression :: Expression -> Pointer QGoalReasonChain ->  Either String (Pointer QGoalReasonChain)
+interpretExpression :: Expression -> UIState QGoalReasonChain ->  Either String (UIState QGoalReasonChain)
 interpretExpression []      _        = error "Internal Error in interpretExpression"
-interpretExpression [cmd]   treePos  = interpretCommand treePos cmd
-interpretExpression (x:xs)  treePos  = interpretCommand treePos x >>= interpretExpression xs
+interpretExpression [cmd]   uiState  = interpretCommand uiState cmd
+interpretExpression (x:xs)  uiState  = interpretCommand uiState x >>= interpretExpression xs
 
 
-interpretCommand :: Pointer QGoalReasonChain -> Command -> Either String (Pointer QGoalReasonChain)
-interpretCommand treePointer ToTop = Right $ focusRoot treePointer
+interpretCommand :: UIState QGoalReasonChain -> Command -> Either String (UIState QGoalReasonChain)
+interpretCommand uiState ToTop = Right $ uiState {uiPointer = focusRoot (uiPointer uiState)}
 
-interpretCommand treePointer Up | isRoot treePointer  = Left "We are at the top"
-interpretCommand treePointer Up                       = Right $ fromJust $ focusUp treePointer
+interpretCommand uiState Up | isRoot (uiPointer uiState)  = Left "We are at the top"
+interpretCommand uiState Up                               = Right $ uiState { uiPointer = fromJust $ focusUp (uiPointer uiState)}
 
-interpretCommand treePointer (Go n) = case focused of
+interpretCommand uiState (Go n) = case focused of
                                         Nothing -> Left "No such child"
-                                        Just subPointer -> Right subPointer
-  where focused = lookup n choices >>= \foo -> focusChild foo treePointer
-        choices = generateChoices treePointer
+                                        Just subPointer -> Right $ uiState {uiPointer = subPointer}
+  where focused     = lookup n choices >>= \foo -> focusChild foo treePointer
+        choices     = generateChoices treePointer
+        treePointer = uiPointer uiState
 
-interpretCommand treePointer Empty =  case choices of
-                                        [(_, child)] -> Right $ fromJust $ focusChild child treePointer
-                                        _            -> Left "Ambiguous choice"
-  where choices = generateChoices treePointer
+interpretCommand uiState Empty =  case choices of
+                        [(_, child)] -> Right $ uiState {uiPointer = fromJust $ focusChild child treePointer}
+                        _            -> Left "Ambiguous choice"
+  where choices     = generateChoices treePointer
+        treePointer = uiPointer uiState
 
-interpretCommand treePointer Auto = snd <$> runTreePtrLog treePtrLog
+interpretCommand uiState Auto = (\(_,y) -> uiState {uiPointer = y}) <$> runTreePtrLog treePtrLog
   where
     treePtrLog       = explorePhase $ heuristicsPhase (toTree treePointer)
     explorePhase     = exploreTreePtrLog treePointer . backjump
@@ -110,8 +116,9 @@ interpretCommand treePointer Auto = snd <$> runTreePtrLog treePtrLog
                        if False
                          then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
                          else P.preferBaseGoalChoice
+    treePointer = uiPointer uiState
 
-interpretCommand treePointer AutoLog = Left fooString
+interpretCommand uiState AutoLog = Left fooString
   where
     fooString = showLog $ explorePhase $ heuristicsPhase (toTree treePointer)
     explorePhase     = exploreTreeLog . backjump
@@ -119,6 +126,18 @@ interpretCommand treePointer AutoLog = Left fooString
                        if False
                          then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
                          else P.preferBaseGoalChoice
+    treePointer      = uiPointer uiState
+
+interpretCommand uiState (Break name) = Right $ addBreakPoint name uiState
+  where
+    addBreakPoint :: String ->  UIState a -> UIState a
+    addBreakPoint s u = u {uiBreakPoints = (s, uiPointer u) : uiBreakPoints u}
+
+interpretCommand uiState ListBreaks = Left $ show $ map fst $ uiBreakPoints uiState
+
+interpretCommand uiState (GoBreak name) = case lookup name (uiBreakPoints uiState) of
+                                            Nothing -> Left "No such breakpoint."
+                                            Just a  -> Right $ uiState {uiPointer = a}
 
 
 displayChoices :: Pointer QGoalReasonChain -> String
