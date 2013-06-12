@@ -98,38 +98,6 @@ explore = cata go
       casePSQ ts A.empty                      -- empty goal choice is an internal error
         (\ _k v _xs -> v a)                   -- commit to the first goal choice
 
--- | Version of 'explore' that returns a 'Log'.
-exploreLog :: Tree (Maybe (ConflictSet QPN)) ->
-              (Assignment -> Log Message (Assignment, RevDepMap))
-exploreLog = cata go
-  where
-    go (FailF c fr)          _           = failWith (Failure c fr)
-    go (DoneF rdm)           a           = succeedWith Success (a, rdm)
-    go (PChoiceF qpn c     ts) (A pa fa sa)   =
-      backjumpInfo c $
-      asum $                                      -- try children in order,
-      P.mapWithKey                                -- when descending ...
-        (\ k r -> tryWith (TryP (PI qpn k)) $     -- log and ...
-                    r (A (M.insert qpn k pa) fa sa)) -- record the pkg choice
-      ts
-    go (FChoiceF qfn c _ _ ts) (A pa fa sa)   =
-      backjumpInfo c $
-      asum $                                      -- try children in order,
-      P.mapWithKey                                -- when descending ...
-        (\ k r -> tryWith (TryF qfn k) $          -- log and ...
-                    r (A pa (M.insert qfn k fa) sa)) -- record the pkg choice
-      ts
-    go (SChoiceF qsn c _   ts) (A pa fa sa)   =
-      backjumpInfo c $
-      asum $                                      -- try children in order,
-      P.mapWithKey                                -- when descending ...
-        (\ k r -> tryWith (TryS qsn k) $          -- log and ...
-                    r (A pa fa (M.insert qsn k sa))) -- record the pkg choice
-      ts
-    go (GoalChoiceF        ts) a           =
-      casePSQ ts
-        (failWith (Failure S.empty EmptyGoalChoice))   -- empty goal choice is an internal error
-        (\ k v _xs -> continueWith (Next (close k)) (v a))     -- commit to the first goal choice
 
 -- | Add in information about pruned trees.
 --
@@ -146,61 +114,67 @@ backjumpInfo c m = m <|> case c of -- important to produce 'm' before matching o
 exploreTree :: Alternative m => Tree a -> m (Assignment, RevDepMap)
 exploreTree t = explore t (A M.empty M.empty M.empty)
 
--- | Interface.
-exploreTreeLog :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, RevDepMap)
-exploreTreeLog t = exploreLog t (A M.empty M.empty M.empty)
-
-
 
 -- | Version of 'explore' that returns a 'Log'.
-exploreLogPtr :: Tree (Maybe (ConflictSet QPN)) ->
-              ((Assignment, Pointer  (Maybe (ConflictSet QPN))) ->
-                Log Message (Assignment, Pointer (Maybe (ConflictSet QPN)), RevDepMap))
+exploreLogPtr :: Tree (Maybe (ConflictSet QPN)) ->( (Assignment, Pointer  a) -> Log Message (Assignment, Pointer a, RevDepMap) )
 exploreLogPtr = cata go
   where
-    go (FailF c fr)          _           = failWith (Failure c fr)
-    go (DoneF rdm)           (a,treePtr)           = succeedWith Success (a, treePtr, rdm)
-    go (PChoiceF qpn c     ts) (A pa fa sa, treePtr)   =
+    go (FailF c fr)          _                          = failWith (Failure c fr)
+    go (DoneF rdm)           (a,treePtr)                = succeedWith Success (a, treePtr, rdm)
+    go (PChoiceF qpn c     ts) (A pa fa sa, treePtr)    =
       backjumpInfo c $
       asum $                                      -- try children in order,
       P.mapWithKey                                -- when descending ...
         (\ k r -> tryWith (TryP (PI qpn k)) $     -- log and ...
-                    r (A (M.insert qpn k pa) fa sa, fromJust $ focusChild (CTP k) treePtr)) -- record the pkg choice
+                    r (A (M.insert qpn k pa) fa sa, fromJust $
+                    focusChild (CTP k) treePtr))  -- record the pkg choice
       ts
-    go (FChoiceF qfn c _ _ ts) (A pa fa sa, treePtr)   =
+    go (FChoiceF qfn c _ _ ts) (A pa fa sa, treePtr)    =
       backjumpInfo c $
       asum $                                      -- try children in order,
       P.mapWithKey                                -- when descending ...
         (\ k r -> tryWith (TryF qfn k) $          -- log and ...
-                    r (A pa (M.insert qfn k fa) sa, fromJust $ focusChild (CTF k) treePtr)) -- record the pkg choice
+                    r (A pa (M.insert qfn k fa) sa, fromJust $
+                     focusChild (CTF k) treePtr)) -- record the pkg choice
       ts
-    go (SChoiceF qsn c _   ts) (A pa fa sa, treePtr)   =
+    go (SChoiceF qsn c _   ts) (A pa fa sa, treePtr)    =
       backjumpInfo c $
       asum $                                      -- try children in order,
       P.mapWithKey                                -- when descending ...
         (\ k r -> tryWith (TryS qsn k) $          -- log and ...
-                    r (A pa fa (M.insert qsn k sa), fromJust $ focusChild (CTS k) treePtr)) -- record the pkg choice
+                    r (A pa fa (M.insert qsn k sa), fromJust $
+                    focusChild (CTS k) treePtr)) -- record the pkg choice
       ts
-    go (GoalChoiceF        ts) (a, treePtr)           =
+    go (GoalChoiceF        ts) (a, treePtr)             =
       casePSQ ts
         (failWith (Failure S.empty EmptyGoalChoice))   -- empty goal choice is an internal error
-        (\ k v _xs -> continueWith (Next (close k)) (v (a, fromJust $ focusChild (CTOG k) treePtr )))     -- commit to the first goal choice
+        (\ k v _xs -> continueWith (Next (close k)) (v (a, fromJust $
+                   focusChild (CTOG k) treePtr )))     -- commit to the first goal choice
 
 
 
-
-transPtrs :: Pointer QGoalReasonChain -> Pointer (Maybe (ConflictSet QPN)) -> Maybe (Pointer QGoalReasonChain)
-transPtrs qptr (Pointer ctx _) = walk (reverse $ pathToList ctx) qptr
 
 -- | Interface.
--- If this one gets the correct treePointer instead of fromTree t, there's no need
--- for these stuid calculations..
-exploreTreeLogPtr :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, Pointer (Maybe (ConflictSet QPN)), RevDepMap)
-exploreTreeLogPtr t = exploreLogPtr t (A M.empty M.empty M.empty, fromTree t )
+-- TODO: Strictly speaking, the RevDepMap can be calculated from the Pointer.
+exploreTreeLog :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, RevDepMap)
+exploreTreeLog t = transform $ exploreTreeLogPtr (fromTree t) t
+  where
+    transform :: Log Message (Assignment, Pointer (Maybe (ConflictSet QPN)), RevDepMap) -> Log Message (Assignment, RevDepMap)
+    transform = fmap (\(x,_,z) -> (x,z))
 
 
-runTreeLogPtr :: Pointer QGoalReasonChain -> Log Message (Assignment, Pointer (Maybe (ConflictSet QPN)), RevDepMap)
-                    -> Either String (Pointer QGoalReasonChain)
-runTreeLogPtr originalPtr l = case runLog l of
+-- | Interface.
+exploreTreeLogPtr :: Pointer a -> Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, Pointer a, RevDepMap)
+exploreTreeLogPtr offsetPtr t = exploreLogPtr t (A M.empty M.empty M.empty, offsetPtr )
+
+runTreeLogPtr :: Log Message (Assignment, Pointer a, RevDepMap)
+                    -> Either String (Pointer a)
+runTreeLogPtr l = case runLog l of
                     (ms, Nothing)              -> Left $ unlines $ showMessages (const True) True ms
-                    (_, Just (_, treePtr, _))  -> Right $ fromJust $ transPtrs originalPtr treePtr
+                    (_, Just (_, treePtr, _))  -> Right treePtr
+
+{-
+Not needed anymore..
+transPtrs :: Pointer QGoalReasonChain -> Pointer (Maybe (ConflictSet QPN)) -> Maybe (Pointer QGoalReasonChain)
+transPtrs qptr (Pointer ctx _) = walk (reverse $ pathToList ctx) qptr
+-}

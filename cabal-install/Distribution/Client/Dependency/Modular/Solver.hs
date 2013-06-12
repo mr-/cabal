@@ -15,7 +15,6 @@ import Distribution.Client.Dependency.Modular.Package
 import qualified Distribution.Client.Dependency.Modular.Preference as P
 import Distribution.Client.Dependency.Modular.Validate
 import Distribution.Client.Dependency.Modular.Tree        (Tree)
-import Data.Maybe (fromJust)
 
 
 -- | Various options for the modular solver.
@@ -37,14 +36,14 @@ solve sc idx userPrefs userConstraints userGoals = (slog, Just tree)
   where
 
     slog = explorePhase     $
-          heuristicsPhase   $ 
+          heuristicsPhase   $
           tree
 
     tree = preferencesPhase $
            validationPhase  $
            prunePhase       $
            buildPhase
-  
+
     explorePhase     = exploreTreeLog . backjump
     heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        if preferEasyGoalChoices sc

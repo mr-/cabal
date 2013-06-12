@@ -25,11 +25,10 @@ import Data.Set (toList)
 import Prelude hiding (or)
 import qualified Data.Map as Map
 
-import Distribution.Client.Dependency.Modular.Explore (exploreTreeLog, backjump)
 import Distribution.Client.Dependency.Modular.Log (showLog)
 import qualified Distribution.Client.Dependency.Modular.Preference as P
 
-import Distribution.Client.Dependency.Modular.Explore
+import Distribution.Client.Dependency.Modular.Explore (exploreTreeLog, exploreTreeLogPtr, backjump, runTreeLogPtr)
 
 -- In the long run, I don't think we should have such a (relatively useless) welcome message.
 -- Some basic help would be more informative.
@@ -93,10 +92,10 @@ interpretCommand treePointer Empty =  case choices of
                                         _            -> Left "Ambiguous choice"
   where choices = generateChoices treePointer
 
-interpretCommand treePointer Auto = runTreeLogPtr treePointer foo
+interpretCommand treePointer Auto = runTreeLogPtr foo
     where
     foo              = explorePhase $ heuristicsPhase (pointerTree treePointer)
-    explorePhase     = exploreTreeLogPtr . backjump
+    explorePhase     = exploreTreeLogPtr treePointer . backjump
     heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        if False
                          then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
