@@ -116,8 +116,8 @@ exploreTree t = explore t (A M.empty M.empty M.empty)
 
 
 -- | Version of 'explore' that returns a 'Log'.
-exploreLogPtr :: Tree (Maybe (ConflictSet QPN)) -> ( (Assignment, Pointer  a) -> Log Message (Assignment, Pointer a) )
-exploreLogPtr = cata go
+explorePtrLog :: Tree (Maybe (ConflictSet QPN)) -> ( (Assignment, Pointer  a) -> Log Message (Assignment, Pointer a) )
+explorePtrLog = cata go
   where
     go (FailF c fr)          _                          = failWith (Failure c fr)
     go (DoneF _)               (a,treePtr)              = succeedWith Success (a, treePtr)
@@ -152,27 +152,28 @@ exploreLogPtr = cata go
                    focusChild (CTOG k) treePtr )))     -- commit to the first goal choice
 
 
-
-
 -- | Interface.
 exploreTreeLog :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, RevDepMap)
-exploreTreeLog t = transform $ exploreTreeLogPtr (fromTree t) t
+exploreTreeLog t = transform $ exploreTreePtrLog (fromTree t) t
   where
     transform :: Log Message (Assignment, Pointer a) -> Log Message (Assignment, RevDepMap)
-    transform = fmap (\(x,y) -> (x, fromDone y))
+    transform mLog= (\(x,y) -> (x, fromDone y)) <$> mLog
     fromDone :: Pointer a -> RevDepMap
     fromDone (Pointer _ (Done rdm)) = rdm
     fromDone (Pointer _ _)          = error "Uhoh.. Internal error in exploreTreeLog. Have you tried turning it off and on again?"
 
 
--- | Interface. --it is important that conflictTree is a subtree of pointerTree (offsetPtr)
-exploreTreeLogPtr :: Pointer a -> Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, Pointer a)
-exploreTreeLogPtr offsetPtr conflictTree = exploreLogPtr conflictTree (A M.empty M.empty M.empty, offsetPtr )
+-- | Interface. -- It is important that conflictTree is a subtree of pointerTree (offsetPtr)
+                -- Or else it fails with a fromJust error :->
+exploreTreePtrLog :: Pointer a -> Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, Pointer a)
+exploreTreePtrLog offsetPtr conflictTree = explorePtrLog conflictTree (A M.empty M.empty M.empty, offsetPtr )
 
-runTreeLogPtr :: Log Message (Assignment, Pointer a) -> Either String (Pointer a)
-runTreeLogPtr l = case runLog l of
-                    (ms, Nothing)           -> Left $ unlines $ showMessages (const True) True ms
-                    (_, Just (_, treePtr))  -> Right treePtr
+
+-- Maybe we would also like the Assignment?
+runTreePtrLog :: Log Message (Assignment, Pointer a) -> Either String (Assignment, (Pointer a))
+runTreePtrLog l = case runLog l of
+                    (ms, Nothing)                    -> Left $ unlines $ showMessages (const True) True ms
+                    (_, Just (assignment, treePtr))  -> Right (assignment, treePtr)
 
 {-
 Not needed anymore..

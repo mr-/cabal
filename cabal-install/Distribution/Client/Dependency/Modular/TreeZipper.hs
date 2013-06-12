@@ -2,15 +2,15 @@ module Distribution.Client.Dependency.Modular.TreeZipper where
 
 import Control.Applicative
 import Control.Monad hiding (mapM)
-import Data.Foldable
-import Data.Traversable
+--import Data.Foldable
+--import Data.Traversable
 import Prelude hiding (foldr, mapM)
-import Data.List (break)
+--import Data.List (break)
 import Distribution.Client.Dependency.Modular.Dependency
 import Distribution.Client.Dependency.Modular.Flag
 import Distribution.Client.Dependency.Modular.Package
 import Distribution.Client.Dependency.Modular.PSQ as P hiding (map)
-import Distribution.Client.Dependency.Modular.Version
+--import Distribution.Client.Dependency.Modular.Version
 import Distribution.Client.Dependency.Modular.Tree
 
 
@@ -65,7 +65,7 @@ isRoot (Pointer Top _ ) = True
 isRoot _                = False
 
 focusUp :: Pointer a -> Maybe (Pointer a)
-focusUp (Pointer Top t) = Nothing
+focusUp (Pointer Top _) = Nothing
 
 focusUp (Pointer (PChoicePoint path context q a ) t) = Just $ Pointer path newTree
   where newTree = PChoice q a newPSQ
@@ -180,57 +180,4 @@ data Path a = Top | Point (Path a) (Forest a) a (Forest a)
 
 
 data Pointer a = Pointer {tree :: Tree a, context :: Path a}
-
-
-expr :: Tree String
-expr = Node "+" [ Node "*" [ Item "a", Item "b"],
-    Node "*" [ Item "c", Item "d"] ]
-
-
-fromTree :: Tree a -> Pointer a
-fromTree t = Pointer t Top
-
-focusChild :: Int -> Pointer a -> Maybe (Pointer a)
-focusChild n (Pointer (Node a children) path) = case splitChildren [] children n of
-    Nothing -> Nothing
-    Just (l':ls',r') -> Just $ Pointer l' $ (Point path ls' a r')
-    _ -> Nothing
-focusChild _ _ = Nothing
-
-focusLeft :: Pointer a -> Maybe (Pointer a)
-focusLeft c@(Pointer t p) = case p of
-    Point path (l:ls) a r -> Just $ Pointer l (Point path ls a (t:r))
-    _ -> Nothing
-
-focusUp :: Pointer a -> Maybe (Pointer a)
-focusUp (Pointer _ Top) = Nothing
-focusUp (Pointer t (Point path l a r)) = Just $ Pointer (Node a (l ++ [t] ++ r)) path
-
-
-splitChildren :: [a] -> [a] -> Int -> Maybe ([a],[a])
-splitChildren acc xs 0      = Just (acc,xs)
-splitChildren acc (x:xs) n  = splitChildren (x:acc) xs $! n-1
-splitChildren _ _ _         = Nothing
-
-main :: IO ()
-main = do
-    putStrLn $ drawTree $ tree $ fromJust $ focusChild 1 (fromTree expr) >>= focusChild 1 >>= focusUp >>= focusUp
-    putStrLn $ drawTree $ tree $ fromJust $ focusUp =<< focusUp =<< focusChild 1 =<< focusChild 1 (fromTree expr)
-
-
-
-
-
-drawTree :: (Show a) => Tree a-> String
-drawTree  = unlines . draw
-
-draw :: (Show a) => Tree a -> [String]
-draw (Item x) = [show x]
-draw (Node x l) = show x : drawSubTrees l
-    where   drawSubTrees [] = []
-            drawSubTrees [t] =
-                "|" : shift "`- " "   " (draw t)
-            drawSubTrees (t:ts) =
-                "|" : shift "+- " "|  " (draw t) ++ drawSubTrees ts
-            shift first other = zipWith (++) (first : repeat other)
 -}

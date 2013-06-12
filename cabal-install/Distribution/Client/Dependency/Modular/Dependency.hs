@@ -193,9 +193,9 @@ close (OpenGoal (Stanza  qsn _)      gr) = Goal (S qsn) gr
 
 
 showOpenGoal :: OpenGoal -> String
-showOpenGoal (OpenGoal (Simple (Dep qpn _)) gr) = (showVar (P qpn))
-showOpenGoal (OpenGoal (Flagged qfn _ _ _ ) gr) = (showVar (F qfn))
-showOpenGoal (OpenGoal (Stanza  qsn _)      gr) = (showVar (S qsn))
+showOpenGoal (OpenGoal (Simple (Dep qpn _)) _) = (showVar (P qpn))
+showOpenGoal (OpenGoal (Flagged qfn _ _ _ ) _) = (showVar (F qfn))
+showOpenGoal (OpenGoal (Stanza  qsn _)      _) = (showVar (S qsn))
 
 
 -- | Compute a conflic set from a goal. The conflict set contains the

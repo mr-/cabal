@@ -28,7 +28,9 @@ import qualified Data.Map as Map
 import Distribution.Client.Dependency.Modular.Log (showLog)
 import qualified Distribution.Client.Dependency.Modular.Preference as P
 
-import Distribution.Client.Dependency.Modular.Explore (exploreTreeLog, exploreTreeLogPtr, backjump, runTreeLogPtr)
+import Distribution.Client.Dependency.Modular.Explore (exploreTreeLog, exploreTreePtrLog, backjump, runTreePtrLog)
+
+import Control.Applicative ( (<$>) )
 
 -- In the long run, I don't think we should have such a (relatively useless) welcome message.
 -- Some basic help would be more informative.
@@ -100,16 +102,14 @@ interpretCommand treePointer Empty =  case choices of
                                         _            -> Left "Ambiguous choice"
   where choices = generateChoices treePointer
 
-interpretCommand treePointer Auto = runTreeLogPtr foo
-    where
-    foo              = explorePhase $ heuristicsPhase (pointerTree treePointer)
-    explorePhase     = exploreTreeLogPtr treePointer . backjump
+interpretCommand treePointer Auto = snd <$> runTreePtrLog treePtrLog
+  where
+    treePtrLog       = explorePhase $ heuristicsPhase (pointerTree treePointer)
+    explorePhase     = exploreTreePtrLog treePointer . backjump
     heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        if False
                          then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
                          else P.preferBaseGoalChoice
-
-
 
 interpretCommand treePointer AutoLog = Left fooString
   where
@@ -119,8 +119,6 @@ interpretCommand treePointer AutoLog = Left fooString
                        if False
                          then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
                          else P.preferBaseGoalChoice
-
-
 
 
 displayChoices :: Pointer QGoalReasonChain -> String
@@ -137,11 +135,6 @@ displayChoices treePointer = unlines $ map (uncurry makeEntry) $ generateChoices
     isFail (Just (Pointer _ (Fail _ _)))  = True
     isFail _                              = False
 
---data ChildType = CTP I | CTF Bool | CTS Bool | CTOG OpenGoal deriving (Show)
---data I = I Ver Loc
---data Loc = Inst PId | InRepo
---data OpenGoal = OpenGoal (FlaggedDep QPN) QGoalReasonChain
-
 
 showChild :: ChildType -> String
 showChild (CTP (I ver (Inst _))) = "Version " ++ showVer ver ++ "\t(Installed)"
@@ -149,8 +142,6 @@ showChild (CTP (I ver InRepo)) = "Version " ++ showVer ver
 showChild (CTF bool) = show bool
 showChild (CTS bool) = show bool
 showChild (CTOG opengoal) = "OpenGoal: " ++ showOpenGoal opengoal
---showChild (CTOG (OpenGoal flagged qgoalreasonchain)) = "OpenGoal: " ++ (show flagged)
---                                        ++ " Reason: " ++ (show $ head qgoalreasonchain)
 
 
 showNodeFromTree :: Tree QGoalReasonChain -> String
@@ -187,7 +178,6 @@ data FailReason = InconsistentInitialConstraints
                 | MalformedStanzaChoice QSN
                 | EmptyGoalChoice
                 | Backjump
-  deriving (Eq, Show)
 -}
 
 showFailReason :: FailReason -> String
@@ -204,17 +194,6 @@ data GoalReason qpn =
   | PDependency (PI qpn)
   | FDependency (FN qpn) Bool
   | SDependency (SN qpn)
-  deriving (Eq, Show)
-
-data PI qpn = PI qpn I
-data I = I Ver Loc
-
-data FN qpn = FN (PI qpn) Flag
--- | Flag identifier. Just a string.
-type Flag = FlagName
-
-
-data SN qpn = SN (PI qpn) OptionalStanza
 -}
 
 showGoalReason :: QGoalReasonChain -> String
@@ -227,16 +206,3 @@ showGoalReason [] = error "Empty QGoalReasonChain - this should never happen, I 
 -- We should also try to make output between the interactive solver and the -v3 trace similar.
 -- So these display functions should go into other modules, so that they can be reused from
 -- multiple positions in the code.
-
-
-
-{-
-data Tree a =
-    PChoice     QPN a           (PSQ I        (Tree a))
-  | FChoice     QFN a Bool Bool (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial, second Bool whether it's manual
-  | SChoice     QSN a Bool      (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial
-  | GoalChoice                  (PSQ OpenGoal (Tree a)) -- PSQ should never be empty
-  | Done        RevDepMap
-  | Fail        (ConflictSet QPN) FailReason
-  deriving (Eq, Show)
--}
