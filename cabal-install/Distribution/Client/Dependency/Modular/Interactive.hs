@@ -37,7 +37,15 @@ runInteractive :: Maybe (Tree QGoalReasonChain) -> IO ()
 runInteractive Nothing =
     putStrLn "Ooops.. you chose the wrong solver"
 runInteractive (Just searchTree) = do
+
     putStrLn "Welcome to cabali!"
+    putStrLn "go n -- chooses n - alternatively \"n\" does the same. Or just Enter, if there is only one choice"
+    putStrLn "up   -- goes up one step"
+    putStrLn "top  -- goes all the way to the top"
+    putStrLn "log  -- prints the log of an automated run"
+    putStrLn "auto -- starts the automatic solver"
+    putStrLn ",    -- chains commands (e.g. 1,1,1,1,top does nothing)"
+
     runInputT defaultSettings (loop $ Just $ fromTree searchTree)
   where
         loop :: Maybe (Pointer QGoalReasonChain) -> InputT IO ()
