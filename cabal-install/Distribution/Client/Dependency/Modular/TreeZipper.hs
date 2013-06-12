@@ -46,6 +46,7 @@ pathToList (SChoicePoint path context _ _ _   ) = CTS  (P.contextKey context) : 
 pathToList (GChoicePoint path context         ) = CTOG (P.contextKey context) : pathToList path
 
 
+--It actually assumes a OneWayPath...
 walk :: WrongWayPath -> Pointer a -> Maybe (Pointer a)
 walk (x:y:ys) treePointer = focusChild x treePointer >>= walk (y:ys)
 walk [x]      treePointer = focusChild x treePointer

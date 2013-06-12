@@ -97,7 +97,7 @@ import Distribution.Verbosity
          ( Verbosity )
 
 import Distribution.Client.Dependency.Modular.Dependency  (QGoalReasonChain)
-import Distribution.Client.Dependency.Modular.Tree        (Tree)
+import qualified Distribution.Client.Dependency.Modular.Tree as Tree
 
 import Data.List (maximumBy, foldl')
 import Data.Maybe (fromMaybe)
@@ -401,17 +401,12 @@ resolveDependencies' :: Platform
                      -> CompilerId
                      -> Solver
                      -> DepResolverParams
-                     -> (Progress String String InstallPlan, Maybe (Tree QGoalReasonChain))
+                     -> (Progress String String InstallPlan, Maybe (Tree.Tree QGoalReasonChain))
 
     --TODO: is this needed here? see dontUpgradeBasePackage
 resolveDependencies' platform comp _solver params
   | null (depResolverTargets params)
-  = (return (mkInstallPlan platform comp []), Nothing)
-
--- I would have expected that returning Nothing for the tree encodes failure. But
--- this does not seem to be the case here ... In the case of having no targets,
--- wouldn't we expect an empty, but successful tree?
--- True. But what is the empty successfull tree? Done Map.empty ?
+  = (return (mkInstallPlan platform comp []), Just (Tree.Done Map.empty))
 
 resolveDependencies' platform comp  solver params =
     (fmap (mkInstallPlan platform comp) solveLog, tree)
