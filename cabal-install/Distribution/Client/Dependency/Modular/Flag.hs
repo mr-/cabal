@@ -36,6 +36,9 @@ type FlagInfo = Map Flag FInfo
 -- | Qualified flag name.
 type QFN = FN QPN
 
+unQFN :: QFN -> (String, String)
+unQFN (FN (PI qpn _) flag) = (showQPN qpn , unFlag flag)
+
 -- | Stanza name. Paired with a package name, much like a flag.
 data SN qpn = SN (PI qpn) OptionalStanza
   deriving (Eq, Ord, Show)
@@ -69,3 +72,8 @@ showQFN (FN pi f) = showPI pi ++ ":" ++ unFlag f
 
 showQSN :: QSN -> String
 showQSN (SN pi f) = showPI pi ++ ":" ++ unStanza f
+
+
+unQSN :: QSN -> (String, String)
+unQSN (SN (PI qpn _) stanza) = (showQPN qpn , unStanza stanza)
+

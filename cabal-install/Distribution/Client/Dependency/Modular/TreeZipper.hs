@@ -9,7 +9,7 @@ import Distribution.Client.Dependency.Modular.Package
 import Distribution.Client.Dependency.Modular.PSQ as P hiding (map)
 import Distribution.Client.Dependency.Modular.Tree
 
-
+import Data.Maybe (fromJust)
 {-
 data Tree a =
     PChoice     QPN a           (PSQ I        (Tree a))
@@ -59,6 +59,10 @@ fromTree t = Pointer Top t
 isRoot :: Pointer a -> Bool
 isRoot (Pointer Top _ ) = True
 isRoot _                = False
+
+toTop :: Pointer a -> [Pointer a]
+toTop pointer | isRoot pointer = []
+toTop pointer = pointer : (toTop $ fromJust $ focusUp pointer)
 
 focusUp :: Pointer a -> Maybe (Pointer a)
 focusUp (Pointer Top _) = Nothing

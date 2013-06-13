@@ -4,7 +4,7 @@ import System.Console.Haskeline (outputStrLn, getInputLine, runInputT,
                                  defaultSettings, InputT)
 
 import Distribution.Client.Dependency.Modular.TreeZipper
-        (Pointer(..), ChildType(..), fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot)
+        (Pointer(..), ChildType(..), fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot, toTop)
 
 
 import Distribution.Client.Dependency.Modular.Dependency
@@ -18,7 +18,7 @@ import Distribution.Client.Dependency.Modular.Interactive.Parser
 import Data.Maybe (fromJust, fromMaybe)
 
 import Distribution.Client.Dependency.Modular.Package (I(..), Loc(..), showQPN, showPI, unPN)
-import Distribution.Client.Dependency.Modular.Flag(showQSN, showQFN)
+import Distribution.Client.Dependency.Modular.Flag (showQSN, showQFN, unQFN, unQSN)
 import Distribution.Client.Dependency.Modular.Version (showVer, showVR)
 
 import Data.Set (toList)
@@ -32,8 +32,9 @@ import Distribution.Client.Dependency.Modular.Explore (exploreTreeLog, exploreTr
 
 import Control.Applicative ( (<$>) )
 
+import Data.List (isInfixOf)
 
-data UIState a = UIState {uiPointer :: (Pointer a), uiBreakPoints :: [(String, Pointer a)]}
+data UIState a = UIState {uiPointer :: (Pointer a), uiBookmarks :: [(String, Pointer a)]}
 -- Better uiBreakPoints :: [(String, Pointer a -> Bool)]
 
 -- features: cut
@@ -45,12 +46,14 @@ runInteractive Nothing =
 runInteractive (Just searchTree) = do
 
     putStrLn "Welcome to cabali!"
-    putStrLn "go n -- chooses n - alternatively \"n\" does the same. Or just Enter, if there is only one choice"
-    putStrLn "up   -- goes up one step"
-    putStrLn "top  -- goes all the way to the top"
-    putStrLn "log  -- prints the log of an automated run"
-    putStrLn "auto -- starts the automatic solver"
-    putStrLn ",    -- chains commands (e.g. 1,1,1,1,top does nothing)"
+    putStrLn "go n                -- chooses n - alternatively \"n\" does the same. Or just Enter, if there is only one choice"
+    putStrLn "up                  -- goes up one step"
+    putStrLn "top                 -- goes all the way to the top"
+    putStrLn "autoLog             -- prints the log of an automated run"
+    putStrLn "auto                -- starts the automatic solver"
+    putStrLn "goto aeson          -- runs the parser until it sets aeson's version"
+    putStrLn "got aeson:developer -- runs the parser until it sets the flag developer for aeson"
+    putStrLn ";                   -- chains commands (e.g. 1;1;1;top does nothing)"
 
     runInputT defaultSettings (loop $ Just $ UIState (fromTree searchTree) [])
   where
@@ -109,15 +112,7 @@ interpretStatement uiState Empty =  case choices of
         treePointer = uiPointer uiState
 -}
 
-interpretStatement uiState Auto = (\(_,y) -> uiState {uiPointer = y}) <$> runTreePtrLog treePtrLog
-  where
-    treePtrLog       = explorePhase $ heuristicsPhase (toTree treePointer)
-    explorePhase     = exploreTreePtrLog treePointer . backjump
-    heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
-                       if False
-                         then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
-                         else P.preferBaseGoalChoice
-    treePointer = uiPointer uiState
+interpretStatement uiState Auto = autoRun uiState
 
 interpretStatement uiState AutoLog = Left fooString
   where
@@ -129,17 +124,52 @@ interpretStatement uiState AutoLog = Left fooString
                          else P.preferBaseGoalChoice
     treePointer      = uiPointer uiState
 
-interpretStatement uiState (BookSet name) = Right $ addBreakPoint name uiState
+interpretStatement uiState (BookSet name) = Right $ addBookmark name uiState
   where
-    addBreakPoint :: String ->  UIState a -> UIState a
-    addBreakPoint s u = u {uiBreakPoints = (s, uiPointer u) : uiBreakPoints u}
+    addBookmark :: String ->  UIState a -> UIState a
+    addBookmark s u = u {uiBookmarks = (s, uiPointer u) : uiBookmarks u}
 
-interpretStatement uiState BookList = Left $ show $ map fst $ uiBreakPoints uiState
+interpretStatement uiState BookList = Left $ show $ map fst $ uiBookmarks uiState
 
-interpretStatement uiState (BookJump name) = case lookup name (uiBreakPoints uiState) of
-                                            Nothing -> Left "No such breakpoint."
+interpretStatement uiState (BookJump name) = case lookup name (uiBookmarks uiState) of
+                                            Nothing -> Left "No such bookmark."
                                             Just a  -> Right $ uiState {uiPointer = a}
 
+interpretStatement uiState (Goto selections) = case autoRun uiState of
+          Left  s     -> Left s
+          Right state -> Right $ uiState {uiPointer = newPointer state}
+  where
+    newPointer :: UIState QGoalReasonChain -> Pointer QGoalReasonChain
+    newPointer s = head $ (filter (isSelected selections) $
+                    drop (length (toTop $ uiPointer uiState)) (reverse $ toTop (uiPointer s))) ++ [uiPointer s]
+
+
+isSelected :: Selections -> Pointer QGoalReasonChain ->  Bool
+isSelected (Selections selections) pointer  = any (matches pointer) selections
+  where
+    matches :: Pointer a ->Selection ->  Bool
+    matches (Pointer _ (PChoice qpn _ _))     (SelPChoice pname)         = (showQPN qpn) `isInfixOf` pname
+
+    matches (Pointer _ (FChoice qfn _ _ _ _)) (SelFSChoice name flag)    = (qfnName `isInfixOf` name) && (qfnFlag `isInfixOf` flag)
+      where
+        (qfnName, qfnFlag) = unQFN qfn
+    matches (Pointer _ (SChoice qsn _ _ _ ))  (SelFSChoice name stanza) = (qsnName `isInfixOf` name) && (qsnStanza == stanza)
+      where
+        (qsnName, qsnStanza) = unQSN qsn
+    matches _          _                                 = False
+
+
+
+autoRun :: UIState QGoalReasonChain-> Either String (UIState QGoalReasonChain)
+autoRun uiState = (\(_,y) -> uiState {uiPointer = y}) <$> runTreePtrLog treePtrLog
+  where
+    treePtrLog       = explorePhase $ heuristicsPhase (toTree treePointer)
+    explorePhase     = exploreTreePtrLog treePointer . backjump
+    heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
+                       if False
+                         then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
+                         else P.preferBaseGoalChoice
+    treePointer = uiPointer uiState
 
 displayChoices :: Pointer QGoalReasonChain -> String
 displayChoices treePointer = unlines $ map (uncurry makeEntry) $ generateChoices treePointer

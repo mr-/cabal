@@ -68,7 +68,7 @@ lexeme      = Token.lexeme      lexer
 statements :: Parser Statements
 statements = whiteSpace >> sequenceOfStmt
     where sequenceOfStmt =
-                    do  list <- (sepBy1 statement' semi)
+                    do  list <- sepBy1 statement' semi
                         return $ Statements list
 
 statement' :: Parser Statement
@@ -80,8 +80,14 @@ statement' =   try bsetStmt
            <|> try gotoStmt
            <|> try upStmt
            <|> try topStmt
+           <|> try singleNumberStmt
            <|> try goStmt
 
+
+singleNumberStmt :: Parser Statement
+singleNumberStmt =
+    do  var <- lexeme integer
+        return $ Go (fromInteger var)
 
 gotoStmt :: Parser Statement
 gotoStmt =
