@@ -22,6 +22,8 @@ data Statement  =  BookSet    String
                  | Up
                  | ToTop
                  | Go         Int
+                 | Cut        Int
+                 | Install
                  deriving (Show)
 
 data Selections =  Selections [Selection]
@@ -45,6 +47,8 @@ languageDef =
                                      , "top"
                                      , "go"
                                      , "autoLog"
+                                     , "install"
+                                     , "cut"
                                      ]
            , Token.reservedOpNames = ["|", ":"]
            }
@@ -82,6 +86,8 @@ statement' =   try bsetStmt
            <|> try topStmt
            <|> try singleNumberStmt
            <|> try goStmt
+           <|> try cutStmt
+           <|> try installStmt
 
 
 singleNumberStmt :: Parser Statement
@@ -95,6 +101,12 @@ gotoStmt =
         sel <- selectionsParser
         return $ Goto sel
 
+cutStmt :: Parser Statement
+cutStmt =
+    do  reserved "cut"
+        var <- lexeme integer
+        return $ Cut (fromInteger var)
+
 goStmt :: Parser Statement
 goStmt =
     do  reserved "go"
@@ -104,7 +116,12 @@ goStmt =
 upStmt :: Parser Statement
 upStmt =
     do  reserved "up"
-        return ToTop
+        return Up
+
+installStmt :: Parser Statement
+installStmt =
+    do  reserved "install"
+        return Install
 
 topStmt :: Parser Statement
 topStmt =

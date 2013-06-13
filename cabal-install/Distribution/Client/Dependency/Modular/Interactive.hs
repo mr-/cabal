@@ -16,6 +16,7 @@ import Distribution.Client.Dependency.Modular.Tree (Tree(..), FailReason(..))
 import Distribution.Client.Dependency.Modular.Interactive.Parser
 
 import Data.Maybe (fromJust, fromMaybe)
+import Data.Foldable (find)
 
 import Distribution.Client.Dependency.Modular.Package (I(..), Loc(..), showQPN, showPI, unPN)
 import Distribution.Client.Dependency.Modular.Flag (showQSN, showQFN, unQFN, unQSN)
@@ -135,17 +136,25 @@ interpretStatement uiState (BookJump name) = case lookup name (uiBookmarks uiSta
                                             Nothing -> Left "No such bookmark."
                                             Just a  -> Right $ uiState {uiPointer = a}
 
-interpretStatement uiState (Goto selections) = case autoRun uiState of
-          Left  s     -> Left s
-          Right state -> Right $ uiState {uiPointer = newPointer state}
+interpretStatement uiState (Goto selections) = ((updatePointer uiState) . (selectPointer selections)) <$> autoRun uiState
   where
-    newPointer :: UIState QGoalReasonChain -> Pointer QGoalReasonChain
-    newPointer s = head $ (filter (isSelected selections) $
-                    drop (length (toTop $ uiPointer uiState)) (reverse $ toTop (uiPointer s))) ++ [uiPointer s]
+    updatePointer :: UIState a -> Pointer a -> UIState a
+    updatePointer state nP = state {uiPointer = nP}
+    selectPointer :: Selections -> UIState QGoalReasonChain -> Pointer QGoalReasonChain
+    selectPointer sel autoState = findBetween (uiPointer uiState) (isSelected sel) (uiPointer autoState)
+
+interpretStatement _ Install = Left "Ooops.. not implemented yet."
+interpretStatement _ (Cut _) = Left "Ooops.. not implemented yet."
+
+
+findBetween ::  Pointer a -> (Pointer a -> Bool) -> Pointer a -> Pointer a
+findBetween pointer predicate subPointer = fromMaybe subPointer $ find predicate $ (subPointer `upTo` pointer )
+    where sub `upTo` p = drop (length (toTop p)) $ reverse (toTop sub)
+    --reverse is important here. We want to forget "the past" up to the pointer, and then find the earliest occurence
 
 
 isSelected :: Selections -> Pointer QGoalReasonChain ->  Bool
-isSelected (Selections selections) pointer  = any (matches pointer) selections
+isSelected (Selections selections) pointer  = any (pointer `matches`) selections
   where
     matches :: Pointer a ->Selection ->  Bool
     matches (Pointer _ (PChoice qpn _ _))     (SelPChoice pname)         = (showQPN qpn) `isInfixOf` pname
@@ -159,7 +168,6 @@ isSelected (Selections selections) pointer  = any (matches pointer) selections
     matches _          _                                 = False
 
 
-
 autoRun :: UIState QGoalReasonChain-> Either String (UIState QGoalReasonChain)
 autoRun uiState = (\(_,y) -> uiState {uiPointer = y}) <$> runTreePtrLog treePtrLog
   where
@@ -170,6 +178,7 @@ autoRun uiState = (\(_,y) -> uiState {uiPointer = y}) <$> runTreePtrLog treePtrL
                          then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
                          else P.preferBaseGoalChoice
     treePointer = uiPointer uiState
+
 
 displayChoices :: Pointer QGoalReasonChain -> String
 displayChoices treePointer = unlines $ map (uncurry makeEntry) $ generateChoices treePointer

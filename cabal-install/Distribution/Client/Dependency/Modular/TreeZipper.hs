@@ -61,8 +61,11 @@ isRoot (Pointer Top _ ) = True
 isRoot _                = False
 
 toTop :: Pointer a -> [Pointer a]
-toTop pointer | isRoot pointer = []
-toTop pointer = pointer : (toTop $ fromJust $ focusUp pointer)
+toTop = toTop'
+  where
+    toTop' :: Pointer a -> [Pointer a]
+    toTop' pointer | isRoot pointer = []
+    toTop' pointer = pointer : (toTop $ fromJust $ focusUp pointer)
 
 focusUp :: Pointer a -> Maybe (Pointer a)
 focusUp (Pointer Top _) = Nothing
