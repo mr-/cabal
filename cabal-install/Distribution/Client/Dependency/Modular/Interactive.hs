@@ -77,38 +77,39 @@ handleCommand uiState = do
   inp <- getInputLine "> "
   case inp of
     Nothing    -> return Nothing
-    Just text  -> case readExpr text >>= \cmd -> interpretExpression cmd uiState of
+    Just text  -> case readStatements text >>= \cmd -> interpretStatements cmd uiState of
                     Left s  -> do outputStrLn s
                                   handleCommand uiState
                     Right t -> return $ Just t
 
 
-interpretExpression :: Expression -> UIState QGoalReasonChain ->  Either String (UIState QGoalReasonChain)
-interpretExpression []      _        = error "Internal Error in interpretExpression"
-interpretExpression [cmd]   uiState  = interpretCommand uiState cmd
-interpretExpression (x:xs)  uiState  = interpretCommand uiState x >>= interpretExpression xs
+interpretStatements :: Statements -> UIState QGoalReasonChain ->  Either String (UIState QGoalReasonChain)
+interpretStatements (Statements [])      _        = error "Internal Error in interpretExpression"
+interpretStatements (Statements [cmd])   uiState  = interpretStatement uiState cmd
+interpretStatements (Statements (x:xs))  uiState  = interpretStatement uiState x >>= interpretStatements (Statements xs)
 
 
-interpretCommand :: UIState QGoalReasonChain -> Command -> Either String (UIState QGoalReasonChain)
-interpretCommand uiState ToTop = Right $ uiState {uiPointer = focusRoot (uiPointer uiState)}
+interpretStatement :: UIState QGoalReasonChain -> Statement -> Either String (UIState QGoalReasonChain)
+interpretStatement uiState ToTop = Right $ uiState {uiPointer = focusRoot (uiPointer uiState)}
 
-interpretCommand uiState Up | isRoot (uiPointer uiState)  = Left "We are at the top"
-interpretCommand uiState Up                               = Right $ uiState { uiPointer = fromJust $ focusUp (uiPointer uiState)}
+interpretStatement uiState Up | isRoot (uiPointer uiState)  = Left "We are at the top"
+interpretStatement uiState Up                               = Right $ uiState { uiPointer = fromJust $ focusUp (uiPointer uiState)}
 
-interpretCommand uiState (Go n) = case focused of
+interpretStatement uiState (Go n) = case focused of
                                         Nothing -> Left "No such child"
                                         Just subPointer -> Right $ uiState {uiPointer = subPointer}
   where focused     = lookup n choices >>= \foo -> focusChild foo treePointer
         choices     = generateChoices treePointer
         treePointer = uiPointer uiState
-
-interpretCommand uiState Empty =  case choices of
+{-
+interpretStatement uiState Empty =  case choices of
                         [(_, child)] -> Right $ uiState {uiPointer = fromJust $ focusChild child treePointer}
                         _            -> Left "Ambiguous choice"
   where choices     = generateChoices treePointer
         treePointer = uiPointer uiState
+-}
 
-interpretCommand uiState Auto = (\(_,y) -> uiState {uiPointer = y}) <$> runTreePtrLog treePtrLog
+interpretStatement uiState Auto = (\(_,y) -> uiState {uiPointer = y}) <$> runTreePtrLog treePtrLog
   where
     treePtrLog       = explorePhase $ heuristicsPhase (toTree treePointer)
     explorePhase     = exploreTreePtrLog treePointer . backjump
@@ -118,7 +119,7 @@ interpretCommand uiState Auto = (\(_,y) -> uiState {uiPointer = y}) <$> runTreeP
                          else P.preferBaseGoalChoice
     treePointer = uiPointer uiState
 
-interpretCommand uiState AutoLog = Left fooString
+interpretStatement uiState AutoLog = Left fooString
   where
     fooString = showLog $ explorePhase $ heuristicsPhase (toTree treePointer)
     explorePhase     = exploreTreeLog . backjump
@@ -128,14 +129,14 @@ interpretCommand uiState AutoLog = Left fooString
                          else P.preferBaseGoalChoice
     treePointer      = uiPointer uiState
 
-interpretCommand uiState (Break name) = Right $ addBreakPoint name uiState
+interpretStatement uiState (BookSet name) = Right $ addBreakPoint name uiState
   where
     addBreakPoint :: String ->  UIState a -> UIState a
     addBreakPoint s u = u {uiBreakPoints = (s, uiPointer u) : uiBreakPoints u}
 
-interpretCommand uiState ListBreaks = Left $ show $ map fst $ uiBreakPoints uiState
+interpretStatement uiState BookList = Left $ show $ map fst $ uiBreakPoints uiState
 
-interpretCommand uiState (GoBreak name) = case lookup name (uiBreakPoints uiState) of
+interpretStatement uiState (BookJump name) = case lookup name (uiBreakPoints uiState) of
                                             Nothing -> Left "No such breakpoint."
                                             Just a  -> Right $ uiState {uiPointer = a}
 
