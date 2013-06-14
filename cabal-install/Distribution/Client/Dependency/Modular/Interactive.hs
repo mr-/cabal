@@ -39,7 +39,6 @@ data UIState a = UIState {uiPointer :: (Pointer a), uiBookmarks :: [(String, Poi
 -- Better uiBreakPoints :: [(String, Pointer a -> Bool)]
 
 -- features: cut
---           autoTill breakpoint (breakPoint in the new sense)
 
 runInteractive :: Maybe (Tree QGoalReasonChain) -> IO ()
 runInteractive Nothing =
@@ -47,14 +46,14 @@ runInteractive Nothing =
 runInteractive (Just searchTree) = do
 
     putStrLn "Welcome to cabali!"
-    putStrLn "go n                -- chooses n - alternatively \"n\" does the same. Or just Enter, if there is only one choice"
-    putStrLn "up                  -- goes up one step"
-    putStrLn "top                 -- goes all the way to the top"
-    putStrLn "autoLog             -- prints the log of an automated run"
-    putStrLn "auto                -- starts the automatic solver"
-    putStrLn "goto aeson          -- runs the parser until it sets aeson's version"
-    putStrLn "got aeson:developer -- runs the parser until it sets the flag developer for aeson"
-    putStrLn ";                   -- chains commands (e.g. 1;1;1;top does nothing)"
+    putStrLn "go n                 chooses n - alternatively \"n\" does the same. Or just Enter, if there is only one choice"
+    putStrLn "up                   goes up one step"
+    putStrLn "top                  goes all the way to the top"
+    putStrLn "autoLog              prints the log of an automated run"
+    putStrLn "auto                 starts the automatic solver"
+    putStrLn "goto aeson           runs the parser until it sets aeson's version"
+    putStrLn "goto aeson:developer runs the parser until it sets the flag developer for aeson"
+    putStrLn ";                    chains commands (e.g. 1;1;1;top does nothing)"
 
     runInputT defaultSettings (loop $ Just $ UIState (fromTree searchTree) [])
   where
@@ -102,7 +101,7 @@ interpretStatement uiState Up                               = Right $ uiState { 
 interpretStatement uiState (Go n) = case focused of
                                         Nothing -> Left "No such child"
                                         Just subPointer -> Right $ uiState {uiPointer = subPointer}
-  where focused     = lookup n choices >>= \foo -> focusChild foo treePointer
+  where focused     = lookup n choices >>= (flip focusChild) treePointer
         choices     = generateChoices treePointer
         treePointer = uiPointer uiState
 {-
@@ -148,8 +147,8 @@ interpretStatement _ (Cut _) = Left "Ooops.. not implemented yet."
 
 
 findBetween ::  Pointer a -> (Pointer a -> Bool) -> Pointer a -> Pointer a
-findBetween pointer predicate subPointer = fromMaybe subPointer $ find predicate $ (subPointer `upTo` pointer )
-    where sub `upTo` p = drop (length (toTop p)) $ reverse (toTop sub)
+findBetween pointer predicate subPointer = fromMaybe subPointer $ find predicate $ (between subPointer pointer)
+    where between sub p = drop (length (toTop p)) $ reverse (toTop sub)
     --reverse is important here. We want to forget "the past" up to the pointer, and then find the earliest occurence
 
 
@@ -181,28 +180,56 @@ autoRun uiState = (\(_,y) -> uiState {uiPointer = y}) <$> runTreePtrLog treePtrL
 
 
 displayChoices :: Pointer QGoalReasonChain -> String
-displayChoices treePointer = unlines $ map (uncurry makeEntry) $ generateChoices treePointer
+displayChoices treePointer = prettyShow $ map (uncurry makeEntry) $ generateChoices treePointer
   where
     makeEntry :: Int -> ChildType -> String
-    makeEntry n child = "(" ++ show n ++ ")  " ++ showChild child ++ " " ++ fromMaybe "" (failReason child)
+    makeEntry n child = "(" ++ show n ++ ") " ++ showChild child ++ " " ++ fromMaybe "" (failReason child)
 
     failReason :: ChildType -> Maybe String
-    failReason child | isFail (focusChild child treePointer)  = Just "\t(fails)"
+    failReason child | isFail (focusChild child treePointer)  = Just "(F)"
     failReason _                                              = Nothing
 
     isFail :: Maybe (Pointer QGoalReasonChain) -> Bool
     isFail (Just (Pointer _ (Fail _ _)))  = True
     isFail _                              = False
 
+prettyShow :: [String] -> String
+prettyShow l = unlines $ map concat $ splitEvery nrOfCols paddedList
+  where
+    paddedList = map (pad (maxLen+1)) l
+    pad :: Int -> String -> String
+    pad n string = string ++ (replicate (n - length string ) ' ')
+
+    nrOfCols = lineWidth `div` maxLen
+    lineWidth = 80
+    maxLen = maximum (length <$> l) + 1
+
+    splitEvery :: Int -> [a] -> [[a]]
+    splitEvery _ [] = []
+    splitEvery n list = first : (splitEvery n rest)
+      where (first,rest) = splitAt n list
+
 
 showChild :: ChildType -> String
-showChild (CTP (I ver (Inst _))) = "Version " ++ showVer ver ++ "\t(Installed)"
-showChild (CTP (I ver InRepo)) = "Version " ++ showVer ver
-showChild (CTF bool) = show bool
-showChild (CTS bool) = show bool
-showChild (CTOG opengoal) = "OpenGoal: " ++ showOpenGoal opengoal
+showChild (CTP (I ver (Inst _))) = showVer ver ++ " (I)"
+showChild (CTP (I ver InRepo))   = showVer ver
+showChild (CTF bool)             = show bool
+showChild (CTS bool)             = show bool
+showChild (CTOG opengoal)        = showOpenGoal opengoal
 
 
+showNodeFromTree :: Tree QGoalReasonChain -> String
+showNodeFromTree (PChoice qpn (UserGoal:_) _) = "Choose a version for " ++ showQPN qpn
+showNodeFromTree (PChoice qpn a _)            = showGoalReason a ++ " depends on " ++ showQPN qpn
+showNodeFromTree (FChoice qfn _ b1 b2 _)      = "Flag: " ++ showQFN qfn ++ "\t Bools: " ++ show (b1, b2) -- what do the bools mean?
+showNodeFromTree (SChoice qsn _ b _)          = "Stanza: " ++ showQSN qsn -- The "reason" is obvious here
+                                                    ++ "\n\t Bool " ++ show b -- But what do the bools mean?
+showNodeFromTree (GoalChoice _)               = "Missing dependencies"
+showNodeFromTree (Done rdm)                   = "Done! \nRevDepMap: \n" ++  showRevDepMap rdm
+showNodeFromTree (Fail cfs fr)                = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
+  where showConflictSet s = show $ map showVar (toList s)
+
+{-
 showNodeFromTree :: Tree QGoalReasonChain -> String
 showNodeFromTree (PChoice qpn a _)           = "PChoice: QPN: " ++ showQPN qpn ++ "\n\t QGoalReason: " ++ showGoalReason a
 showNodeFromTree (FChoice qfn a b1 b2 _)     = "FChoice: QFN: " ++ showQFN qfn ++ "\n\t QGoalReason: " ++ showGoalReason a
@@ -213,7 +240,7 @@ showNodeFromTree (GoalChoice _)              = "GoalChoice"
 showNodeFromTree (Done rdm)                  = "Done! \nRevDepMap: \n" ++  showRevDepMap rdm
 showNodeFromTree (Fail cfs fr)               = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
   where showConflictSet s = show $ map showVar (toList s)
-
+-}
 
 showRevDepMap :: RevDepMap -> String
 showRevDepMap rdm =  unlines $ map showKey (Map.keys rdm)
@@ -255,13 +282,22 @@ data GoalReason qpn =
   | SDependency (SN qpn)
 -}
 
+
+showGoalReason :: QGoalReasonChain -> String
+showGoalReason (PDependency piqpn :_) = showPI piqpn
+showGoalReason (FDependency fnqpn b : _) = showQFN fnqpn  ++ " Bool: " ++ show b
+showGoalReason (SDependency snqpn :_) =  showQSN snqpn
+showGoalReason (UserGoal:_) = "UserGoal"
+showGoalReason [] = error "Empty QGoalReasonChain - this should never happen, I think"
+
+{-
 showGoalReason :: QGoalReasonChain -> String
 showGoalReason (PDependency piqpn :_) = "PDependency (depended by): " ++ showPI piqpn
 showGoalReason (FDependency fnqpn b : _) = "FDependency: " ++ showQFN fnqpn  ++ " Bool: " ++ show b
 showGoalReason (SDependency snqpn :_) = "SDependency: " ++ showQSN snqpn
 showGoalReason (UserGoal:_) = "UserGoal"
 showGoalReason [] = error "Empty QGoalReasonChain - this should never happen, I think"
-
+-}
 -- We should also try to make output between the interactive solver and the -v3 trace similar.
 -- So these display functions should go into other modules, so that they can be reused from
 -- multiple positions in the code.
