@@ -37,7 +37,7 @@ data Selection  =  SelPChoice String
 languageDef =
   emptyDef { Token.commentLine     = "//"
            , Token.identStart      = letter
-           , Token.identLetter     = alphaNum
+           , Token.identLetter     = alphaNum <|> oneOf "-_" --is that enough?
            , Token.reservedNames   = [ "bset"
                                      , "bjump"
                                      , "blist"

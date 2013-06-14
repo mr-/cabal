@@ -9,7 +9,7 @@ import Distribution.Client.Dependency.Modular.Package
 import Distribution.Client.Dependency.Modular.PSQ as P hiding (map)
 import Distribution.Client.Dependency.Modular.Tree
 
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, fromMaybe)
 {-
 data Tree a =
     PChoice     QPN a           (PSQ I        (Tree a))
@@ -32,22 +32,47 @@ data Path a =
 
 data Pointer a = Pointer { toPath :: Path a, toTree :: Tree a }
 
-type WrongWayPath = [ChildType]
-type OneWayPath   = [ChildType]
 
-wrongToOne :: WrongWayPath -> OneWayPath
+--data PointerPair a = Pair { pairShallow :: Pointer a,  pairDeep :: Pointer a}
+
+intermediates :: Pointer a -> Pointer a -> [Pointer a]
+intermediates shallow deep | shallow `pointsToSame` deep = []
+intermediates shallow deep = deep : intermediates  shallow oneUp
+  where oneUp = fromMaybe (error "Internal error: Provided malformed Pair") (focusUp deep)
+
+
+filterBetween :: (Pointer a -> Bool) -> Pointer a -> Pointer a -> [Pointer a]
+filterBetween pre nearPtr farPtr = filterUpTill (pointsToSame nearPtr) pre farPtr
+
+
+filterUp :: (Pointer a -> Bool) -> Pointer a -> [Pointer a]
+filterUp = filterUpTill (const False)
+
+filterUpTill :: (Pointer a -> Bool) -> (Pointer a -> Bool) -> Pointer a -> [Pointer a]
+filterUpTill stop _   ptr | stop ptr = []
+filterUpTill stop pre ptr            = [ptr | pre ptr] ++ oneUp
+  where oneUp = maybe [] (filterUpTill stop pre) (focusUp ptr)
+
+pointsToSame :: Pointer a -> Pointer a -> Bool
+pointsToSame x y = f x == f y
+    where f = pathToSlice.toPath
+
+
+type WrongWaySlice = [ChildType]
+type OneWaySlice   = [ChildType]
+
+wrongToOne :: WrongWaySlice -> OneWaySlice
 wrongToOne = reverse
 
+pathToSlice :: Path a -> WrongWaySlice
+pathToSlice Top = []
+pathToSlice (PChoicePoint path context _ _     ) = CTP  (P.contextKey context) : pathToSlice path
+pathToSlice (FChoicePoint path context _ _ _ _ ) = CTF  (P.contextKey context) : pathToSlice path
+pathToSlice (SChoicePoint path context _ _ _   ) = CTS  (P.contextKey context) : pathToSlice path
+pathToSlice (GChoicePoint path context         ) = CTOG (P.contextKey context) : pathToSlice path
 
-pathToList :: Path a -> WrongWayPath
-pathToList Top = []
-pathToList (PChoicePoint path context _ _     ) = CTP  (P.contextKey context) : pathToList path
-pathToList (FChoicePoint path context _ _ _ _ ) = CTF  (P.contextKey context) : pathToList path
-pathToList (SChoicePoint path context _ _ _   ) = CTS  (P.contextKey context) : pathToList path
-pathToList (GChoicePoint path context         ) = CTOG (P.contextKey context) : pathToList path
 
-
-walk :: OneWayPath -> Pointer a -> Maybe (Pointer a)
+walk :: OneWaySlice -> Pointer a -> Maybe (Pointer a)
 walk []     _           = Nothing
 walk [x]    treePointer = focusChild x treePointer
 walk (x:xs) treePointer = focusChild x treePointer >>= walk xs
@@ -91,7 +116,7 @@ focusUp (Pointer (GChoicePoint path context) t) = Just $ Pointer path newTree
 data ChildType = CTP I
                | CTF Bool
                | CTS Bool
-               | CTOG OpenGoal    deriving (Show)
+               | CTOG OpenGoal    deriving (Show, Eq)
 
 
 

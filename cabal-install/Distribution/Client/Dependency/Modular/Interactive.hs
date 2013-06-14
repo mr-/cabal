@@ -4,7 +4,7 @@ import System.Console.Haskeline (outputStrLn, getInputLine, runInputT,
                                  defaultSettings, InputT)
 
 import Distribution.Client.Dependency.Modular.TreeZipper
-        (Pointer(..), ChildType(..), fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot, toTop)
+        (Pointer(..), ChildType(..), fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot,  filterBetween)
 
 
 import Distribution.Client.Dependency.Modular.Dependency
@@ -16,14 +16,13 @@ import Distribution.Client.Dependency.Modular.Tree (Tree(..), FailReason(..))
 import Distribution.Client.Dependency.Modular.Interactive.Parser
 
 import Data.Maybe (fromJust, fromMaybe)
-import Data.Foldable (find)
 
 import Distribution.Client.Dependency.Modular.Package (I(..), Loc(..), showQPN, showPI, unPN)
 import Distribution.Client.Dependency.Modular.Flag (showQSN, showQFN, unQFN, unQSN)
 import Distribution.Client.Dependency.Modular.Version (showVer, showVR)
 
 import Data.Set (toList)
-import Prelude hiding (or)
+
 import qualified Data.Map as Map
 
 import Distribution.Client.Dependency.Modular.Log (showLog)
@@ -31,7 +30,7 @@ import qualified Distribution.Client.Dependency.Modular.Preference as P
 
 import Distribution.Client.Dependency.Modular.Explore (exploreTreeLog, exploreTreePtrLog, backjump, runTreePtrLog)
 
-import Control.Applicative ( (<$>) )
+import Control.Applicative ( (<$>), (<|>) )
 
 import Data.List (isInfixOf)
 
@@ -61,14 +60,13 @@ runInteractive (Just searchTree) = do
         loop Nothing = outputStrLn "Bye bye"
         loop (Just uiState) = do
             outputStrLn $ "Node: " ++ showNodeFromTree ( toTree $ uiPointer uiState )
-            outputStrLn "Choices: "
-            outputStrLn $ displayChoices (uiPointer uiState) `or` "None"
+            outputStrLn $ displayChoices (uiPointer uiState) `thisOrThat` "None"
             uiS <- handleCommand uiState
             loop uiS
 
-        or :: String -> String -> String
-        "" `or` s = s
-        s  `or` _ = s
+        thisOrThat :: String -> String -> String
+        "" `thisOrThat` s = s
+        s  `thisOrThat` _ = s
 
 
 
@@ -140,22 +138,20 @@ interpretStatement uiState (Goto selections) = ((updatePointer uiState) . (selec
     updatePointer :: UIState a -> Pointer a -> UIState a
     updatePointer state nP = state {uiPointer = nP}
     selectPointer :: Selections -> UIState QGoalReasonChain -> Pointer QGoalReasonChain
-    selectPointer sel autoState = findBetween (uiPointer uiState) (isSelected sel) (uiPointer autoState)
+    selectPointer sel autoState = last $ deflt <|> found
+      where
+        found = filterBetween (isSelected sel) (uiPointer uiState) (uiPointer autoState)
+        deflt = [uiPointer autoState]
 
 interpretStatement _ Install = Left "Ooops.. not implemented yet."
 interpretStatement _ (Cut _) = Left "Ooops.. not implemented yet."
 
 
-findBetween ::  Pointer a -> (Pointer a -> Bool) -> Pointer a -> Pointer a
-findBetween pointer predicate subPointer = fromMaybe subPointer $ find predicate $ (between subPointer pointer)
-    where between sub p = drop (length (toTop p)) $ reverse (toTop sub)
-    --reverse is important here. We want to forget "the past" up to the pointer, and then find the earliest occurence
-
 
 isSelected :: Selections -> Pointer QGoalReasonChain ->  Bool
-isSelected (Selections selections) pointer  = any (pointer `matches`) selections
+isSelected (Selections selections) pointer  = or [pointer `matches` selection | selection <- selections]
   where
-    matches :: Pointer a ->Selection ->  Bool
+    matches :: Pointer a -> Selection ->  Bool
     matches (Pointer _ (PChoice qpn _ _))     (SelPChoice pname)         =  pname `isInfixOf` (showQPN qpn)
 
     matches (Pointer _ (FChoice qfn _ _ _ _)) (SelFSChoice name flag)    = (name `isInfixOf` qfnName)
@@ -195,21 +191,21 @@ displayChoices treePointer = prettyShow $ map (uncurry makeEntry) $ generateChoi
     isFail (Just (Pointer _ (Fail _ _)))  = True
     isFail _                              = False
 
-prettyShow :: [String] -> String
-prettyShow l = unlines $ map concat $ splitEvery nrOfCols paddedList
-  where
-    paddedList = map (pad (maxLen+1)) l
-    pad :: Int -> String -> String
-    pad n string = string ++ (replicate (n - length string ) ' ')
+    prettyShow :: [String] -> String
+    prettyShow l = unlines $ map concat $ splitEvery nrOfCols paddedList
+      where
+        paddedList = map (pad (maxLen+1)) l
+        pad :: Int -> String -> String
+        pad n string = string ++ (replicate (n - length string ) ' ')
 
-    nrOfCols = lineWidth `div` maxLen
-    lineWidth = 80
-    maxLen = maximum (length <$> l) + 1
+        nrOfCols = lineWidth `div` maxLen
+        lineWidth = 100
+        maxLen = maximum (length <$> l) + 1
 
-    splitEvery :: Int -> [a] -> [[a]]
-    splitEvery _ [] = []
-    splitEvery n list = first : (splitEvery n rest)
-      where (first,rest) = splitAt n list
+        splitEvery :: Int -> [a] -> [[a]]
+        splitEvery _ [] = []
+        splitEvery n list = first : (splitEvery n rest)
+          where (first,rest) = splitAt n list
 
 
 showChild :: ChildType -> String
@@ -222,10 +218,10 @@ showChild (CTOG opengoal)        = showOpenGoal opengoal
 
 showNodeFromTree :: Tree QGoalReasonChain -> String
 showNodeFromTree (PChoice qpn (UserGoal:_) _) = "Choose a version for " ++ showQPN qpn
-showNodeFromTree (PChoice qpn a _)            = showGoalReason a ++ " depends on " ++ showQPN qpn
+showNodeFromTree (PChoice qpn a _)            = showQPN qpn ++ " (needed by " ++ showGoalReason a ++ ")"
 showNodeFromTree (FChoice qfn _ b1 b2 _)      = "Flag: " ++ showQFN qfn ++ "\t Bools: " ++ show (b1, b2) -- what do the bools mean?
 showNodeFromTree (SChoice qsn _ b _)          = "Stanza: " ++ showQSN qsn -- The "reason" is obvious here
-                                                    ++ "\n\t Bool " ++ show b -- But what do the bools mean?
+                                                    ++ "\n\t Bool: " ++ show b -- But what do the bools mean?
 showNodeFromTree (GoalChoice _)               = "Missing dependencies"
 showNodeFromTree (Done rdm)                   = "Done! \nRevDepMap: \n" ++  showRevDepMap rdm
 showNodeFromTree (Fail cfs fr)                = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
