@@ -156,12 +156,14 @@ isSelected :: Selections -> Pointer QGoalReasonChain ->  Bool
 isSelected (Selections selections) pointer  = any (pointer `matches`) selections
   where
     matches :: Pointer a ->Selection ->  Bool
-    matches (Pointer _ (PChoice qpn _ _))     (SelPChoice pname)         = (showQPN qpn) `isInfixOf` pname
+    matches (Pointer _ (PChoice qpn _ _))     (SelPChoice pname)         =  pname `isInfixOf` (showQPN qpn)
 
-    matches (Pointer _ (FChoice qfn _ _ _ _)) (SelFSChoice name flag)    = (qfnName `isInfixOf` name) && (qfnFlag `isInfixOf` flag)
+    matches (Pointer _ (FChoice qfn _ _ _ _)) (SelFSChoice name flag)    = (name `isInfixOf` qfnName)
+                                                                        && (flag `isInfixOf` qfnFlag)
       where
         (qfnName, qfnFlag) = unQFN qfn
-    matches (Pointer _ (SChoice qsn _ _ _ ))  (SelFSChoice name stanza) = (qsnName `isInfixOf` name) && (qsnStanza == stanza)
+    matches (Pointer _ (SChoice qsn _ _ _ ))  (SelFSChoice name stanza) = (name `isInfixOf` qsnName)
+                                                                       && (stanza `isInfixOf` qsnStanza)
       where
         (qsnName, qsnStanza) = unQSN qsn
     matches _          _                                 = False
