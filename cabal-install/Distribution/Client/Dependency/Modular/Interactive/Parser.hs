@@ -24,6 +24,7 @@ data Statement  =  BookSet    String
                  | Go         Int
                  | Cut        Int
                  | Install
+                 | Find       Selections
                  deriving (Show)
 
 data Selections =  Selections [Selection]
@@ -82,6 +83,7 @@ statement' =   try bsetStmt
            <|> try autoLogStmt
            <|> try autoStmt
            <|> try gotoStmt
+           <|> try findStmt
            <|> try upStmt
            <|> try topStmt
            <|> try singleNumberStmt
@@ -94,6 +96,13 @@ singleNumberStmt :: Parser Statement
 singleNumberStmt =
     do  var <- lexeme integer
         return $ Go (fromInteger var)
+
+
+findStmt :: Parser Statement
+findStmt =
+    do  reserved "find"
+        sel <- selectionsParser
+        return $ Find sel
 
 gotoStmt :: Parser Statement
 gotoStmt =

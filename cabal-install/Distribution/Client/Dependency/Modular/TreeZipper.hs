@@ -9,7 +9,7 @@ import Distribution.Client.Dependency.Modular.Package
 import Distribution.Client.Dependency.Modular.PSQ as P hiding (map)
 import Distribution.Client.Dependency.Modular.Tree
 
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromJust, fromMaybe, isNothing)
 {-
 data Tree a =
     PChoice     QPN a           (PSQ I        (Tree a))
@@ -85,6 +85,16 @@ isRoot :: Pointer a -> Bool
 isRoot (Pointer Top _ ) = True
 isRoot _                = False
 
+
+findDown :: (Pointer a -> Bool) -> Pointer a -> [Pointer a]
+findDown pre ptr | isLeaf ptr = [ptr | pre ptr]
+findDown pre ptr              = [ptr | pre ptr] ++ rest
+  where
+    rest = concat [ findDown pre (fromJust $ focusChild c ptr) | c <- ch ptr]
+    ch ptr = fromJust $ children ptr
+
+
+
 toTop :: Pointer a -> [Pointer a]
 toTop = toTop'
   where
@@ -145,6 +155,8 @@ focusChild _ _ = Nothing
 focusRoot :: Pointer a -> Pointer a
 focusRoot treePointer = maybe treePointer focusRoot (focusUp treePointer)
 
+isLeaf :: Pointer a -> Bool
+isLeaf = isNothing.children
 
 children :: Pointer a -> Maybe [ChildType]
 children (Pointer _ (PChoice _ _     c)) = Just $ map CTP  $ P.keys c

@@ -4,7 +4,7 @@ import System.Console.Haskeline (outputStrLn, getInputLine, runInputT,
                                  defaultSettings, InputT)
 
 import Distribution.Client.Dependency.Modular.TreeZipper
-        (Pointer(..), ChildType(..), fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot,  filterBetween)
+        (Pointer(..), ChildType(..), fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot, filterBetween, findDown)
 
 
 import Distribution.Client.Dependency.Modular.Dependency
@@ -146,6 +146,12 @@ interpretStatement uiState (Goto selections) = ((updatePointer uiState) . (selec
 interpretStatement _ Install = Left "Ooops.. not implemented yet."
 interpretStatement _ (Cut _) = Left "Ooops.. not implemented yet."
 
+interpretStatement uiState (Find sel) = case findDown (isSelected sel) (uiPointer uiState) of
+                                          (x:_) -> Right $ updatePointer uiState x
+                                          _     -> Left "Nothing found"
+  where
+    updatePointer :: UIState a -> Pointer a -> UIState a
+    updatePointer state nP = state {uiPointer = nP}
 
 
 isSelected :: Selections -> Pointer QGoalReasonChain ->  Bool
