@@ -4,24 +4,21 @@ import System.Console.Haskeline (outputStrLn, getInputLine, runInputT,
                                  defaultSettings, InputT)
 
 import Distribution.Client.Dependency.Modular.TreeZipper
-        (Pointer(..), ChildType(..), fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot, filterBetween, findDown)
+        (Pointer(..), fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot, filterBetween, findDown)
 
 
 import Distribution.Client.Dependency.Modular.Dependency
-                (QGoalReasonChain, GoalReason(..), showOpenGoal, showVar, RevDepMap, showDep)
+                (QGoalReasonChain, RevDepMap)
 
 
-import Distribution.Client.Dependency.Modular.Tree (Tree(..), FailReason(..))
+import Distribution.Client.Dependency.Modular.Tree (Tree(..), ChildType(..), showChild, showNodeFromTree)
 
 import Distribution.Client.Dependency.Modular.Interactive.Parser
 
 import Data.Maybe (fromJust, fromMaybe, isJust)
 
-import Distribution.Client.Dependency.Modular.Package (I(..), Loc(..), showQPN, showPI, unPN)
-import Distribution.Client.Dependency.Modular.Flag (showQSN, showQFN, unQFN, unQSN)
-import Distribution.Client.Dependency.Modular.Version (showVer, showVR)
-
-import Data.Set (toList)
+import Distribution.Client.Dependency.Modular.Package (showQPN)
+import Distribution.Client.Dependency.Modular.Flag (unQFN, unQSN)
 
 import qualified Data.Map as Map
 
@@ -238,24 +235,9 @@ displayChoices treePointer = prettyShow $ map (uncurry makeEntry) $ generateChoi
           where (first,rest) = splitAt n list
 
 
-showChild :: ChildType -> String
-showChild (CTP (I ver (Inst _))) = showVer ver ++ " (I)"
-showChild (CTP (I ver InRepo))   = showVer ver
-showChild (CTF bool)             = show bool
-showChild (CTS bool)             = show bool
-showChild (CTOG opengoal)        = showOpenGoal opengoal
 
 
-showNodeFromTree :: Tree QGoalReasonChain -> String
-showNodeFromTree (PChoice qpn (UserGoal:_) _) = "Choose a version for " ++ showQPN qpn
-showNodeFromTree (PChoice qpn a _)            = showQPN qpn ++ " (needed by " ++ showGoalReason a ++ ")"
-showNodeFromTree (FChoice qfn _ b1 b2 _)      = "Flag: " ++ showQFN qfn ++ "\t Bools: " ++ show (b1, b2) -- what do the bools mean?
-showNodeFromTree (SChoice qsn _ b _)          = "Stanza: " ++ showQSN qsn -- The "reason" is obvious here
-                                                    ++ "\n\t Bool: " ++ show b -- But what do the bools mean?
-showNodeFromTree (GoalChoice _)               = "Missing dependencies"
-showNodeFromTree (Done _rdm)                   = "Done! Type install to install :-)"-- \nRevDepMap: \n" ++  showRevDepMap rdm
-showNodeFromTree (Fail cfs fr)                = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
-  where showConflictSet s = show $ map showVar (toList s)
+
 
 {-
 showNodeFromTree :: Tree QGoalReasonChain -> String
@@ -294,13 +276,7 @@ data FailReason = InconsistentInitialConstraints
                 | Backjump
 -}
 
-showFailReason :: FailReason -> String
-showFailReason (Conflicting depQPN)         = "Conflicting: "             ++ show (map showDep depQPN)
-showFailReason (MalformedFlagChoice qfn)    = "MalformedFlagChoice: "     ++ showQFN qfn
-showFailReason (MalformedStanzaChoice qsn)  = "MalformedStanzaChoice: "   ++ showQSN qsn
-showFailReason (BuildFailureNotInIndex pn)  = "BuildFailureNotInIndex: "  ++ unPN pn
-showFailReason (GlobalConstraintVersion vr) = "GlobalConstraintVersion: " ++ showVR vr
-showFailReason x = show x
+
 {-
 type QGoalReason = GoalReason QPN
 data GoalReason qpn =
@@ -311,12 +287,6 @@ data GoalReason qpn =
 -}
 
 
-showGoalReason :: QGoalReasonChain -> String
-showGoalReason (PDependency piqpn :_) = showPI piqpn
-showGoalReason (FDependency fnqpn b : _) = showQFN fnqpn  ++ " Bool: " ++ show b
-showGoalReason (SDependency snqpn :_) =  showQSN snqpn
-showGoalReason (UserGoal:_) = "UserGoal"
-showGoalReason [] = error "Empty QGoalReasonChain - this should never happen, I think"
 
 {-
 showGoalReason :: QGoalReasonChain -> String

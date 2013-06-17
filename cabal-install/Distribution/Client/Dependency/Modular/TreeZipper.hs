@@ -129,14 +129,6 @@ focusUp (Pointer (GChoicePoint path context) t) = Just $ Pointer path newTree
   where newTree = GoalChoice  newPSQ
         newPSQ  = P.joinContext t context
 
-
-
-data ChildType = CTP I
-               | CTF Bool
-               | CTS Bool
-               | CTOG OpenGoal    deriving (Show, Eq)
-
-
 focusChild :: ChildType -> Pointer a -> Maybe (Pointer a)
 focusChild (CTP key)  (Pointer oldPath (PChoice q a psq))        = Pointer newPath <$> P.lookup key psq
   where newPath = PChoicePoint oldPath newContext q a

@@ -6,10 +6,11 @@ import Data.Foldable
 import Data.Traversable
 import Prelude hiding (foldr, mapM)
 
+
 import Distribution.Client.Dependency.Modular.Dependency
 import Distribution.Client.Dependency.Modular.Flag
 import Distribution.Client.Dependency.Modular.Package
-import Distribution.Client.Dependency.Modular.PSQ as P
+import Distribution.Client.Dependency.Modular.PSQ as P hiding (map, toList)
 import Distribution.Client.Dependency.Modular.Version
 
 -- | Type of the search tree. Inlining the choice nodes for now.
@@ -25,6 +26,20 @@ data Tree a =
   -- special case of triviality we actually consider is if there are no new
   -- dependencies introduced by this node.
 
+
+showNodeFromTree :: Tree QGoalReasonChain -> String
+showNodeFromTree (PChoice qpn (UserGoal:_) _) = "Version of " ++ showQPN qpn
+showNodeFromTree (PChoice qpn a _)            = showQPN qpn ++ " (needed by " ++ showGoalReason a ++ ")"
+showNodeFromTree (FChoice qfn _ b1 b2 _)      = "Flag: " ++ showQFN qfn ++ "\t Bools: " ++ show (b1, b2) -- what do the bools mean?
+showNodeFromTree (SChoice qsn _ b _)          = "Stanza: " ++ showQSN qsn -- The "reason" is obvious here
+                                                    ++ "\n\t Bool: " ++ show b -- But what do the bools mean?
+showNodeFromTree (GoalChoice _)               = "Missing dependencies"
+showNodeFromTree (Done _rdm)                  = "Done!"-- \nRevDepMap: \n" ++  showRevDepMap rdm
+showNodeFromTree (Fail cfs fr)                = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
+  where showConflictSet s = show $ map showVar (toList s)
+
+
+
 instance Functor Tree where
   fmap  f (PChoice qpn i     xs) = PChoice qpn (f i)     (fmap (fmap f) xs)
   fmap  f (FChoice qfn i b m xs) = FChoice qfn (f i) b m (fmap (fmap f) xs)
@@ -32,6 +47,22 @@ instance Functor Tree where
   fmap  f (GoalChoice        xs) = GoalChoice            (fmap (fmap f) xs)
   fmap _f (Done    rdm         ) = Done    rdm
   fmap _f (Fail    cs fr       ) = Fail    cs fr
+
+
+
+data ChildType = CTP I
+               | CTF Bool
+               | CTS Bool
+               | CTOG OpenGoal    deriving (Show, Eq)
+
+
+showChild :: ChildType -> String
+showChild (CTP (I ver (Inst _))) = showVer ver ++ " (I)"
+showChild (CTP (I ver InRepo))   = showVer ver
+showChild (CTF bool)             = show bool
+showChild (CTS bool)             = show bool
+showChild (CTOG opengoal)        = showOpenGoal opengoal
+
 
 data FailReason = InconsistentInitialConstraints
                 | Conflicting [Dep QPN]
@@ -50,6 +81,16 @@ data FailReason = InconsistentInitialConstraints
                 | EmptyGoalChoice
                 | Backjump
   deriving (Eq, Show)
+
+
+showFailReason :: FailReason -> String
+showFailReason (Conflicting depQPN)         = "Conflicting: "             ++ show (map showDep depQPN)
+showFailReason (MalformedFlagChoice qfn)    = "MalformedFlagChoice: "     ++ showQFN qfn
+showFailReason (MalformedStanzaChoice qsn)  = "MalformedStanzaChoice: "   ++ showQSN qsn
+showFailReason (BuildFailureNotInIndex pn)  = "BuildFailureNotInIndex: "  ++ unPN pn
+showFailReason (GlobalConstraintVersion vr) = "GlobalConstraintVersion: " ++ showVR vr
+showFailReason x = show x
+
 
 -- | Functor for the tree type.
 data TreeF a b =
