@@ -191,11 +191,11 @@ isSelected (Selections selections) pointer  = or [pointer `matches` selection | 
         (qsnName, qsnStanza) = unQSN qsn
     matches _          _                                 = False
 
-isSubOf :: String -> String -> Bool
-isSubOf x y = lower x `isInfixOf` lower y
-  where
-    lower :: String -> String
-    lower s = map toLower s
+    isSubOf :: String -> String -> Bool
+    isSubOf x y = lower x `isInfixOf` lower y
+      where
+        lower :: String -> String
+        lower s = map toLower s
 
 autoRun :: UIState QGoalReasonChain-> Either String (UIState QGoalReasonChain)
 autoRun uiState = (\(_,y) -> uiState {uiPointer = y}) <$> runTreePtrLog treePtrLog
