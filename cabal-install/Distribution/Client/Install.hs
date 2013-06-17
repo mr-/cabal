@@ -188,7 +188,7 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
         case mptr of
           (Just ptr) -> do  installPlan <- foldProgress logMsg die return (fun $ Just ptr)
                             putStrLn "Got an installplan and would install now.."
-                            --processInstallPlan verbosity args installContext installPlan
+                            processInstallPlan verbosity args installContext installPlan
           Nothing -> return ()
       else do
         installPlan <- foldProgress logMsg die return (fun Nothing)
