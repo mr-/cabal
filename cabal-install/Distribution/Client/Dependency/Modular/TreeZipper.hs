@@ -35,6 +35,33 @@ data Pointer a = Pointer { toPath :: Path a, toTree :: Tree a }
 
 --data PointerPair a = Pair { pairShallow :: Pointer a,  pairDeep :: Pointer a}
 
+instance Functor Pointer where
+  fmap f ptr = fromJust $ walk trail $ fromTree transRoot
+    where
+      transRoot = (fmap f . toTree . focusRoot) ptr
+      trail = (wrongToOne.pathToSlice.toPath) ptr
+
+type WrongWaySlice = [ChildType]
+type OneWaySlice   = [ChildType]
+
+wrongToOne :: WrongWaySlice -> OneWaySlice
+wrongToOne = reverse
+
+
+pathToSlice :: Path a -> WrongWaySlice
+pathToSlice Top = []
+pathToSlice (PChoicePoint path context _ _     ) = CTP  (P.contextKey context) : pathToSlice path
+pathToSlice (FChoicePoint path context _ _ _ _ ) = CTF  (P.contextKey context) : pathToSlice path
+pathToSlice (SChoicePoint path context _ _ _   ) = CTS  (P.contextKey context) : pathToSlice path
+pathToSlice (GChoicePoint path context         ) = CTOG (P.contextKey context) : pathToSlice path
+
+
+walk :: OneWaySlice -> Pointer a -> Maybe (Pointer a)
+walk []     _           = Nothing
+walk [x]    treePointer = focusChild x treePointer
+walk (x:xs) treePointer = focusChild x treePointer >>= walk xs
+
+
 intermediates :: Pointer a -> Pointer a -> [Pointer a]
 intermediates shallow deep | shallow `pointsToSame` deep = []
 intermediates shallow deep = deep : intermediates  shallow oneUp
@@ -58,25 +85,6 @@ pointsToSame x y = f x == f y
     where f = pathToSlice.toPath
 
 
-type WrongWaySlice = [ChildType]
-type OneWaySlice   = [ChildType]
-
-wrongToOne :: WrongWaySlice -> OneWaySlice
-wrongToOne = reverse
-
-pathToSlice :: Path a -> WrongWaySlice
-pathToSlice Top = []
-pathToSlice (PChoicePoint path context _ _     ) = CTP  (P.contextKey context) : pathToSlice path
-pathToSlice (FChoicePoint path context _ _ _ _ ) = CTF  (P.contextKey context) : pathToSlice path
-pathToSlice (SChoicePoint path context _ _ _   ) = CTS  (P.contextKey context) : pathToSlice path
-pathToSlice (GChoicePoint path context         ) = CTOG (P.contextKey context) : pathToSlice path
-
-
-walk :: OneWaySlice -> Pointer a -> Maybe (Pointer a)
-walk []     _           = Nothing
-walk [x]    treePointer = focusChild x treePointer
-walk (x:xs) treePointer = focusChild x treePointer >>= walk xs
-
 
 fromTree :: Tree a -> Pointer a
 fromTree t = Pointer Top t
@@ -91,7 +99,7 @@ findDown pre ptr | isLeaf ptr = [ptr | pre ptr]
 findDown pre ptr              = [ptr | pre ptr] ++ rest
   where
     rest = concat [ findDown pre (fromJust $ focusChild c ptr) | c <- ch ptr]
-    ch ptr = fromJust $ children ptr
+    ch p = fromJust $ children p
 
 
 
@@ -120,15 +128,6 @@ focusUp (Pointer (SChoicePoint path context q a b ) t) = Just $ Pointer path new
 focusUp (Pointer (GChoicePoint path context) t) = Just $ Pointer path newTree
   where newTree = GoalChoice  newPSQ
         newPSQ  = P.joinContext t context
-
-
-
-data ChildType = CTP I
-               | CTF Bool
-               | CTS Bool
-               | CTOG OpenGoal    deriving (Show, Eq)
-
-
 
 focusChild :: ChildType -> Pointer a -> Maybe (Pointer a)
 focusChild (CTP key)  (Pointer oldPath (PChoice q a psq))        = Pointer newPath <$> P.lookup key psq

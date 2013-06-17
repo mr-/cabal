@@ -25,6 +25,7 @@ data Statement  =  BookSet    String
                  | Cut        Int
                  | Install
                  | Find       Selections
+                 | Empty
                  deriving (Show)
 
 data Selections =  Selections [Selection]
@@ -90,12 +91,18 @@ statement' =   try bsetStmt
            <|> try goStmt
            <|> try cutStmt
            <|> try installStmt
+           <|> try emptyStmt
 
 
 singleNumberStmt :: Parser Statement
 singleNumberStmt =
     do  var <- lexeme integer
         return $ Go (fromInteger var)
+
+emptyStmt :: Parser Statement
+emptyStmt =
+    do  eof
+        return Empty
 
 
 findStmt :: Parser Statement

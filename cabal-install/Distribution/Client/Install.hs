@@ -136,12 +136,12 @@ import Distribution.Verbosity as Verbosity
 import Distribution.Simple.BuildPaths ( exeExtension )
 import Distribution.Client.Dependency.Modular.Dependency  (QGoalReasonChain)
 import Distribution.Client.Dependency.Modular.Tree        (Tree)
+import Distribution.Client.Dependency.Modular.TreeZipper  (Pointer)
 
 
 --import Distribution.Client.SolveTree (makeInstallPlanTree)
 
 import Distribution.Client.Dependency.Modular.Interactive (runInteractive)
-import Control.Applicative ( (<$>) )
 
 --TODO:
 -- * assign flags to packages individually
@@ -181,18 +181,19 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
   globalFlags configFlags configExFlags installFlags haddockFlags
   userTargets0 = do
     installContext <- makeInstallContext verbosity args (Just userTargets0)
+    (fun, tree) <- makeInstallPlan' verbosity args installContext
     if fromFlag (installInteractive installFlags)
       then do
-        installFoo verbosity args installContext
+        mptr <- runInteractive tree
+        case mptr of
+          (Just ptr) -> do  installPlan <- foldProgress logMsg die return (fun $ Just ptr)
+                            putStrLn "Got an installplan and would install now.."
+                            processInstallPlan verbosity args installContext installPlan
+          Nothing -> return ()
       else do
-        installPlan    <- foldProgress logMsg die return =<<
-                      makeInstallPlan verbosity args installContext
-
+        installPlan <- foldProgress logMsg die return (fun Nothing)
         processInstallPlan verbosity args installContext installPlan
   where
-    installFoo v a i = do --this exists just so I don't have to export the types from Install.hs, which would lead to a cycle..
-      (_, planTree) <- makeInstallPlan' v a i
-      runInteractive planTree
     args :: InstallArgs
     args = (packageDBs, repos, comp, platform, conf, useSandbox, mSandboxPkgInfo,
             globalFlags, configFlags, configExFlags, installFlags,
@@ -254,10 +255,11 @@ makeInstallContext verbosity
 -- | Make an install plan given install context and install arguments.
 makeInstallPlan :: Verbosity -> InstallArgs -> InstallContext
                 -> IO (Progress String String InstallPlan)
-makeInstallPlan verbosity iargs icontext = fst <$> (makeInstallPlan' verbosity iargs icontext)
+makeInstallPlan verbosity iargs icontext = do (fun, _) <- makeInstallPlan' verbosity iargs icontext
+                                              return $ fun Nothing
 
 makeInstallPlan' :: Verbosity -> InstallArgs -> InstallContext
-                -> IO (Progress String String InstallPlan, Maybe (Tree QGoalReasonChain))
+                -> IO (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan, Maybe (Tree QGoalReasonChain))
 makeInstallPlan' verbosity
   (_, _, comp, platform, _, _, mSandboxPkgInfo,
    _, configFlags, configExFlags, installFlags,
@@ -307,7 +309,7 @@ planPackages :: Compiler
              -> Progress String String InstallPlan
 planPackages comp platform mSandboxPkgInfo solver
              configFlags configExFlags installFlags
-             installedPkgIndex sourcePkgDb pkgSpecifiers = progress
+             installedPkgIndex sourcePkgDb pkgSpecifiers = progress Nothing
              where
               (progress, _) = planPackages' comp platform mSandboxPkgInfo solver
                                                   configFlags configExFlags installFlags
@@ -324,12 +326,12 @@ planPackages' :: Compiler
              -> PackageIndex
              -> SourcePackageDb
              -> [PackageSpecifier SourcePackage]
-             -> (Progress String String InstallPlan, Maybe (Tree QGoalReasonChain))
+             -> (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan, Maybe (Tree QGoalReasonChain))
 planPackages' comp platform mSandboxPkgInfo solver
              configFlags configExFlags installFlags
              installedPkgIndex sourcePkgDb pkgSpecifiers =
 
-    (progress >>= if onlyDeps then pruneInstallPlan pkgSpecifiers else return, tree)
+    ((\t -> progress t >>= if onlyDeps then pruneInstallPlan pkgSpecifiers else return), tree)
 
   where
     (progress, tree) = resolveDependencies'
