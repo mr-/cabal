@@ -8,7 +8,7 @@ import Distribution.Client.Dependency.Modular.TreeZipper
 
 
 import Distribution.Client.Dependency.Modular.Dependency
-                (QGoalReasonChain, RevDepMap)
+                (QGoalReasonChain)
 
 
 import Distribution.Client.Dependency.Modular.Tree (Tree(..), ChildType(..), showChild, showNodeFromTree)
@@ -20,8 +20,6 @@ import Data.Maybe (fromJust, fromMaybe, isJust)
 import Distribution.Client.Dependency.Modular.Package (showQPN)
 import Distribution.Client.Dependency.Modular.Flag (unQFN, unQSN)
 
-import qualified Data.Map as Map
-
 import Distribution.Client.Dependency.Modular.Log (showLog)
 import qualified Distribution.Client.Dependency.Modular.Preference as P
 
@@ -30,6 +28,8 @@ import Distribution.Client.Dependency.Modular.Explore (exploreTreeLog, exploreTr
 import Control.Applicative ( (<$>), (<|>) )
 
 import Data.List (isInfixOf)
+
+import Data.Char (toLower)
 
 data UIState a = UIState {uiPointer :: Pointer a,
                           uiBookmarks :: [(String, Pointer a)],
@@ -122,13 +122,13 @@ interpretStatement uiState (Go n) = case focused of
   where focused     = lookup n choices >>= flip focusChild treePointer
         choices     = generateChoices treePointer
         treePointer = uiPointer uiState
-{-
+
 interpretStatement uiState Empty =  case choices of
-                        [(_, child)] -> Right $ uiState {uiPointer = fromJust $ focusChild child treePointer}
-                        _            -> Left "Ambiguous choice"
+                        ((_, child):_) -> Right $ setPointer uiState $ fromJust $ focusChild child treePointer
+                        _              -> Left "No choice left"
   where choices     = generateChoices treePointer
         treePointer = uiPointer uiState
--}
+
 
 interpretStatement uiState Auto = autoRun uiState
 
@@ -179,18 +179,23 @@ isSelected :: Selections -> Pointer QGoalReasonChain ->  Bool
 isSelected (Selections selections) pointer  = or [pointer `matches` selection | selection <- selections]
   where
     matches :: Pointer a -> Selection ->  Bool
-    matches (Pointer _ (PChoice qpn _ _))     (SelPChoice pname)         =  pname `isInfixOf` showQPN qpn
+    matches (Pointer _ (PChoice qpn _ _))     (SelPChoice pname)         =   pname   `isSubOf` showQPN qpn
 
-    matches (Pointer _ (FChoice qfn _ _ _ _)) (SelFSChoice name flag)    = (name `isInfixOf` qfnName)
-                                                                        && (flag `isInfixOf` qfnFlag)
+    matches (Pointer _ (FChoice qfn _ _ _ _)) (SelFSChoice name flag)    =   (name   `isSubOf` qfnName)
+                                                                          && (flag   `isSubOf` qfnFlag)
       where
         (qfnName, qfnFlag) = unQFN qfn
-    matches (Pointer _ (SChoice qsn _ _ _ ))  (SelFSChoice name stanza) = (name `isInfixOf` qsnName)
-                                                                       && (stanza `isInfixOf` qsnStanza)
+    matches (Pointer _ (SChoice qsn _ _ _ ))  (SelFSChoice name stanza)  =   (name   `isSubOf` qsnName)
+                                                                          && (stanza `isSubOf` qsnStanza)
       where
         (qsnName, qsnStanza) = unQSN qsn
     matches _          _                                 = False
 
+isSubOf :: String -> String -> Bool
+isSubOf x y = lower x `isInfixOf` lower y
+  where
+    lower :: String -> String
+    lower s = map toLower s
 
 autoRun :: UIState QGoalReasonChain-> Either String (UIState QGoalReasonChain)
 autoRun uiState = (\(_,y) -> uiState {uiPointer = y}) <$> runTreePtrLog treePtrLog
@@ -238,64 +243,9 @@ displayChoices treePointer = prettyShow $ map (uncurry makeEntry) $ generateChoi
 
 
 
-
 {-
-showNodeFromTree :: Tree QGoalReasonChain -> String
-showNodeFromTree (PChoice qpn a _)           = "PChoice: QPN: " ++ showQPN qpn ++ "\n\t QGoalReason: " ++ showGoalReason a
-showNodeFromTree (FChoice qfn a b1 b2 _)     = "FChoice: QFN: " ++ showQFN qfn ++ "\n\t QGoalReason: " ++ showGoalReason a
-                                                    ++ "\n\t Bools: " ++ show (b1, b2)
-showNodeFromTree (SChoice qsn a b _)         = "SChoice: QSN: " ++ showQSN qsn ++ "\n\t QGoalReason: " ++ showGoalReason a
-                                                    ++ "\n\t Bool " ++ show b
-showNodeFromTree (GoalChoice _)              = "GoalChoice"
-showNodeFromTree (Done rdm)                  = "Done! \nRevDepMap: \n" ++  showRevDepMap rdm
-showNodeFromTree (Fail cfs fr)               = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
-  where showConflictSet s = show $ map showVar (toList s)
--}
-
 showRevDepMap :: RevDepMap -> String
 showRevDepMap rdm =  unlines $ map showKey (Map.keys rdm)
   where showKey key = showQPN key ++ ": " ++ showValues key
         showValues key = show (map showQPN (fromJust $ Map.lookup key rdm))
-
-{-
-data FailReason = InconsistentInitialConstraints
-                | Conflicting [Dep QPN]
-                | CannotInstall
-                | CannotReinstall
-                | Shadowed
-                | Broken
-                | GlobalConstraintVersion VR
-                | GlobalConstraintInstalled
-                | GlobalConstraintSource
-                | GlobalConstraintFlag
-                | ManualFlag
-                | BuildFailureNotInIndex PN
-                | MalformedFlagChoice QFN
-                | MalformedStanzaChoice QSN
-                | EmptyGoalChoice
-                | Backjump
 -}
-
-
-{-
-type QGoalReason = GoalReason QPN
-data GoalReason qpn =
-    UserGoal
-  | PDependency (PI qpn)
-  | FDependency (FN qpn) Bool
-  | SDependency (SN qpn)
--}
-
-
-
-{-
-showGoalReason :: QGoalReasonChain -> String
-showGoalReason (PDependency piqpn :_) = "PDependency (depended by): " ++ showPI piqpn
-showGoalReason (FDependency fnqpn b : _) = "FDependency: " ++ showQFN fnqpn  ++ " Bool: " ++ show b
-showGoalReason (SDependency snqpn :_) = "SDependency: " ++ showQSN snqpn
-showGoalReason (UserGoal:_) = "UserGoal"
-showGoalReason [] = error "Empty QGoalReasonChain - this should never happen, I think"
--}
--- We should also try to make output between the interactive solver and the -v3 trace similar.
--- So these display functions should go into other modules, so that they can be reused from
--- multiple positions in the code.
