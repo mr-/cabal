@@ -48,7 +48,7 @@ isInstall :: UIState a -> Bool
 isInstall = isJust.uiInstall
 
 noInstall :: UIState a -> Bool
-noInstall = not.isJust.uiInstall
+noInstall = not.isInstall
 
 getInstall :: UIState a -> Pointer a
 getInstall (UIState _ _ (Just x)) = x
@@ -75,13 +75,18 @@ runInteractive (Just searchTree) = do
     runInputT defaultSettings (loop $ Just $ UIState (fromTree searchTree) [] Nothing)
   where
         loop :: Maybe (UIState QGoalReasonChain) -> InputT IO (Maybe (Pointer QGoalReasonChain))
-        loop Nothing = outputStrLn "Bye bye" >> return Nothing
-        loop (Just uiState) | noInstall uiState = do
-            outputStrLn $ "Node: " ++ showNodeFromTree ( toTree $ uiPointer uiState )
-            outputStrLn $ displayChoices (uiPointer uiState) `thisOrThat` "None"
-            uiS <- handleCommand uiState
-            loop uiS
-        loop (Just uiState) | isInstall uiState = return $ uiInstall uiState
+        loop Nothing =
+          outputStrLn "Bye bye" >> return Nothing
+
+        loop (Just uiState) | isInstall uiState =
+          outputStrLn "Bye bye" >> return (uiInstall uiState)
+
+        loop (Just uiState) = do
+          outputStrLn $ "Node: " ++ showNodeFromTree ( toTree $ uiPointer uiState )
+          outputStrLn $ displayChoices (uiPointer uiState) `thisOrThat` "No choices left"
+          uiS <- handleCommand uiState
+          loop uiS
+
         thisOrThat :: String -> String -> String
         "" `thisOrThat` s = s
         s  `thisOrThat` _ = s
@@ -248,7 +253,7 @@ showNodeFromTree (FChoice qfn _ b1 b2 _)      = "Flag: " ++ showQFN qfn ++ "\t B
 showNodeFromTree (SChoice qsn _ b _)          = "Stanza: " ++ showQSN qsn -- The "reason" is obvious here
                                                     ++ "\n\t Bool: " ++ show b -- But what do the bools mean?
 showNodeFromTree (GoalChoice _)               = "Missing dependencies"
-showNodeFromTree (Done rdm)                   = "Done! \nRevDepMap: \n" ++  showRevDepMap rdm
+showNodeFromTree (Done _rdm)                   = "Done! Type install to install :-)"-- \nRevDepMap: \n" ++  showRevDepMap rdm
 showNodeFromTree (Fail cfs fr)                = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
   where showConflictSet s = show $ map showVar (toList s)
 
