@@ -72,7 +72,8 @@ import Control.Exception
          ( assert )
 
 import Distribution.Client.Dependency.Modular.Dependency  (QGoalReasonChain)
-import Distribution.Client.Dependency.Modular.Tree        (Tree)
+import Distribution.Client.Dependency.Modular.TreeZipper (Pointer)
+import Distribution.Client.Dependency.Modular.Tree (Tree)
 
 
 -- ------------------------------------------------------------
@@ -247,14 +248,14 @@ search configure pref constraints =
 --
 topDownResolver :: DependencyResolver
 topDownResolver platform comp installedPkgIndex sourcePkgIndex
-                preferences constraints targets = 
+                preferences constraints targets =
     mapMessages (topDownResolver' platform comp
                                   (convert installedPkgIndex) sourcePkgIndex
                                   preferences constraints targets)
   where
     mapMessages :: Progress Log Failure a
-        -> (Progress String String a, Maybe (Tree QGoalReasonChain))
-    mapMessages prog = (foldProgress (Step . showLog) (Fail . showFailure) Done prog, Nothing)
+        -> (Maybe (Pointer QGoalReasonChain) -> Progress String String a, Maybe (Tree QGoalReasonChain))
+    mapMessages prog = (const $ foldProgress (Step . showLog) (Fail . showFailure) Done prog, Nothing)
 -- | The native resolver with detailed structured logging and failure types.
 --
 topDownResolver' :: Platform -> CompilerId

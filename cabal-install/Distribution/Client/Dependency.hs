@@ -98,6 +98,7 @@ import Distribution.Verbosity
 
 import Distribution.Client.Dependency.Modular.Dependency  (QGoalReasonChain)
 import qualified Distribution.Client.Dependency.Modular.Tree as Tree
+import Distribution.Client.Dependency.Modular.TreeZipper (Pointer)
 
 import Data.List (maximumBy, foldl')
 import Data.Maybe (fromMaybe)
@@ -380,7 +381,7 @@ chooseSolver verbosity Choose        (CompilerId f v) = do
   return chosenSolver
 
 runSolver :: Solver -> SolverConfig -> DependencyResolver
-runSolver TopDown = const topDownResolver -- TODO: warn about unsuported options
+--runSolver TopDown = const topDownResolver -- TODO: warn about unsuported options
 runSolver Modular = modularResolver
 
 -- | Run the dependency solver.
@@ -395,21 +396,22 @@ resolveDependencies :: Platform
                      -> Solver
                      -> DepResolverParams
                      -> Progress String String InstallPlan
-resolveDependencies a b c d = fst (resolveDependencies' a b c d)
+resolveDependencies a b c d = x Nothing
+  where (x, _) = resolveDependencies' a b c d
 
 resolveDependencies' :: Platform
                      -> CompilerId
                      -> Solver
                      -> DepResolverParams
-                     -> (Progress String String InstallPlan, Maybe (Tree.Tree QGoalReasonChain))
+                     -> (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan, Maybe (Tree.Tree QGoalReasonChain))
 
     --TODO: is this needed here? see dontUpgradeBasePackage
 resolveDependencies' platform comp _solver params
   | null (depResolverTargets params)
-  = (return (mkInstallPlan platform comp []), Just (Tree.Done Map.empty))
+  = (const (return (mkInstallPlan platform comp [])), Just (Tree.Done Map.empty))
 
 resolveDependencies' platform comp  solver params =
-    (fmap (mkInstallPlan platform comp) solveLog, tree)
+    (fmap (mkInstallPlan platform comp) . solveLog, tree)
   where
     (solveLog, tree) = runSolver solver (SolverConfig reorderGoals indGoals noReinstalls shadowing maxBkjumps)
                                         platform comp installedPkgIndex sourcePkgIndex preferences constraints targets

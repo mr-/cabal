@@ -65,6 +65,8 @@ import Text.PrettyPrint
 
 import Distribution.Client.Dependency.Modular.Dependency  (QGoalReasonChain)
 import Distribution.Client.Dependency.Modular.Tree        (Tree)
+import Distribution.Client.Dependency.Modular.TreeZipper (Pointer)
+
 
 
 import Prelude hiding (fail)
@@ -115,7 +117,7 @@ type DependencyResolver = Platform
                        -> (PackageName -> PackagePreferences)
                        -> [PackageConstraint]
                        -> [PackageName]
-                       -> (Progress String String [InstallPlan.PlanPackage], Maybe (Tree QGoalReasonChain))
+                       -> (Maybe (Pointer QGoalReasonChain) -> Progress String String [InstallPlan.PlanPackage], Maybe (Tree QGoalReasonChain))
 
 -- | Per-package constraints. Package constraints must be respected by the
 -- solver. Multiple constraints for each package can be given, though obviously

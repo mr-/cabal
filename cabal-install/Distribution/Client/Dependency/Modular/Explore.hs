@@ -173,6 +173,33 @@ exploreTreePtrLog :: Pointer a -> Tree (Maybe (ConflictSet QPN)) -> Log Message 
 exploreTreePtrLog offsetPtr conflictTree = explorePtrLog conflictTree (A M.empty M.empty M.empty, offsetPtr )
 
 
+
+-- this creates a Log from a pointer that points to a Done-node.
+donePtrToLog :: Pointer a -> Log Message (Assignment, RevDepMap)
+donePtrToLog ptr = donePtrLog (toTree $ focusRoot ptr) (A M.empty M.empty M.empty, wrongToOne $ pathToSlice $ toPath ptr)
+
+donePtrLog :: Tree a -> ( (Assignment, OneWaySlice) -> Log Message (Assignment, RevDepMap) )
+donePtrLog = cata go
+  where
+  --  go (FailF c fr)          _                          = failWith (Failure c fr)
+    go (DoneF rdm)               (a, [])              = succeedWith Success (a, rdm)
+    go (PChoiceF qpn _     ts) (A pa fa sa, (CTP k):xs)    =
+      tryWith (TryP (PI qpn k)) $ r (A (M.insert qpn k pa) fa sa, xs)
+      where r = fromJust $ P.lookup k ts
+
+    go (FChoiceF qfn _ _ _ ts) (A pa fa sa, (CTF k):xs)    =
+      tryWith (TryF qfn k) $ r (A pa (M.insert qfn k fa) sa, xs) -- record the pkg choice
+      where r = fromJust $ P.lookup k ts
+
+    go (SChoiceF qsn _ _   ts) (A pa fa sa, (CTS k):xs)    =
+      tryWith (TryS qsn k) $ r (A pa fa (M.insert qsn k sa), xs) -- record the pkg choice
+      where r = fromJust $ P.lookup k ts
+
+    go (GoalChoiceF        ts) (a, (CTOG k):xs)             =
+      continueWith (Next (close k)) (v (a, xs ))     -- commit to the first goal choice
+      where v = fromJust $ P.lookup k ts
+
+
 -- Where, oh where should you go? Here is Ok, I guess.. Now this module knows how to make Log Message (...) and it also knows
 -- how to get information out of it.
 -- Maybe we would also like the Assignment?

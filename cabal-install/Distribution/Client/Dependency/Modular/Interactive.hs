@@ -15,7 +15,7 @@ import Distribution.Client.Dependency.Modular.Tree (Tree(..), FailReason(..))
 
 import Distribution.Client.Dependency.Modular.Interactive.Parser
 
-import Data.Maybe (fromJust, fromMaybe)
+import Data.Maybe (fromJust, fromMaybe, isJust)
 
 import Distribution.Client.Dependency.Modular.Package (I(..), Loc(..), showQPN, showPI, unPN)
 import Distribution.Client.Dependency.Modular.Flag (showQSN, showQFN, unQFN, unQSN)
@@ -34,14 +34,32 @@ import Control.Applicative ( (<$>), (<|>) )
 
 import Data.List (isInfixOf)
 
-data UIState a = UIState {uiPointer :: (Pointer a), uiBookmarks :: [(String, Pointer a)]}
+data UIState a = UIState {uiPointer :: Pointer a,
+                          uiBookmarks :: [(String, Pointer a)],
+                          uiInstall :: Maybe (Pointer a) }
+
+setPointer :: UIState a -> Pointer a -> UIState a
+setPointer state nP = state {uiPointer = nP}
+
+setInstall :: UIState a -> Pointer a -> UIState a
+setInstall state nP = state {uiInstall = Just nP}
+
+isInstall :: UIState a -> Bool
+isInstall = isJust.uiInstall
+
+noInstall :: UIState a -> Bool
+noInstall = not.isJust.uiInstall
+
+getInstall :: UIState a -> Pointer a
+getInstall (UIState _ _ (Just x)) = x
+getInstall _                      = error "Ouch.. got wrong install"
 -- Better uiBreakPoints :: [(String, Pointer a -> Bool)]
 
 -- features: cut
 
-runInteractive :: Maybe (Tree QGoalReasonChain) -> IO ()
+runInteractive :: Maybe (Tree QGoalReasonChain) -> IO (Maybe (Pointer QGoalReasonChain))
 runInteractive Nothing =
-    putStrLn "Ooops.. you chose the wrong solver"
+    putStrLn "Ooops.. you chose the wrong solver" >> return Nothing
 runInteractive (Just searchTree) = do
 
     putStrLn "Welcome to cabali!"
@@ -54,16 +72,16 @@ runInteractive (Just searchTree) = do
     putStrLn "goto aeson:developer runs the parser until it sets the flag developer for aeson"
     putStrLn ";                    chains commands (e.g. 1;1;1;top does nothing)"
 
-    runInputT defaultSettings (loop $ Just $ UIState (fromTree searchTree) [])
+    runInputT defaultSettings (loop $ Just $ UIState (fromTree searchTree) [] Nothing)
   where
-        loop :: Maybe (UIState QGoalReasonChain) -> InputT IO ()
-        loop Nothing = outputStrLn "Bye bye"
-        loop (Just uiState) = do
+        loop :: Maybe (UIState QGoalReasonChain) -> InputT IO (Maybe (Pointer QGoalReasonChain))
+        loop Nothing = outputStrLn "Bye bye" >> return Nothing
+        loop (Just uiState) | noInstall uiState = do
             outputStrLn $ "Node: " ++ showNodeFromTree ( toTree $ uiPointer uiState )
             outputStrLn $ displayChoices (uiPointer uiState) `thisOrThat` "None"
             uiS <- handleCommand uiState
             loop uiS
-
+        loop (Just uiState) | isInstall uiState = return $ uiInstall uiState
         thisOrThat :: String -> String -> String
         "" `thisOrThat` s = s
         s  `thisOrThat` _ = s
@@ -99,7 +117,7 @@ interpretStatement uiState Up                               = Right $ uiState { 
 interpretStatement uiState (Go n) = case focused of
                                         Nothing -> Left "No such child"
                                         Just subPointer -> Right $ uiState {uiPointer = subPointer}
-  where focused     = lookup n choices >>= (flip focusChild) treePointer
+  where focused     = lookup n choices >>= flip focusChild treePointer
         choices     = generateChoices treePointer
         treePointer = uiPointer uiState
 {-
@@ -133,32 +151,33 @@ interpretStatement uiState (BookJump name) = case lookup name (uiBookmarks uiSta
                                             Nothing -> Left "No such bookmark."
                                             Just a  -> Right $ uiState {uiPointer = a}
 
-interpretStatement uiState (Goto selections) = ((updatePointer uiState) . (selectPointer selections)) <$> autoRun uiState
+interpretStatement uiState (Goto selections) = (setPointer uiState . selectPointer selections) <$> autoRun uiState
   where
-    updatePointer :: UIState a -> Pointer a -> UIState a
-    updatePointer state nP = state {uiPointer = nP}
     selectPointer :: Selections -> UIState QGoalReasonChain -> Pointer QGoalReasonChain
     selectPointer sel autoState = last $ deflt <|> found
       where
         found = filterBetween (isSelected sel) (uiPointer uiState) (uiPointer autoState)
         deflt = [uiPointer autoState]
 
-interpretStatement _ Install = Left "Ooops.. not implemented yet."
+interpretStatement uiState Install | isDone (uiPointer uiState)
+                              = Right $ setInstall uiState $ uiPointer uiState
+    where
+      isDone (Pointer _ (Done _ )  ) = True
+      isDone _                       = False
+
+interpretStatement _ Install  = Left "Need to be on a \"Done\"-Node"
 interpretStatement _ (Cut _) = Left "Ooops.. not implemented yet."
 
 interpretStatement uiState (Find sel) = case findDown (isSelected sel) (uiPointer uiState) of
-                                          (x:_) -> Right $ updatePointer uiState x
+                                          (x:_) -> Right $ setPointer uiState x
                                           _     -> Left "Nothing found"
-  where
-    updatePointer :: UIState a -> Pointer a -> UIState a
-    updatePointer state nP = state {uiPointer = nP}
 
 
 isSelected :: Selections -> Pointer QGoalReasonChain ->  Bool
 isSelected (Selections selections) pointer  = or [pointer `matches` selection | selection <- selections]
   where
     matches :: Pointer a -> Selection ->  Bool
-    matches (Pointer _ (PChoice qpn _ _))     (SelPChoice pname)         =  pname `isInfixOf` (showQPN qpn)
+    matches (Pointer _ (PChoice qpn _ _))     (SelPChoice pname)         =  pname `isInfixOf` showQPN qpn
 
     matches (Pointer _ (FChoice qfn _ _ _ _)) (SelFSChoice name flag)    = (name `isInfixOf` qfnName)
                                                                         && (flag `isInfixOf` qfnFlag)
@@ -202,7 +221,7 @@ displayChoices treePointer = prettyShow $ map (uncurry makeEntry) $ generateChoi
       where
         paddedList = map (pad (maxLen+1)) l
         pad :: Int -> String -> String
-        pad n string = string ++ (replicate (n - length string ) ' ')
+        pad n string = string ++ replicate (n - length string ) ' '
 
         nrOfCols = lineWidth `div` maxLen
         lineWidth = 100
@@ -210,7 +229,7 @@ displayChoices treePointer = prettyShow $ map (uncurry makeEntry) $ generateChoi
 
         splitEvery :: Int -> [a] -> [[a]]
         splitEvery _ [] = []
-        splitEvery n list = first : (splitEvery n rest)
+        splitEvery n list = first : splitEvery n rest
           where (first,rest) = splitAt n list
 
 
