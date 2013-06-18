@@ -181,25 +181,32 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
   globalFlags configFlags configExFlags installFlags haddockFlags
   userTargets0 = do
     installContext <- makeInstallContext verbosity args (Just userTargets0)
-    (fun, tree) <- makeInstallPlan' verbosity args installContext
-    if fromFlag (installInteractive installFlags)
-      then do
-        mptr <- runInteractive tree
-        case mptr of
-          (Just ptr) -> do  installPlan <- foldProgress logMsg die return (fun $ Just ptr)
-                            putStrLn "Got an installplan and would install now.."
-                            processInstallPlan verbosity args installContext installPlan
-          Nothing -> return ()
-      else do
-        installPlan <- foldProgress logMsg die return (fun Nothing)
-        processInstallPlan verbosity args installContext installPlan
+    doInstall verbosity args installContext
   where
     args :: InstallArgs
     args = (packageDBs, repos, comp, platform, conf, useSandbox, mSandboxPkgInfo,
             globalFlags, configFlags, configExFlags, installFlags,
             haddockFlags)
 
+
+doInstall :: Verbosity -> InstallArgs -> InstallContext -> IO ()
+doInstall verbosity args installContext = do
+  (fun, tree) <- makeInstallPlan' verbosity args installContext
+  if fromFlag (installInteractive installFlags)
+    then do
+      mptr <- runInteractive tree
+      case mptr of
+        (Just ptr) -> do  installPlan <- foldProgress logMsg die return (fun $ Just ptr)
+                          putStrLn "Got an installplan and would install now.."
+                          processInstallPlan verbosity args installContext installPlan
+        Nothing -> return ()
+    else do
+      installPlan <- foldProgress logMsg die return (fun Nothing)
+      processInstallPlan verbosity args installContext installPlan
+  where
+    (_,_,_,_,_,_,_,_,_,_,installFlags,_) = args
     logMsg message rest = debugNoWrap verbosity message >> rest
+
 
 -- TODO: Make InstallContext a proper datatype with documented fields.
 -- | Common context for makeInstallPlan and processInstallPlan.
