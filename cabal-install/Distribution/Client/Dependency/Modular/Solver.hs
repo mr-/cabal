@@ -1,7 +1,7 @@
 module Distribution.Client.Dependency.Modular.Solver where
 
 import Data.Map as M
-import Data.Maybe (fromJust)
+
 import Distribution.Client.Dependency.Types
 
 import Distribution.Client.Dependency.Modular.Assignment
@@ -15,8 +15,8 @@ import Distribution.Client.Dependency.Modular.Package
 import qualified Distribution.Client.Dependency.Modular.Preference as P
 import Distribution.Client.Dependency.Modular.Validate
 import Distribution.Client.Dependency.Modular.Tree        (Tree)
-import Distribution.Client.Dependency.Modular.TreeZipper (Pointer)
-
+import Distribution.Client.Dependency.Modular.TreeZipper (Pointer(..))
+import Control.Applicative ((<$>))
 
 
 -- | Various options for the modular solver.
@@ -59,3 +59,16 @@ solve sc idx userPrefs userConstraints userGoals = (slog, Just tree)
                        P.requireInstalled (`elem` [PackageName "base",
                                                    PackageName "ghc-prim"])
     buildPhase       = buildTree idx (independentGoals sc) userGoals
+
+
+-- This either gives an error, or a pointer to a "Done"-node
+solvePointer :: Pointer a -> Either String (Pointer a)
+solvePointer treePointer = snd <$> (runTreePtrLog  .
+                                    explorePhase   .
+                                    heuristicsPhase) (toTree treePointer)
+  where
+    explorePhase     = exploreTreePtrLog treePointer . backjump
+    heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
+                       if False
+                         then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
+                         else P.preferBaseGoalChoice

@@ -381,7 +381,7 @@ chooseSolver verbosity Choose        (CompilerId f v) = do
   return chosenSolver
 
 runSolver :: Solver -> SolverConfig -> DependencyResolver
---runSolver TopDown = const topDownResolver -- TODO: warn about unsuported options
+runSolver TopDown = const topDownResolver -- TODO: warn about unsuported options
 runSolver Modular = modularResolver
 
 -- | Run the dependency solver.

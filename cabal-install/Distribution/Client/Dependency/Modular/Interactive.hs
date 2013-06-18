@@ -9,7 +9,7 @@ import Distribution.Client.Dependency.Modular.TreeZipper
 
 import Distribution.Client.Dependency.Modular.Dependency
                 (QGoalReasonChain)
-
+import Distribution.Client.Dependency.Modular.Solver (solvePointer)
 
 import Distribution.Client.Dependency.Modular.Tree (Tree(..), ChildType(..), showChild, showNodeFromTree)
 
@@ -20,10 +20,9 @@ import Data.Maybe (fromJust, fromMaybe, isJust)
 import Distribution.Client.Dependency.Modular.Package (showQPN)
 import Distribution.Client.Dependency.Modular.Flag (unQFN, unQSN)
 
-import Distribution.Client.Dependency.Modular.Log (showLog)
-import qualified Distribution.Client.Dependency.Modular.Preference as P
-
-import Distribution.Client.Dependency.Modular.Explore (exploreTreeLog, exploreTreePtrLog, backjump, runTreePtrLog)
+--import Distribution.Client.Dependency.Modular.Log (showLog)
+--import qualified Distribution.Client.Dependency.Modular.Preference as P
+--import Distribution.Client.Dependency.Modular.Explore (exploreTreeLog, exploreTreePtrLog, backjump, runTreePtrLog)
 
 import Control.Applicative ( (<$>), (<|>) )
 
@@ -131,7 +130,7 @@ interpretStatement uiState Empty =  case choices of
 
 
 interpretStatement uiState Auto = autoRun uiState
-
+{-
 interpretStatement uiState AutoLog = Left fooString
   where
     fooString = showLog $ explorePhase $ heuristicsPhase (toTree treePointer)
@@ -141,7 +140,7 @@ interpretStatement uiState AutoLog = Left fooString
                          then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
                          else P.preferBaseGoalChoice
     treePointer      = uiPointer uiState
-
+-}
 interpretStatement uiState (BookSet name) = Right $ addBookmark name uiState
   where
     addBookmark :: String ->  UIState a -> UIState a
@@ -158,7 +157,7 @@ interpretStatement uiState (Goto selections) = (setPointer uiState . selectPoint
     selectPointer :: Selections -> UIState QGoalReasonChain -> Pointer QGoalReasonChain
     selectPointer sel autoState = last $ deflt <|> found
       where
-        found = filterBetween (isSelected sel) (uiPointer uiState) (uiPointer autoState)
+        found = filterBetween (isSelected sel . toTree) (uiPointer uiState) (uiPointer autoState)
         deflt = [uiPointer autoState]
 
 interpretStatement uiState Install | isDone (uiPointer uiState)
@@ -170,22 +169,22 @@ interpretStatement uiState Install | isDone (uiPointer uiState)
 interpretStatement _ Install  = Left "Need to be on a \"Done\"-Node"
 interpretStatement _ (Cut _) = Left "Ooops.. not implemented yet."
 
-interpretStatement uiState (Find sel) = case findDown (isSelected sel) (uiPointer uiState) of
+interpretStatement uiState (Find sel) = case findDown (isSelected sel.toTree) (uiPointer uiState) of
                                           (x:_) -> Right $ setPointer uiState x
                                           _     -> Left "Nothing found"
 
 
-isSelected :: Selections -> Pointer QGoalReasonChain ->  Bool
-isSelected (Selections selections) pointer  = or [pointer `matches` selection | selection <- selections]
+isSelected :: Selections -> Tree QGoalReasonChain ->  Bool
+isSelected (Selections selections) tree  = or [tree `matches` selection | selection <- selections]
   where
-    matches :: Pointer a -> Selection ->  Bool
-    matches (Pointer _ (PChoice qpn _ _))     (SelPChoice pname)         =   pname   `isSubOf` showQPN qpn
+    matches :: Tree a -> Selection ->  Bool
+    matches (PChoice qpn _ _)     (SelPChoice pname)         =   pname   `isSubOf` showQPN qpn
 
-    matches (Pointer _ (FChoice qfn _ _ _ _)) (SelFSChoice name flag)    =   (name   `isSubOf` qfnName)
+    matches (FChoice qfn _ _ _ _) (SelFSChoice name flag)    =   (name   `isSubOf` qfnName)
                                                                           && (flag   `isSubOf` qfnFlag)
       where
         (qfnName, qfnFlag) = unQFN qfn
-    matches (Pointer _ (SChoice qsn _ _ _ ))  (SelFSChoice name stanza)  =   (name   `isSubOf` qsnName)
+    matches (SChoice qsn _ _ _ )  (SelFSChoice name stanza)  =   (name   `isSubOf` qsnName)
                                                                           && (stanza `isSubOf` qsnStanza)
       where
         (qsnName, qsnStanza) = unQSN qsn
@@ -198,15 +197,7 @@ isSelected (Selections selections) pointer  = or [pointer `matches` selection | 
         lower s = map toLower s
 
 autoRun :: UIState QGoalReasonChain-> Either String (UIState QGoalReasonChain)
-autoRun uiState = (\(_,y) -> uiState {uiPointer = y}) <$> runTreePtrLog treePtrLog
-  where
-    treePtrLog       = explorePhase $ heuristicsPhase (toTree treePointer)
-    explorePhase     = exploreTreePtrLog treePointer . backjump
-    heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
-                       if False
-                         then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
-                         else P.preferBaseGoalChoice
-    treePointer = uiPointer uiState
+autoRun uiState = setPointer uiState <$> (solvePointer $ uiPointer uiState)
 
 
 displayChoices :: Pointer QGoalReasonChain -> String
