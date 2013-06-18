@@ -17,7 +17,7 @@ data Statement  =  BookSet    String
                  | BookJump   String
                  | BookList
                  | Auto
-                 | AutoLog
+--                 | AutoLog
                  | Goto       Selections
                  | Up
                  | ToTop
@@ -81,7 +81,7 @@ statement' :: Parser Statement
 statement' =   try bsetStmt
            <|> try bjumpStmt
            <|> try blistStmt
-           <|> try autoLogStmt
+--           <|> try autoLogStmt
            <|> try autoStmt
            <|> try gotoStmt
            <|> try findStmt
@@ -143,12 +143,12 @@ topStmt :: Parser Statement
 topStmt =
     do  reserved "top"
         return ToTop
-
+{-
 autoLogStmt :: Parser Statement
 autoLogStmt =
     do  reserved "autoLog"
-        return Auto
-
+        return AutoLog
+-}
 autoStmt :: Parser Statement
 autoStmt =
     do  reserved "auto"
