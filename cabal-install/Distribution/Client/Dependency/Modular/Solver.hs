@@ -61,11 +61,12 @@ solve sc idx userPrefs userConstraints userGoals = (slog, Just tree)
     buildPhase       = buildTree idx (independentGoals sc) userGoals
 
 
-
+-- This either gives an error, or a pointer to a "Done"-node
 solvePointer :: Pointer a -> Either String (Pointer a)
-solvePointer treePointer = snd <$> runTreePtrLog treePtrLog
+solvePointer treePointer = snd <$> (runTreePtrLog  .
+                                    explorePhase   .
+                                    heuristicsPhase) (toTree treePointer)
   where
-    treePtrLog       = explorePhase $ heuristicsPhase (toTree treePointer)
     explorePhase     = exploreTreePtrLog treePointer . backjump
     heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        if False
