@@ -23,8 +23,6 @@ import Distribution.Client.Dependency.Modular.Flag (unQFN, unQSN)
 
 import Control.Applicative ( (<$>), (<|>), (<*>) )
 
-import Control.Monad (mplus)
-
 import Data.List (isInfixOf)
 
 import Data.Char (toLower)
@@ -206,24 +204,23 @@ displayChoices uiState = prettyShow $ map (uncurry makeEntry) $ generateChoices 
 
     -- I am not sure I like this..
     comment :: ChildType -> String
-    comment child = case sequence list of
-                Nothing   -> ""
-                (Just []) -> ""
-                Just x    -> "(" ++ concat x ++ ")"
+    comment child = case str of
+                [] -> ""
+                x  -> "(" ++ x ++ ")"
       where
-        list = filter isJust $ map (\f -> f child) [autoComment, installComment, failComment]
+        str = concatMap (\f -> f child) [autoComment, installComment, failComment]
 
-    autoComment :: ChildType -> Maybe String
-    autoComment child | isAuto child = Just "*"
-    autoComment _                    = Nothing
+    autoComment :: ChildType -> String
+    autoComment child | isAuto child = "*"
+    autoComment _                    = ""
 
-    installComment :: ChildType -> Maybe String
-    installComment child | isInstalled child = Just "I"
-    installComment _                         = Nothing
+    installComment :: ChildType -> String
+    installComment child | isInstalled child = "I"
+    installComment _                         = ""
 
-    failComment :: ChildType -> Maybe String
-    failComment child | isFail (focusChild child treePointer)  = Just "F"
-    failComment _                                              = Nothing
+    failComment :: ChildType -> String
+    failComment child | isFail (focusChild child treePointer)  = "F"
+    failComment _                                              = ""
 
     isAuto :: ChildType -> Bool
     isAuto child = (Just True) == (pointsBelow <$> uiAutoPointer uiState <*> focusChild child treePointer)
