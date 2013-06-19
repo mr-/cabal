@@ -219,15 +219,16 @@ displayChoices uiState = prettyShow $ map (uncurry makeEntry) $ generateChoices 
     installComment _                         = ""
 
     failComment :: ChildType -> String
-    failComment child | isFail (focusChild child treePointer)  = "F"
-    failComment _                                              = ""
+    failComment child | isFail child  = "F"
+    failComment _                     = ""
 
     isAuto :: ChildType -> Bool
     isAuto child = (Just True) == (pointsBelow <$> uiAutoPointer uiState <*> focusChild child treePointer)
 
-    isFail :: Maybe (Pointer QGoalReasonChain) -> Bool
-    isFail (Just (Pointer _ (Fail _ _)))  = True
-    isFail _                              = False
+    isFail :: ChildType -> Bool
+    isFail child = case (focusChild child treePointer) of
+          (Just (Pointer _ (Fail _ _))) -> True
+          _                             -> False
 
     prettyShow :: [String] -> String
     prettyShow l = unlines $ map concat $ splitEvery nrOfCols paddedList
