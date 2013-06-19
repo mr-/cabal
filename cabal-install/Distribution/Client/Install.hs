@@ -192,14 +192,14 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
 doInstall :: Verbosity -> InstallArgs -> InstallContext -> IO ()
 doInstall verbosity args installContext = do
   (fun, tree) <- makeInstallPlan' verbosity args installContext
-  if fromFlag (installInteractive installFlags)
+  if fromFlag (installInteractive installFlags) -- How could this be handled better? --interactive => Modular ?
     then do
       mptr <- runInteractive tree
       case mptr of
         (Just ptr) -> do  installPlan <- foldProgress logMsg die return (fun $ Just ptr)
                           putStrLn "Got an installplan and would install now.."
                           processInstallPlan verbosity args installContext installPlan
-        Nothing -> return ()
+        Nothing -> return () -- So we silently fail if there is no tree?!
     else do
       installPlan <- foldProgress logMsg die return (fun Nothing)
       processInstallPlan verbosity args installContext installPlan
