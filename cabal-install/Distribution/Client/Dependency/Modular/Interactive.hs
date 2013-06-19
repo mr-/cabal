@@ -4,35 +4,38 @@ import System.Console.Haskeline (outputStrLn, getInputLine, runInputT,
                                  defaultSettings, InputT)
 
 import Distribution.Client.Dependency.Modular.TreeZipper
-        (Pointer(..), fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot, filterBetween, findDown)
+        (Pointer(..), fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot, filterBetween, findDown, pointsBelow)
 
 
 import Distribution.Client.Dependency.Modular.Dependency
                 (QGoalReasonChain)
-import Distribution.Client.Dependency.Modular.Solver (solvePointer)
+import Distribution.Client.Dependency.Modular.Solver (explorePointer)
 
-import Distribution.Client.Dependency.Modular.Tree (Tree(..), ChildType(..), showChild, showNodeFromTree)
+import Distribution.Client.Dependency.Modular.Tree (Tree(..), ChildType(..), showChild, showNodeFromTree, isInstalled)
 
 import Distribution.Client.Dependency.Modular.Interactive.Parser
 
 import Data.Maybe (fromJust, fromMaybe, isJust)
 
 import Distribution.Client.Dependency.Modular.Package (showQPN)
+
 import Distribution.Client.Dependency.Modular.Flag (unQFN, unQSN)
 
---import Distribution.Client.Dependency.Modular.Log (showLog)
---import qualified Distribution.Client.Dependency.Modular.Preference as P
---import Distribution.Client.Dependency.Modular.Explore (exploreTreeLog, exploreTreePtrLog, backjump, runTreePtrLog)
+import Control.Applicative ( (<$>), (<|>), (<*>) )
 
-import Control.Applicative ( (<$>), (<|>) )
+import Control.Monad (mplus)
 
 import Data.List (isInfixOf)
 
 import Data.Char (toLower)
 
-data UIState a = UIState {uiPointer :: Pointer a,
-                          uiBookmarks :: [(String, Pointer a)],
-                          uiInstall :: Maybe (Pointer a) }
+data UIState a = UIState {uiPointer     :: Pointer a,
+                          uiBookmarks   :: [(String, Pointer a)],
+                          uiInstall     :: Maybe (Pointer a),         -- these point
+                          uiAutoPointer :: Maybe (Pointer a)}       -- to Done
+
+setAutoPointer :: UIState a -> Pointer a -> UIState a
+setAutoPointer state nP = state {uiAutoPointer = Just nP}
 
 setPointer :: UIState a -> Pointer a -> UIState a
 setPointer state nP = state {uiPointer = nP}
@@ -47,8 +50,10 @@ noInstall :: UIState a -> Bool
 noInstall = not.isInstall
 
 getInstall :: UIState a -> Pointer a
-getInstall (UIState _ _ (Just x)) = x
-getInstall _                      = error "Ouch.. got wrong install"
+getInstall uiState = case uiAutoPointer uiState of
+                        Just x -> x
+                        _      -> error "Outch.. got wrong install"
+
 -- Better uiBreakPoints :: [(String, Pointer a -> Bool)]
 
 -- features: cut
@@ -68,7 +73,7 @@ runInteractive (Just searchTree) = do
     putStrLn "goto aeson:developer runs the parser until it sets the flag developer for aeson"
     putStrLn ";                    chains commands (e.g. 1;1;1;top does nothing)"
 
-    runInputT defaultSettings (loop $ Just $ UIState (fromTree searchTree) [] Nothing)
+    runInputT defaultSettings (loop $ Just $ UIState (fromTree searchTree) [] Nothing Nothing)
   where
         loop :: Maybe (UIState QGoalReasonChain) -> InputT IO (Maybe (Pointer QGoalReasonChain))
         loop Nothing =
@@ -79,7 +84,7 @@ runInteractive (Just searchTree) = do
 
         loop (Just uiState) = do
           outputStrLn $ "Node: " ++ showNodeFromTree ( toTree $ uiPointer uiState )
-          outputStrLn $ displayChoices (uiPointer uiState) `thisOrThat` "No choices left"
+          outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
           uiS <- handleCommand uiState
           loop uiS
 
@@ -130,17 +135,7 @@ interpretStatement uiState Empty =  case choices of
 
 
 interpretStatement uiState Auto = autoRun uiState
-{-
-interpretStatement uiState AutoLog = Left fooString
-  where
-    fooString = showLog $ explorePhase $ heuristicsPhase (toTree treePointer)
-    explorePhase     = exploreTreeLog . backjump
-    heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
-                       if False
-                         then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
-                         else P.preferBaseGoalChoice
-    treePointer      = uiPointer uiState
--}
+
 interpretStatement uiState (BookSet name) = Right $ addBookmark name uiState
   where
     addBookmark :: String ->  UIState a -> UIState a
@@ -173,6 +168,8 @@ interpretStatement uiState (Find sel) = case findDown (isSelected sel.toTree) (u
                                           (x:_) -> Right $ setPointer uiState x
                                           _     -> Left "Nothing found"
 
+interpretStatement uiState IndicateAuto = setAutoPointer uiState <$> (explorePointer . uiPointer) uiState
+
 
 isSelected :: Selections -> Tree QGoalReasonChain ->  Bool
 isSelected (Selections selections) tree  = or [tree `matches` selection | selection <- selections]
@@ -196,19 +193,40 @@ isSelected (Selections selections) tree  = or [tree `matches` selection | select
         lower :: String -> String
         lower s = map toLower s
 
-autoRun :: UIState QGoalReasonChain-> Either String (UIState QGoalReasonChain)
-autoRun uiState = setPointer uiState <$> (solvePointer $ uiPointer uiState)
+autoRun :: UIState QGoalReasonChain -> Either String (UIState QGoalReasonChain)
+autoRun uiState = setPointer uiState <$> (explorePointer . uiPointer) uiState
 
 
-displayChoices :: Pointer QGoalReasonChain -> String
-displayChoices treePointer = prettyShow $ map (uncurry makeEntry) $ generateChoices treePointer
+displayChoices :: UIState QGoalReasonChain -> String
+displayChoices uiState = prettyShow $ map (uncurry makeEntry) $ generateChoices treePointer
   where
+    treePointer = uiPointer uiState
     makeEntry :: Int -> ChildType -> String
-    makeEntry n child = "(" ++ show n ++ ") " ++ showChild child ++ " " ++ fromMaybe "" (failReason child)
+    makeEntry n child = "(" ++ show n ++ ") " ++ showChild child ++ " " ++ comment child
 
-    failReason :: ChildType -> Maybe String
-    failReason child | isFail (focusChild child treePointer)  = Just "(F)"
-    failReason _                                              = Nothing
+    -- I am not sure I like this..
+    comment :: ChildType -> String
+    comment child = case sequence list of
+                Nothing   -> ""
+                (Just []) -> ""
+                Just x    -> "(" ++ concat x ++ ")"
+      where
+        list = filter isJust $ map (\f -> f child) [autoComment, installComment, failComment]
+
+    autoComment :: ChildType -> Maybe String
+    autoComment child | isAuto child = Just "*"
+    autoComment _                    = Nothing
+
+    installComment :: ChildType -> Maybe String
+    installComment child | isInstalled child = Just "I"
+    installComment _                         = Nothing
+
+    failComment :: ChildType -> Maybe String
+    failComment child | isFail (focusChild child treePointer)  = Just "F"
+    failComment _                                              = Nothing
+
+    isAuto :: ChildType -> Bool
+    isAuto child = (Just True) == (pointsBelow <$> uiAutoPointer uiState <*> focusChild child treePointer)
 
     isFail :: Maybe (Pointer QGoalReasonChain) -> Bool
     isFail (Just (Pointer _ (Fail _ _)))  = True

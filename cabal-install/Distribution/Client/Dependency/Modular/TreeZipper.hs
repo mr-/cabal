@@ -10,6 +10,7 @@ import Distribution.Client.Dependency.Modular.PSQ as P hiding (map)
 import Distribution.Client.Dependency.Modular.Tree
 
 import Data.Maybe (fromJust, fromMaybe, isNothing)
+import Data.List (isPrefixOf)
 {-
 data Tree a =
     PChoice     QPN a           (PSQ I        (Tree a))
@@ -39,28 +40,33 @@ instance Functor Pointer where
   fmap f ptr = fromJust $ walk trail $ fromTree transRoot
     where
       transRoot = (fmap f . toTree . focusRoot) ptr
-      trail = (wrongToOne.pathToSlice.toPath) ptr
+      trail = (wrongToOne.pathToTrail.toPath) ptr
 
-type WrongWaySlice = [ChildType]
-type OneWaySlice   = [ChildType]
+type WrongWayTrail = [ChildType]
+type OneWayTrail   = [ChildType]
 
-wrongToOne :: WrongWaySlice -> OneWaySlice
+wrongToOne :: WrongWayTrail -> OneWayTrail
 wrongToOne = reverse
 
 
-pathToSlice :: Path a -> WrongWaySlice
-pathToSlice Top = []
-pathToSlice (PChoicePoint path context _ _     ) = CTP  (P.contextKey context) : pathToSlice path
-pathToSlice (FChoicePoint path context _ _ _ _ ) = CTF  (P.contextKey context) : pathToSlice path
-pathToSlice (SChoicePoint path context _ _ _   ) = CTS  (P.contextKey context) : pathToSlice path
-pathToSlice (GChoicePoint path context         ) = CTOG (P.contextKey context) : pathToSlice path
+pathToTrail :: Path a -> WrongWayTrail
+pathToTrail Top = []
+pathToTrail (PChoicePoint path context _ _     ) = CTP  (P.contextKey context) : pathToTrail path
+pathToTrail (FChoicePoint path context _ _ _ _ ) = CTF  (P.contextKey context) : pathToTrail path
+pathToTrail (SChoicePoint path context _ _ _   ) = CTS  (P.contextKey context) : pathToTrail path
+pathToTrail (GChoicePoint path context         ) = CTOG (P.contextKey context) : pathToTrail path
 
 
-walk :: OneWaySlice -> Pointer a -> Maybe (Pointer a)
+walk :: OneWayTrail -> Pointer a -> Maybe (Pointer a)
 walk []     _           = Nothing
 walk [x]    treePointer = focusChild x treePointer
 walk (x:xs) treePointer = focusChild x treePointer >>= walk xs
 
+
+pointsBelow :: Pointer a -> Pointer a -> Bool
+a `pointsBelow` b = trail b `isPrefixOf` trail a
+  where
+    trail = wrongToOne.pathToTrail.toPath
 
 intermediates :: Pointer a -> Pointer a -> [Pointer a]
 intermediates shallow deep | shallow `pointsToSame` deep = []
@@ -82,7 +88,7 @@ filterUpTill stop pre ptr            = [ptr | pre ptr] ++ oneUp
 
 pointsToSame :: Pointer a -> Pointer a -> Bool
 pointsToSame x y = f x == f y
-    where f = pathToSlice.toPath
+    where f = pathToTrail.toPath
 
 
 

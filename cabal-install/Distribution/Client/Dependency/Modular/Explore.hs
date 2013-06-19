@@ -152,15 +152,17 @@ explorePtrLog = cata go
                    focusChild (CTOG k) treePtr )))     -- commit to the first goal choice
 
 
--- | Interface.
-exploreTreeLog :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, RevDepMap)
-exploreTreeLog t = transform $ exploreTreePtrLog (fromTree t) t
-  where
-    transform :: Log Message (Assignment, Pointer a) -> Log Message (Assignment, RevDepMap)
-    transform mLog= (\(x,y) -> (x, fromDone y)) <$> mLog
-    fromDone :: Pointer a -> RevDepMap
-    fromDone (Pointer _ (Done rdm)) = rdm
-    fromDone (Pointer _ _)          = error "Uhoh.. Internal error in exploreTreeLog. Have you tried turning it off and on again?"
+-- This Interface is used only in Solver.hs, I think
+
+
+-- | Interface. -- This is to consume the Log and give either a Done-Ptr or an error.
+-- Where, oh where should you go? Here is Ok, I guess.. Now this module knows how to make Log Message (...) and it also knows
+-- how to get information out of it.
+-- Maybe we would also like the Assignment?
+runTreePtrLog :: Log Message (Assignment, Pointer a) -> Either String (Assignment, Pointer a)
+runTreePtrLog l = case runLog l of
+                    (ms, Nothing)                    -> Left $ unlines $ showMessages (const True) True ms
+                    (_, Just (assignment, treePtr))  -> Right (assignment, treePtr)
 
 
 -- | Interface. -- This finds a path in offsetPtr while traversing conflictTree.
@@ -173,43 +175,46 @@ exploreTreePtrLog :: Pointer a -> Tree (Maybe (ConflictSet QPN)) -> Log Message 
 exploreTreePtrLog offsetPtr conflictTree = explorePtrLog conflictTree (A M.empty M.empty M.empty, offsetPtr )
 
 
-
--- this creates a Log from a pointer that points to a Done-node.
-donePtrToLog :: Pointer a -> Log Message (Assignment, RevDepMap)
-donePtrToLog ptr = donePtrLog (toTree $ focusRoot ptr) (A M.empty M.empty M.empty, wrongToOne $ pathToSlice $ toPath ptr)
-
-donePtrLog :: Tree a -> ( (Assignment, OneWaySlice) -> Log Message (Assignment, RevDepMap) )
-donePtrLog = cata go
+-- | Interface. -- For the atomatic automatic solver ;-)
+exploreTreeLog :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, RevDepMap)
+exploreTreeLog t = transform $ exploreTreePtrLog (fromTree t) t
   where
-  --  go (FailF c fr)          _                          = failWith (Failure c fr)
-    go (DoneF rdm)               (a, [])              = succeedWith Success (a, rdm)
-    go (PChoiceF qpn _     ts) (A pa fa sa, (CTP k):xs)    =
-      tryWith (TryP (PI qpn k)) $ r (A (M.insert qpn k pa) fa sa, xs)
-      where r = fromJust $ P.lookup k ts
+    transform :: Log Message (Assignment, Pointer a) -> Log Message (Assignment, RevDepMap)
+    transform mLog= (\(x,y) -> (x, fromDone y)) <$> mLog
+    fromDone :: Pointer a -> RevDepMap
+    fromDone (Pointer _ (Done rdm)) = rdm
+    fromDone (Pointer _ _)          = error "Uhoh.. Internal error in exploreTreeLog. Have you tried turning it off and on again?"
 
-    go (FChoiceF qfn _ _ _ ts) (A pa fa sa, (CTF k):xs)    =
-      tryWith (TryF qfn k) $ r (A pa (M.insert qfn k fa) sa, xs) -- record the pkg choice
-      where r = fromJust $ P.lookup k ts
+-- | Interface. -- In case you have come about a Done-Pointer, this gives you the neccessary Log ot go on.
+donePtrToLog :: Pointer a -> Log Message (Assignment, RevDepMap)
+donePtrToLog ptr = donePtrLog (toTree $ focusRoot ptr) (A M.empty M.empty M.empty, oneWayTrail)
+  where
+    oneWayTrail = wrongToOne $ pathToTrail $ toPath ptr
 
-    go (SChoiceF qsn _ _   ts) (A pa fa sa, (CTS k):xs)    =
-      tryWith (TryS qsn k) $ r (A pa fa (M.insert qsn k sa), xs) -- record the pkg choice
-      where r = fromJust $ P.lookup k ts
+    donePtrLog :: Tree a -> ( (Assignment, OneWayTrail) -> Log Message (Assignment, RevDepMap) )
+    donePtrLog = cata go
+      where
 
-    go (GoalChoiceF        ts) (a, (CTOG k):xs)             =
-      continueWith (Next (close k)) (v (a, xs ))     -- commit to the first goal choice
-      where v = fromJust $ P.lookup k ts
+        go (DoneF rdm)             (a, [])                     =
+          succeedWith Success (a, rdm)
 
+        go (PChoiceF qpn _     ts) (A pa fa sa, (CTP k):xs)    =
+          tryWith (TryP (PI qpn k)) $ r (A (M.insert qpn k pa) fa sa, xs)
+          where r = fromJust $ P.lookup k ts
 
--- Where, oh where should you go? Here is Ok, I guess.. Now this module knows how to make Log Message (...) and it also knows
--- how to get information out of it.
--- Maybe we would also like the Assignment?
-runTreePtrLog :: Log Message (Assignment, Pointer a) -> Either String (Assignment, Pointer a)
-runTreePtrLog l = case runLog l of
-                    (ms, Nothing)                    -> Left $ unlines $ showMessages (const True) True ms
-                    (_, Just (assignment, treePtr))  -> Right (assignment, treePtr)
+        go (FChoiceF qfn _ _ _ ts) (A pa fa sa, (CTF k):xs)    =
+          tryWith (TryF qfn k) $ r (A pa (M.insert qfn k fa) sa, xs) -- record the pkg choice
+          where r = fromJust $ P.lookup k ts
 
-{-
-Not needed anymore..
-transPtrs :: Pointer QGoalReasonChain -> Pointer (Maybe (ConflictSet QPN)) -> Maybe (Pointer QGoalReasonChain)
-transPtrs qptr (Pointer ctx _) = walk (reverse $ pathToList ctx) qptr
--}
+        go (SChoiceF qsn _ _   ts) (A pa fa sa, (CTS k):xs)    =
+          tryWith (TryS qsn k) $ r (A pa fa (M.insert qsn k sa), xs) -- record the pkg choice
+          where r = fromJust $ P.lookup k ts
+
+        go (GoalChoiceF        ts) (a, (CTOG k):xs)             =
+          continueWith (Next (close k)) (v (a, xs ))     -- commit to the first goal choice
+          where v = fromJust $ P.lookup k ts
+
+        go _                       _                            =
+          error "Internal error in donePtrToLog" -- This catches cases like (GoalChoiceF...) (a (CTP k)..)
+                                                 -- where childtype and nodetype don't match
+                                                 -- ugly? Maybe. Could have been easy with dependent types.

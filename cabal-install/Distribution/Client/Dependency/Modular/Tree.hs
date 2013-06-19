@@ -57,12 +57,15 @@ data ChildType = CTP I
 
 
 showChild :: ChildType -> String
-showChild (CTP (I ver (Inst _))) = showVer ver ++ " (I)"
-showChild (CTP (I ver InRepo))   = showVer ver
+showChild (CTP (I ver _))        = showVer ver
 showChild (CTF bool)             = show bool
 showChild (CTS bool)             = show bool
 showChild (CTOG opengoal)        = showOpenGoal opengoal
 
+
+isInstalled :: ChildType -> Bool
+isInstalled (CTP (I _ (Inst _))) = True
+isInstalled _                    = False
 
 data FailReason = InconsistentInitialConstraints
                 | Conflicting [Dep QPN]

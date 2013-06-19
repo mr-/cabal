@@ -40,9 +40,10 @@ solve sc idx userPrefs userConstraints userGoals = (slog, Just tree)
     slog Nothing = explorePhase.heuristicsPhase $ tree
     slog (Just ptr) = donePtrToLog ptr --check for a donePtr?
 
-    tree = preferencesPhase $
-           validationPhase  $
-           prunePhase       $
+    tree = P.preferBaseGoalChoice $
+           preferencesPhase       $
+           validationPhase        $
+           prunePhase             $
            buildPhase
 
     explorePhase     = exploreTreeLog . backjump
@@ -61,9 +62,10 @@ solve sc idx userPrefs userConstraints userGoals = (slog, Just tree)
     buildPhase       = buildTree idx (independentGoals sc) userGoals
 
 
--- This either gives an error, or a pointer to a "Done"-node
-solvePointer :: Pointer a -> Either String (Pointer a)
-solvePointer treePointer = snd <$> (runTreePtrLog  .
+-- This either gives an error, or a pointer to a "Done"-node, ignoring the Log stuff
+-- There is a fair amount of "running around in circles" going on
+explorePointer :: Pointer a -> Either String (Pointer a)
+explorePointer treePointer = snd <$> (runTreePtrLog  .
                                     explorePhase   .
                                     heuristicsPhase) (toTree treePointer)
   where

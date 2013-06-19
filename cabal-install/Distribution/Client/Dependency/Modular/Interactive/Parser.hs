@@ -17,6 +17,7 @@ data Statement  =  BookSet    String
                  | BookJump   String
                  | BookList
                  | Auto
+                 | IndicateAuto
 --                 | AutoLog
                  | Goto       Selections
                  | Up
@@ -51,6 +52,7 @@ languageDef =
                                      , "autoLog"
                                      , "install"
                                      , "cut"
+                                     , "indicateAuto"
                                      ]
            , Token.reservedOpNames = ["|", ":"]
            }
@@ -86,6 +88,7 @@ statement' =   try bsetStmt
            <|> try gotoStmt
            <|> try findStmt
            <|> try upStmt
+           <|> try indicateAutoStmt
            <|> try topStmt
            <|> try singleNumberStmt
            <|> try goStmt
@@ -133,6 +136,11 @@ upStmt :: Parser Statement
 upStmt =
     do  reserved "up"
         return Up
+
+indicateAutoStmt :: Parser Statement
+indicateAutoStmt =
+    do  reserved "indicateAuto"
+        return IndicateAuto
 
 installStmt :: Parser Statement
 installStmt =
