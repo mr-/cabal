@@ -40,10 +40,9 @@ solve sc idx userPrefs userConstraints userGoals = (slog, Just tree)
     slog Nothing = explorePhase.heuristicsPhase $ tree
     slog (Just ptr) = donePtrToLog ptr --check for a donePtr?
 
-    tree = P.preferBaseGoalChoice $
-           preferencesPhase       $
-           validationPhase        $
-           prunePhase             $
+    tree = preferencesPhase $
+           validationPhase  $
+           prunePhase       $
            buildPhase
 
     explorePhase     = exploreTreeLog . backjump
