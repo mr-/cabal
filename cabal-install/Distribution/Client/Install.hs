@@ -41,7 +41,7 @@ import System.Exit
 import Distribution.Compat.Exception
          ( SomeException, catchIO, catchExit )
 import Control.Monad
-         ( when, unless )
+         ( when, unless, (>=>) )
 import System.Directory
          ( getTemporaryDirectory, doesFileExist, createDirectoryIfMissing )
 import System.FilePath
@@ -338,7 +338,7 @@ planPackages' comp platform mSandboxPkgInfo solver
              configFlags configExFlags installFlags
              installedPkgIndex sourcePkgDb pkgSpecifiers =
 
-    ((\t -> progress t >>= if onlyDeps then pruneInstallPlan pkgSpecifiers else return), tree)
+    (progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return, tree)
 
   where
     (progress, tree) = resolveDependencies'
