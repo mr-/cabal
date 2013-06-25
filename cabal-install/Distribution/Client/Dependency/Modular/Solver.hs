@@ -42,8 +42,8 @@ solve sc idx userPrefs userConstraints userGoals = (slog, Just tree)
 
     tree = preferencesPhase $
            validationPhase  $
-           prunePhase       $
-           buildPhase
+           prunePhase sc    $
+           buildPhase sc
 
     explorePhase     = exploreTreeLog . backjump
     heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
@@ -54,11 +54,11 @@ solve sc idx userPrefs userConstraints userGoals = (slog, Just tree)
     validationPhase  = P.enforceManualFlags . -- can only be done after user constraints
                        P.enforcePackageConstraints userConstraints .
                        validateTree idx
-    prunePhase       = (if avoidReinstalls sc then P.avoidReinstalls (const True) else id) .
+    prunePhase conf  = (if avoidReinstalls conf then P.avoidReinstalls (const True) else id) .
                        -- packages that can never be "upgraded":
                        P.requireInstalled (`elem` [PackageName "base",
                                                    PackageName "ghc-prim"])
-    buildPhase       = buildTree idx (independentGoals sc) userGoals
+    buildPhase conf  = buildTree idx (independentGoals conf) userGoals
 
 
 -- This either gives an error, or a pointer to a "Done"-node, ignoring the Log stuff

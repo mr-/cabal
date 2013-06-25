@@ -189,7 +189,7 @@ isSelected (Selections selections) tree  = or [tree `matches` selection | select
     isSubOf x y = lower x `isInfixOf` lower y
       where
         lower :: String -> String
-        lower s = map toLower s
+        lower = map toLower
 
 autoRun :: UIState QGoalReasonChain -> Either String (UIState QGoalReasonChain)
 autoRun uiState = setPointer uiState <$> (explorePointer . uiPointer) uiState
@@ -223,10 +223,10 @@ displayChoices uiState = prettyShow $ map (uncurry makeEntry) $ generateChoices 
     failComment _                     = ""
 
     isAuto :: ChildType -> Bool
-    isAuto child = (Just True) == (pointsBelow <$> uiAutoPointer uiState <*> focusChild child treePointer)
+    isAuto child = Just True == (pointsBelow <$> uiAutoPointer uiState <*> focusChild child treePointer)
 
     isFail :: ChildType -> Bool
-    isFail child = case (focusChild child treePointer) of
+    isFail child = case focusChild child treePointer of
           (Just (Pointer _ (Fail _ _))) -> True
           _                             -> False
 

@@ -74,7 +74,7 @@ import Distribution.Client.Dependency.Types
          ( PreSolver(..), Solver(..), DependencyResolver, PackageConstraint(..)
          , PackagePreferences(..), InstalledPreference(..)
          , PackagesPreferenceDefault(..)
-         , Progress(..), foldProgress )
+         , Progress(..), foldProgress, DependencyResolverOptions )
 import Distribution.Client.Sandbox.Types
          ( SandboxPackageInfo(..) )
 import Distribution.Client.Targets
@@ -410,11 +410,20 @@ resolveDependencies' platform comp _solver params
   | null (depResolverTargets params)
   = (const (return (mkInstallPlan platform comp [])), Just (Tree.Done Map.empty))
 
-resolveDependencies' platform comp  solver params =
+resolveDependencies' platform comp solver params =
     (fmap (mkInstallPlan platform comp) . solveLog, tree)
   where
-    (solveLog, tree) = runSolver solver (SolverConfig reorderGoals indGoals noReinstalls shadowing maxBkjumps)
-                                        platform comp installedPkgIndex sourcePkgIndex preferences constraints targets
+    (solveLog, tree) = uncurry (runSolver solver) $ resolveDependenciesConfigs platform comp solver params
+
+
+resolveDependenciesConfigs :: Platform
+                     -> CompilerId
+                     -> Solver
+                     -> DepResolverParams
+                     -> (SolverConfig, DependencyResolverOptions)
+resolveDependenciesConfigs platform comp solver params = ((SolverConfig reorderGoals indGoals noReinstalls shadowing maxBkjumps),
+                                        (platform, comp, installedPkgIndex, sourcePkgIndex, preferences, constraints, targets))
+  where
     DepResolverParams
       targets constraints
       prefs defpref

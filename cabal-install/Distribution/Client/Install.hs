@@ -181,7 +181,7 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
   globalFlags configFlags configExFlags installFlags haddockFlags
   userTargets0 = do
     installContext <- makeInstallContext verbosity args (Just userTargets0)
-    doInstall verbosity args installContext
+    doInstall verbosity args installFlags installContext
   where
     args :: InstallArgs
     args = (packageDBs, repos, comp, platform, conf, useSandbox, mSandboxPkgInfo,
@@ -189,8 +189,8 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
             haddockFlags)
 
 
-doInstall :: Verbosity -> InstallArgs -> InstallContext -> IO ()
-doInstall verbosity args installContext = do
+doInstall :: Verbosity -> InstallArgs -> InstallFlags -> InstallContext -> IO ()
+doInstall verbosity args installFlags installContext = do
   (fun, tree) <- makeInstallPlan' verbosity args installContext
   if fromFlag (installInteractive installFlags) -- How could this be handled better? --interactive => Modular ?
     then do
@@ -204,7 +204,7 @@ doInstall verbosity args installContext = do
       installPlan <- foldProgress logMsg die return (fun Nothing)
       processInstallPlan verbosity args installContext installPlan
   where
-    (_,_,_,_,_,_,_,_,_,_,installFlags,_) = args
+--    (_,_,_,_,_,_,_,_,_,_,installFlags,_) = args
     logMsg message rest = debugNoWrap verbosity message >> rest
 
 
@@ -345,8 +345,24 @@ planPackages' comp platform mSandboxPkgInfo solver
                        platform (compilerId comp)
                        solver
                        resolverParams
-    resolverParams =
+    resolverParams   = makeResolverParams mSandboxPkgInfo configFlags configExFlags installFlags
+                                         installedPkgIndex sourcePkgDb pkgSpecifiers
+    onlyDeps         = fromFlag (installOnlyDeps         installFlags)
 
+
+makeResolverParams :: Maybe SandboxPackageInfo
+                            -> ConfigFlags
+                            -> ConfigExFlags
+                            -> InstallFlags
+                            -> PackageIndex
+                            -> SourcePackageDb
+                            -> [PackageSpecifier SourcePackage]
+                            -> DepResolverParams
+
+makeResolverParams mSandboxPkgInfo configFlags configExFlags installFlags
+             installedPkgIndex sourcePkgDb pkgSpecifiers = resolverParams
+  where
+    resolverParams =
         setMaxBackjumps (if maxBackjumps < 0 then Nothing
                                              else Just maxBackjumps)
 
@@ -389,10 +405,8 @@ planPackages' comp platform mSandboxPkgInfo solver
       $ standardInstallPolicy
         installedPkgIndex sourcePkgDb pkgSpecifiers
 
-    stanzas = concat
-        [ if testsEnabled then [TestStanzas] else []
-        , if benchmarksEnabled then [BenchStanzas] else []
-        ]
+    stanzas = [TestStanzas | testsEnabled] ++ [BenchStanzas | benchmarksEnabled]
+
     testsEnabled = fromFlagOrDefault False $ configTests configFlags
     benchmarksEnabled = fromFlagOrDefault False $ configBenchmarks configFlags
 
@@ -403,7 +417,6 @@ planPackages' comp platform mSandboxPkgInfo solver
     shadowPkgs       = fromFlag (installShadowPkgs       installFlags)
     maxBackjumps     = fromFlag (installMaxBackjumps     installFlags)
     upgradeDeps      = fromFlag (installUpgradeDeps      installFlags)
-    onlyDeps         = fromFlag (installOnlyDeps         installFlags)
 
 -- | Remove the provided targets from the install plan.
 pruneInstallPlan :: Package pkg => [PackageSpecifier pkg] -> InstallPlan
