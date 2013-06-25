@@ -63,6 +63,9 @@ solve sc idx userPrefs userConstraints userGoals = (slog, Just tree)
 
 -- This either gives an error, or a pointer to a "Done"-node, ignoring the Log stuff
 -- There is a fair amount of "running around in circles" going on
+-- This actually needs to know about preferEasyGoalChoices sc ..
+-- Either have solve return something like data UIInfo (Maybe (Tree a)) SolverConfig, or somehow
+-- redo it all. But.. how
 explorePointer :: Pointer a -> Either String (Pointer a)
 explorePointer treePointer = snd <$> (runTreePtrLog  .
                                     explorePhase   .
