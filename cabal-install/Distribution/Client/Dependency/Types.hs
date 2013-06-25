@@ -16,6 +16,7 @@ module Distribution.Client.Dependency.Types (
     PreSolver(..),
     Solver(..),
     DependencyResolver,
+    DependencyResolverOptions,
 
     PackageConstraint(..),
     PackagePreferences(..),
@@ -109,15 +110,14 @@ instance Text PreSolver where
 -- The reason for this interface is because there are dozens of approaches to
 -- solving the package dependency problem and we want to make it easy to swap
 -- in alternatives.
---
-type DependencyResolver = Platform
-                       -> CompilerId
-                       -> InstalledPackageIndex.PackageIndex
-                       ->          PackageIndex.PackageIndex SourcePackage
-                       -> (PackageName -> PackagePreferences)
-                       -> [PackageConstraint]
-                       -> [PackageName]
-                       -> (Maybe (Pointer QGoalReasonChain) -> Progress String String [InstallPlan.PlanPackage], Maybe (Tree QGoalReasonChain))
+
+type DependencyResolverOptions = (Platform, CompilerId, InstalledPackageIndex.PackageIndex,
+                                  PackageIndex.PackageIndex SourcePackage, (PackageName -> PackagePreferences),
+                                  [PackageConstraint], [PackageName])
+
+
+type DependencyResolver = DependencyResolverOptions
+          -> (Maybe (Pointer QGoalReasonChain) -> Progress String String [InstallPlan.PlanPackage], Maybe (Tree QGoalReasonChain))
 
 -- | Per-package constraints. Package constraints must be respected by the
 -- solver. Multiple constraints for each package can be given, though obviously

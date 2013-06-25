@@ -247,8 +247,8 @@ search configure pref constraints =
 -- the standard 'DependencyResolver' interface.
 --
 topDownResolver :: DependencyResolver
-topDownResolver platform comp installedPkgIndex sourcePkgIndex
-                preferences constraints targets =
+topDownResolver (platform, comp, installedPkgIndex, sourcePkgIndex,
+                preferences, constraints, targets) =
     mapMessages (topDownResolver' platform comp
                                   (convert installedPkgIndex) sourcePkgIndex
                                   preferences constraints targets)
