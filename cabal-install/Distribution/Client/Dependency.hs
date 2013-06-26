@@ -15,6 +15,7 @@
 module Distribution.Client.Dependency (
     -- * The main package dependency resolver
     chooseSolver,
+    runSolver,
     resolveDependencies,
     resolveDependencies',
     Progress(..),
@@ -29,6 +30,10 @@ module Distribution.Client.Dependency (
     PackagesPreferenceDefault(..),
     PackagePreference(..),
     InstalledPreference(..),
+
+    -- ** Generate Options
+    mkInstallPlan,
+    resolveDependenciesConfigs,
 
     -- ** Standard policy
     standardInstallPolicy,

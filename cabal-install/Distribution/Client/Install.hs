@@ -53,8 +53,8 @@ import System.IO.Error
 
 import Distribution.Client.Targets
 import Distribution.Client.Dependency
-import Distribution.Client.Dependency.Types
-         ( Solver(..) )
+--import Distribution.Client.Dependency.Types
+--         ( Solver(..) )
 import Distribution.Client.FetchUtils
 import qualified Distribution.Client.Haddock as Haddock (regenerateHaddockIndex)
 import Distribution.Client.IndexUtils as IndexUtils
@@ -135,8 +135,10 @@ import Distribution.Verbosity as Verbosity
          ( Verbosity, showForCabal, normal, verbose )
 import Distribution.Simple.BuildPaths ( exeExtension )
 import Distribution.Client.Dependency.Modular.Dependency  (QGoalReasonChain)
-import Distribution.Client.Dependency.Modular.Tree        (Tree)
+import qualified Distribution.Client.Dependency.Modular.Tree as Tree
 import Distribution.Client.Dependency.Modular.TreeZipper  (Pointer)
+--import Distribution.Client.Dependency.Types
+import qualified Data.Map as Map
 
 
 --import Distribution.Client.SolveTree (makeInstallPlanTree)
@@ -191,7 +193,7 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
 
 doInstall :: Verbosity -> InstallArgs -> InstallFlags -> InstallContext -> IO ()
 doInstall verbosity args installFlags installContext = do
-  (fun, tree) <- makeInstallPlan' verbosity args installContext
+  (fun, tree) <- myMakeInstallPlan verbosity args installContext
   if fromFlag (installInteractive installFlags) -- How could this be handled better? --interactive => Modular ?
     then do
       mptr <- runInteractive tree
@@ -259,6 +261,31 @@ makeInstallContext verbosity
 
     return (installedPkgIndex, sourcePkgDb, userTargets, pkgSpecifiers)
 
+
+myMakeInstallPlan :: Verbosity -> InstallArgs -> InstallContext ->
+                IO (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan, Maybe (Tree.Tree QGoalReasonChain))
+myMakeInstallPlan  verbosity
+  args@(_, _, comp, platform, _, _, _, _, _, configExFlags, installFlags, _)
+  ctxt@(_, _, _, pkgSpecifiers)
+  = do
+    solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags))
+              (compilerId comp)
+
+    let resolverParams   = makeResolverParams args ctxt
+        onlyDeps         = fromFlag (installOnlyDeps         installFlags)
+        compID           = compilerId comp
+        resDepConfigs    = resolveDependenciesConfigs platform compID solver resolverParams
+
+    notice verbosity "Resolving dependencies..."
+    if (null (depResolverTargets resolverParams))
+      then return $ (const (return (mkInstallPlan platform compID [])), Just (Tree.Done Map.empty))
+      else do
+      let (solveLog, tree) = uncurry (runSolver solver) resDepConfigs
+          progress = fmap (mkInstallPlan platform compID) . solveLog
+      return $ (progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return, tree)
+
+
+
 -- | Make an install plan given install context and install arguments.
 makeInstallPlan :: Verbosity -> InstallArgs -> InstallContext
                 -> IO (Progress String String InstallPlan)
@@ -266,101 +293,27 @@ makeInstallPlan verbosity iargs icontext = do (fun, _) <- makeInstallPlan' verbo
                                               return $ fun Nothing
 
 makeInstallPlan' :: Verbosity -> InstallArgs -> InstallContext
-                -> IO (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan, Maybe (Tree QGoalReasonChain))
+                -> IO (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan, Maybe (Tree.Tree QGoalReasonChain))
 makeInstallPlan' verbosity
-  (_, _, comp, platform, _, _, mSandboxPkgInfo,
-   _, configFlags, configExFlags, installFlags,
-   _)
-  (installedPkgIndex, sourcePkgDb,
-   _, pkgSpecifiers) = do
-
+  args@(_, _, comp, platform, _, _, _, _, _, configExFlags, installFlags, _)
+  ctxt@(_, _, _, pkgSpecifiers)
+  = do
     solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags))
               (compilerId comp)
+
+    let resolverParams   = makeResolverParams args ctxt
+        onlyDeps         = fromFlag (installOnlyDeps         installFlags)
+        (progress, tree) = resolveDependencies' platform (compilerId comp) solver resolverParams
+
     notice verbosity "Resolving dependencies..."
-    return $ planPackages' comp platform mSandboxPkgInfo solver
-      configFlags configExFlags installFlags
-      installedPkgIndex sourcePkgDb pkgSpecifiers
 
--- | Given an install plan, perform the actual installations.
-processInstallPlan :: Verbosity -> InstallArgs -> InstallContext
-                   -> InstallPlan
-                   -> IO ()
-processInstallPlan verbosity
-  args@(_,_, _, _, _, _, _, _, _, _, installFlags, _)
-  (installedPkgIndex, sourcePkgDb,
-   userTargets, pkgSpecifiers) installPlan = do
-    checkPrintPlan verbosity installedPkgIndex installPlan sourcePkgDb
-      installFlags pkgSpecifiers
+    return (progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return, tree)
 
-    unless dryRun $ do
-      installPlan' <- performInstallations verbosity
-                      args installedPkgIndex installPlan
-      postInstallActions verbosity args userTargets installPlan'
-  where
-    dryRun = fromFlag (installDryRun installFlags)
-
--- ------------------------------------------------------------
--- * Installation planning
--- ------------------------------------------------------------
-
-planPackages :: Compiler
-             -> Platform
-             -> Maybe SandboxPackageInfo
-             -> Solver
-             -> ConfigFlags
-             -> ConfigExFlags
-             -> InstallFlags
-             -> PackageIndex
-             -> SourcePackageDb
-             -> [PackageSpecifier SourcePackage]
-             -> Progress String String InstallPlan
-planPackages comp platform mSandboxPkgInfo solver
-             configFlags configExFlags installFlags
-             installedPkgIndex sourcePkgDb pkgSpecifiers = progress Nothing
-             where
-              (progress, _) = planPackages' comp platform mSandboxPkgInfo solver
-                                                  configFlags configExFlags installFlags
-                                                  installedPkgIndex sourcePkgDb pkgSpecifiers
-
-
-planPackages' :: Compiler
-             -> Platform
-             -> Maybe SandboxPackageInfo
-             -> Solver
-             -> ConfigFlags
-             -> ConfigExFlags
-             -> InstallFlags
-             -> PackageIndex
-             -> SourcePackageDb
-             -> [PackageSpecifier SourcePackage]
-             -> (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan, Maybe (Tree QGoalReasonChain))
-planPackages' comp platform mSandboxPkgInfo solver
-             configFlags configExFlags installFlags
-             installedPkgIndex sourcePkgDb pkgSpecifiers =
-
-    (progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return, tree)
-
-  where
-    (progress, tree) = resolveDependencies'
-                       platform (compilerId comp)
-                       solver
-                       resolverParams
-    resolverParams   = makeResolverParams mSandboxPkgInfo configFlags configExFlags installFlags
-                                         installedPkgIndex sourcePkgDb pkgSpecifiers
-    onlyDeps         = fromFlag (installOnlyDeps         installFlags)
-
-
-makeResolverParams :: Maybe SandboxPackageInfo
-                            -> ConfigFlags
-                            -> ConfigExFlags
-                            -> InstallFlags
-                            -> PackageIndex
-                            -> SourcePackageDb
-                            -> [PackageSpecifier SourcePackage]
-                            -> DepResolverParams
-
-makeResolverParams mSandboxPkgInfo configFlags configExFlags installFlags
-             installedPkgIndex sourcePkgDb pkgSpecifiers = resolverParams
+-- | Make DepResolverParams
+makeResolverParams :: InstallArgs -> InstallContext -> DepResolverParams
+makeResolverParams (_, _, _, _, _, _, mSandboxPkgInfo, _, configFlags, configExFlags, installFlags, _)
+                   (installedPkgIndex, sourcePkgDb, _, pkgSpecifiers)
+  = resolverParams
   where
     resolverParams =
         setMaxBackjumps (if maxBackjumps < 0 then Nothing
@@ -417,6 +370,26 @@ makeResolverParams mSandboxPkgInfo configFlags configExFlags installFlags
     shadowPkgs       = fromFlag (installShadowPkgs       installFlags)
     maxBackjumps     = fromFlag (installMaxBackjumps     installFlags)
     upgradeDeps      = fromFlag (installUpgradeDeps      installFlags)
+
+
+-- | Given an install plan, perform the actual installations.
+processInstallPlan :: Verbosity -> InstallArgs -> InstallContext
+                   -> InstallPlan
+                   -> IO ()
+processInstallPlan verbosity
+  args@(_,_, _, _, _, _, _, _, _, _, installFlags, _)
+  (installedPkgIndex, sourcePkgDb,
+   userTargets, pkgSpecifiers) installPlan = do
+    checkPrintPlan verbosity installedPkgIndex installPlan sourcePkgDb
+      installFlags pkgSpecifiers
+
+    unless dryRun $ do
+      installPlan' <- performInstallations verbosity
+                      args installedPkgIndex installPlan
+      postInstallActions verbosity args userTargets installPlan'
+  where
+    dryRun = fromFlag (installDryRun installFlags)
+
 
 -- | Remove the provided targets from the install plan.
 pruneInstallPlan :: Package pkg => [PackageSpecifier pkg] -> InstallPlan
