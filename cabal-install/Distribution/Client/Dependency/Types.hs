@@ -117,7 +117,7 @@ type DependencyResolverOptions = (Platform, CompilerId, InstalledPackageIndex.Pa
 
 
 type DependencyResolver = DependencyResolverOptions
-          -> (Maybe (Pointer QGoalReasonChain) -> Progress String String [InstallPlan.PlanPackage], Maybe (Tree QGoalReasonChain))
+          -> (Maybe (Pointer QGoalReasonChain) -> Progress String String [InstallPlan.PlanPackage])
 
 -- | Per-package constraints. Package constraints must be respected by the
 -- solver. Multiple constraints for each package can be given, though obviously

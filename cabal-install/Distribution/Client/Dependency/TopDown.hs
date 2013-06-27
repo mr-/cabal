@@ -254,8 +254,8 @@ topDownResolver (platform, comp, installedPkgIndex, sourcePkgIndex,
                                   preferences constraints targets)
   where
     mapMessages :: Progress Log Failure a
-        -> (Maybe (Pointer QGoalReasonChain) -> Progress String String a, Maybe (Tree QGoalReasonChain))
-    mapMessages prog = (const $ foldProgress (Step . showLog) (Fail . showFailure) Done prog, Nothing)
+        -> (Maybe (Pointer QGoalReasonChain) -> Progress String String a)
+    mapMessages prog = (const $ foldProgress (Step . showLog) (Fail . showFailure) Done prog)
 -- | The native resolver with detailed structured logging and failure types.
 --
 topDownResolver' :: Platform -> CompilerId

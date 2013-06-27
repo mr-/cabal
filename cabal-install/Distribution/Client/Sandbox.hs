@@ -542,7 +542,7 @@ reinstallAddSourceDeps verbosity configFlags' configExFlags
       -- might want to use some lower-level features this in the future.
       withSandboxBinDirOnSearchPath sandboxDir $ do
         installContext   <- makeInstallContext verbosity args Nothing
-        maybeInstallPlan <- makeInstallPlan verbosity args installContext installFlags
+        maybeInstallPlan <- makeInstallPlan verbosity args installContext
         when (isJust maybeInstallPlan) $ do
           installPlan    <- foldProgress logMsg die return (fromJust maybeInstallPlan)
           processInstallPlan verbosity args installContext installPlan

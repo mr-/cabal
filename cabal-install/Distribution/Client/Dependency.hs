@@ -102,7 +102,6 @@ import Distribution.Verbosity
          ( Verbosity )
 
 import Distribution.Client.Dependency.Modular.Dependency  (QGoalReasonChain)
-import qualified Distribution.Client.Dependency.Modular.Tree as Tree
 import Distribution.Client.Dependency.Modular.TreeZipper (Pointer)
 
 import Data.List (maximumBy, foldl')
@@ -402,23 +401,23 @@ resolveDependencies :: Platform
                      -> DepResolverParams
                      -> Progress String String InstallPlan
 resolveDependencies a b c d = x Nothing
-  where (x, _) = resolveDependencies' a b c d
+  where x = resolveDependencies' a b c d
 
 resolveDependencies' :: Platform
                      -> CompilerId
                      -> Solver
                      -> DepResolverParams
-                     -> (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan, Maybe (Tree.Tree QGoalReasonChain))
+                     -> (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan)
 
     --TODO: is this needed here? see dontUpgradeBasePackage
 resolveDependencies' platform comp _solver params
   | null (depResolverTargets params)
-  = (const (return (mkInstallPlan platform comp [])), Just (Tree.Done Map.empty))
+  = (const (return (mkInstallPlan platform comp [])))
 
 resolveDependencies' platform comp solver params =
-    (fmap (mkInstallPlan platform comp) . solveLog, tree)
+    (fmap (mkInstallPlan platform comp) . pointerProcessor)
   where
-    (solveLog, tree) = uncurry (runSolver solver) $ resolveDependenciesConfigs platform comp solver params
+    pointerProcessor = uncurry (runSolver solver) $ resolveDependenciesConfigs platform comp solver params
 
 
 resolveDependenciesConfigs :: Platform

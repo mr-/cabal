@@ -1,5 +1,5 @@
 module Distribution.Client.Dependency.Modular
-         ( modularResolver, SolverConfig(..)) where
+         ( modularResolver, modularResolverTree, SolverConfig(..)) where
 
 -- Here, we try to map between the external cabal-install solver
 -- interface and the internal interface that the solver actually
@@ -24,23 +24,25 @@ import Distribution.Client.Dependency.Modular.Log
 import Distribution.Client.Dependency.Modular.Package
          ( PN )
 import Distribution.Client.Dependency.Modular.Solver
-         ( SolverConfig(..), solve )
+         ( SolverConfig(..), solve, solveTree )
 import Distribution.Client.Dependency.Types
-         ( DependencyResolver, PackageConstraint(..) )
+         ( DependencyResolver, DependencyResolverOptions, PackageConstraint(..) )
 import Distribution.Client.InstallPlan
          ( PlanPackage )
 import Distribution.System
          ( Platform(..) )
+import Distribution.Client.Dependency.Modular.Dependency  ( QGoalReasonChain )
+import Distribution.Client.Dependency.Modular.Tree        ( Tree )
 
 -- | Ties the two worlds together: classic cabal-install vs. the modular
 -- solver. Performs the necessary translations before and after.
 modularResolver :: SolverConfig -> DependencyResolver
-modularResolver sc (Platform arch os, cid, iidx, sidx, pprefs, pcs, pns) = (slog, tree)
+modularResolver sc (Platform arch os, cid, iidx, sidx, pprefs, pcs, pns) = pointerProcessor
     where
-      slog = fmap (uncurry postprocess)     . -- convert install plan
+      pointerProcessor = fmap (uncurry postprocess)     . -- convert install plan
             logToProgress (maxBackjumps sc) . -- convert log format into progress format
-            slog'
-      (slog', tree) = solve sc idx pprefs gcs pns
+            pointerProcessor'
+      pointerProcessor' = solve sc idx pprefs gcs pns
       -- Indices have to be converted into solver-specific uniform index.
       idx    = convPIs os arch cid (shadowPkgs sc) iidx sidx
       -- Constraints have to be converted into a finite map indexed by PN.
@@ -57,3 +59,28 @@ modularResolver sc (Platform arch os, cid, iidx, sidx, pprefs, pcs, pns) = (slog
       pcName (PackageConstraintSource    pn  ) = pn
       pcName (PackageConstraintFlags     pn _) = pn
       pcName (PackageConstraintStanzas   pn _) = pn
+
+modularResolverTree :: SolverConfig -> DependencyResolverOptions -> Tree QGoalReasonChain
+modularResolverTree sc (Platform arch os, cid, iidx, sidx, pprefs, pcs, pns)
+    = solveTree sc idx pprefs gcs pns
+    where
+      -- Indices have to be converted into solver-specific uniform index.
+      idx    = convPIs os arch cid (shadowPkgs sc) iidx sidx
+      -- Constraints have to be converted into a finite map indexed by PN.
+      gcs    = M.fromListWith (++) (map (\ pc -> (pcName pc, [pc])) pcs)
+
+      -- Results have to be converted into an install plan.
+      --postprocess :: Assignment -> RevDepMap -> [PlanPackage]
+      --postprocess a rdm = map (convCP iidx sidx) (toCPs a rdm)
+
+      -- Helper function to extract the PN from a constraint.
+      pcName :: PackageConstraint -> PN
+      pcName (PackageConstraintVersion   pn _) = pn
+      pcName (PackageConstraintInstalled pn  ) = pn
+      pcName (PackageConstraintSource    pn  ) = pn
+      pcName (PackageConstraintFlags     pn _) = pn
+      pcName (PackageConstraintStanzas   pn _) = pn
+
+
+
+

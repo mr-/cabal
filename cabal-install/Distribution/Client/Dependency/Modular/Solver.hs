@@ -33,20 +33,35 @@ solve :: SolverConfig ->   -- solver parameters
          (PN -> PackagePreferences) -> -- preferences
          Map PN [PackageConstraint] -> -- global constraints
          [PN] ->                       -- global goals
-         (Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap), Maybe (Tree QGoalReasonChain))
-solve sc idx userPrefs userConstraints userGoals = (slog, Just tree)
+         (Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap))
+solve sc idx userPrefs userConstraints userGoals = pointerProcessor
   where
+    pointerProcessor Nothing    = explorePhase        $
+                                  spaceReductionPhase $ tree
 
-    slog Nothing = explorePhase.heuristicsPhase $ tree
-    slog (Just ptr) = donePtrToLog ptr --check for a donePtr?
+    pointerProcessor (Just ptr) = donePtrToLog ptr --check for a donePtr?
 
-    tree = preferencesPhase $
+
+    tree                = solveTree sc idx userPrefs userConstraints userGoals
+    spaceReductionPhase = P.firstGoal
+    explorePhase        = exploreTreeLog . backjump
+
+
+solveTree :: SolverConfig ->   -- solver parameters
+         Index ->          -- all available packages as an index
+         (PN -> PackagePreferences) -> -- preferences
+         Map PN [PackageConstraint] -> -- global constraints
+         [PN] ->                       -- global goals
+         (Tree QGoalReasonChain)
+solveTree sc idx userPrefs userConstraints userGoals = tree
+  where
+    tree = heuristicsPhase  $
+           preferencesPhase $
            validationPhase  $
            prunePhase sc    $
            buildPhase sc
 
-    explorePhase     = exploreTreeLog . backjump
-    heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
+    heuristicsPhase  = -- P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        if preferEasyGoalChoices sc
                          then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
                          else P.preferBaseGoalChoice
@@ -59,6 +74,10 @@ solve sc idx userPrefs userConstraints userGoals = (slog, Just tree)
                        P.requireInstalled (`elem` [PackageName "base",
                                                    PackageName "ghc-prim"])
     buildPhase conf  = buildTree idx (independentGoals conf) userGoals
+
+
+
+
 
 
 -- This either gives an error, or a pointer to a "Done"-node, ignoring the Log stuff

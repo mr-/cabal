@@ -134,11 +134,11 @@ import Distribution.Text
 import Distribution.Verbosity as Verbosity
          ( Verbosity, showForCabal, normal, verbose )
 import Distribution.Simple.BuildPaths ( exeExtension )
-import Distribution.Client.Dependency.Modular.Dependency  (QGoalReasonChain)
+import Distribution.Client.Dependency.Modular.Dependency  ( QGoalReasonChain )
 import qualified Distribution.Client.Dependency.Modular.Tree as Tree
-import Distribution.Client.Dependency.Modular.TreeZipper  (Pointer)
---import Distribution.Client.Dependency.Types
-import qualified Data.Map as Map
+import Distribution.Client.Dependency.Modular.TreeZipper  ( Pointer )
+import Distribution.Client.Dependency.Modular ( modularResolverTree )
+import Distribution.Client.Dependency.Types ( Solver(..) )
 import Data.Maybe ( fromJust )
 
 --import Distribution.Client.SolveTree (makeInstallPlanTree)
@@ -183,7 +183,7 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
   globalFlags configFlags configExFlags installFlags haddockFlags
   userTargets0 = do
     installContext <- makeInstallContext verbosity args (Just userTargets0)
-    preInstallPlan <- makeInstallPlan verbosity args installContext installFlags
+    preInstallPlan <- makeInstallPlan verbosity args installContext
     when (isJust preInstallPlan) $ do
         installPlan <- foldProgress logMsg die return (fromJust preInstallPlan)
         processInstallPlan verbosity args installContext installPlan
@@ -250,7 +250,7 @@ makeInstallContext verbosity
 
 
 myMakeInstallPlan :: Verbosity -> InstallArgs -> InstallContext ->
-                IO (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan, Maybe (Tree.Tree QGoalReasonChain))
+                IO (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan)
 myMakeInstallPlan  verbosity
   args@(_, _, comp, platform, _, _, _, _, _, configExFlags, installFlags, _)
   ctxt@(_, _, _, pkgSpecifiers)
@@ -265,42 +265,56 @@ myMakeInstallPlan  verbosity
 
     notice verbosity "Resolving dependencies..."
     if (null (depResolverTargets resolverParams))
-      then return $ (const (return (mkInstallPlan platform compID [])), Just (Tree.Done Map.empty))
+      then return $ const (return (mkInstallPlan platform compID []))
       else do
-      let (solveLog, tree) = uncurry (runSolver solver) resDepConfigs
-          progress = fmap (mkInstallPlan platform compID) . solveLog
-      return $ (progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return, tree)
+        let (solveLog) = uncurry (runSolver solver) resDepConfigs
+            progress = fmap (mkInstallPlan platform compID) . solveLog
+        return $ (progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return)
+
+getTree :: Verbosity -> InstallArgs -> InstallContext -> Tree.Tree QGoalReasonChain
+getTree _
+  args@(_, _, comp, platform, _, _, _, _, _, _, _installFlags, _)
+  ctxt
+  = uncurry modularResolverTree  resDepConfigs
+    where solver           = Modular
+          resolverParams   = makeResolverParams args ctxt
+          compID           = compilerId comp
+          resDepConfigs    = resolveDependenciesConfigs platform compID solver resolverParams
+
 
 
 -- | Make an install plan given install context and install arguments.
-makeInstallPlan :: Verbosity -> InstallArgs -> InstallContext -> InstallFlags
+makeInstallPlan :: Verbosity -> InstallArgs -> InstallContext
                 -> IO (Maybe (Progress String String InstallPlan))
-makeInstallPlan verbosity iargs icontext installFlags = do
-  (fun, tree) <- makeInstallPlan' verbosity iargs icontext
-  if fromFlag (installInteractive installFlags) -- How could this be handled better? --interactive => Modular ?
+makeInstallPlan verbosity
+  iargs@(_, _, comp, _, _, _, _, _, _, configExFlags, installFlags, _)
+  icontext
+  = do
+  let tree = getTree verbosity iargs icontext
+  solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags)) (compilerId comp)
+  pointerProcessor <- makePointerProcessor verbosity solver iargs icontext
+  if fromFlag (installInteractive installFlags) && solver == Modular -- How could this be handled better? --interactive => Modular ?
     then do
-      mptr <- runInteractive tree
-      case mptr of
-          (Just ptr) -> return $ Just (fun $ Just ptr)
-          Nothing    -> return Nothing -- So we silently fail if there is no tree?!
-    else return $ Just (fun Nothing)
+      mptr <- runInteractive $ Just tree
+--      case mptr of
+--          (Just ptr) -> return $ Just (fun $ Just ptr)
+--          Nothing    -> return Nothing -- So we silently fail if there is no tree?! Sure, that means interactive produced none.
+      return $ mptr >>= (return . pointerProcessor . return) --hehe
+    else return $ Just (pointerProcessor Nothing)
 
-makeInstallPlan' :: Verbosity -> InstallArgs -> InstallContext
-                -> IO (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan, Maybe (Tree.Tree QGoalReasonChain))
-makeInstallPlan' verbosity
-  args@(_, _, comp, platform, _, _, _, _, _, configExFlags, installFlags, _)
+makePointerProcessor :: Verbosity -> Solver -> InstallArgs -> InstallContext
+                -> IO (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan)
+makePointerProcessor verbosity solver
+  args@(_, _, comp, platform, _, _, _, _, _, _, installFlags, _)
   ctxt@(_, _, _, pkgSpecifiers)
   = do
-    solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags))
-              (compilerId comp)
-
     let resolverParams   = makeResolverParams args ctxt
         onlyDeps         = fromFlag (installOnlyDeps         installFlags)
-        (progress, tree) = resolveDependencies' platform (compilerId comp) solver resolverParams
+        progress         = resolveDependencies' platform (compilerId comp) solver resolverParams
 
     notice verbosity "Resolving dependencies..."
 
-    return (progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return, tree)
+    return (progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return)
 
 -- | Make DepResolverParams
 makeResolverParams :: InstallArgs -> InstallContext -> DepResolverParams
