@@ -139,7 +139,7 @@ import qualified Distribution.Client.Dependency.Modular.Tree as Tree
 import Distribution.Client.Dependency.Modular.TreeZipper  (Pointer)
 --import Distribution.Client.Dependency.Types
 import qualified Data.Map as Map
-
+import Data.Maybe ( fromJust )
 
 --import Distribution.Client.SolveTree (makeInstallPlanTree)
 
@@ -183,31 +183,18 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
   globalFlags configFlags configExFlags installFlags haddockFlags
   userTargets0 = do
     installContext <- makeInstallContext verbosity args (Just userTargets0)
-    doInstall verbosity args installFlags installContext
+    preInstallPlan <- makeInstallPlan verbosity args installContext installFlags
+    when (isJust preInstallPlan) $ do
+        installPlan <- foldProgress logMsg die return (fromJust preInstallPlan)
+        processInstallPlan verbosity args installContext installPlan
   where
     args :: InstallArgs
     args = (packageDBs, repos, comp, platform, conf, useSandbox, mSandboxPkgInfo,
             globalFlags, configFlags, configExFlags, installFlags,
             haddockFlags)
-
-
-doInstall :: Verbosity -> InstallArgs -> InstallFlags -> InstallContext -> IO ()
-doInstall verbosity args installFlags installContext = do
-  (fun, tree) <- myMakeInstallPlan verbosity args installContext
-  if fromFlag (installInteractive installFlags) -- How could this be handled better? --interactive => Modular ?
-    then do
-      mptr <- runInteractive tree
-      case mptr of
-        (Just ptr) -> do  installPlan <- foldProgress logMsg die return (fun $ Just ptr)
-                          putStrLn "Got an installplan and would install now.."
-                          processInstallPlan verbosity args installContext installPlan
-        Nothing -> return () -- So we silently fail if there is no tree?!
-    else do
-      installPlan <- foldProgress logMsg die return (fun Nothing)
-      processInstallPlan verbosity args installContext installPlan
-  where
---    (_,_,_,_,_,_,_,_,_,_,installFlags,_) = args
     logMsg message rest = debugNoWrap verbosity message >> rest
+
+
 
 
 -- TODO: Make InstallContext a proper datatype with documented fields.
@@ -285,12 +272,18 @@ myMakeInstallPlan  verbosity
       return $ (progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return, tree)
 
 
-
 -- | Make an install plan given install context and install arguments.
-makeInstallPlan :: Verbosity -> InstallArgs -> InstallContext
-                -> IO (Progress String String InstallPlan)
-makeInstallPlan verbosity iargs icontext = do (fun, _) <- makeInstallPlan' verbosity iargs icontext
-                                              return $ fun Nothing
+makeInstallPlan :: Verbosity -> InstallArgs -> InstallContext -> InstallFlags
+                -> IO (Maybe (Progress String String InstallPlan))
+makeInstallPlan verbosity iargs icontext installFlags = do
+  (fun, tree) <- makeInstallPlan' verbosity iargs icontext
+  if fromFlag (installInteractive installFlags) -- How could this be handled better? --interactive => Modular ?
+    then do
+      mptr <- runInteractive tree
+      case mptr of
+          (Just ptr) -> return $ Just (fun $ Just ptr)
+          Nothing    -> return Nothing -- So we silently fail if there is no tree?!
+    else return $ Just (fun Nothing)
 
 makeInstallPlan' :: Verbosity -> InstallArgs -> InstallContext
                 -> IO (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan, Maybe (Tree.Tree QGoalReasonChain))

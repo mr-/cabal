@@ -99,7 +99,7 @@ import Data.Bits                              ( shiftL, shiftR, xor )
 import Data.Char                              ( ord )
 import Data.IORef                             ( newIORef, writeIORef, readIORef )
 import Data.List                              ( delete, foldl' )
-import Data.Maybe                             ( fromJust )
+import Data.Maybe                             ( fromJust, isJust )
 import Data.Monoid                            ( mempty, mappend )
 import Data.Word                              ( Word32 )
 import Numeric                                ( showHex )
@@ -541,12 +541,12 @@ reinstallAddSourceDeps verbosity configFlags' configExFlags
       -- lower-level API because of layer separation reasons. Additionally, we
       -- might want to use some lower-level features this in the future.
       withSandboxBinDirOnSearchPath sandboxDir $ do
-        installContext <- makeInstallContext verbosity args Nothing
-        installPlan    <- foldProgress logMsg die return =<<
-                          makeInstallPlan verbosity args installContext
-
-        processInstallPlan verbosity args installContext installPlan
-        writeIORef retVal ReinstalledSomeDeps
+        installContext   <- makeInstallContext verbosity args Nothing
+        maybeInstallPlan <- makeInstallPlan verbosity args installContext installFlags
+        when (isJust maybeInstallPlan) $ do
+          installPlan    <- foldProgress logMsg die return (fromJust maybeInstallPlan)
+          processInstallPlan verbosity args installContext installPlan
+          writeIORef retVal ReinstalledSomeDeps
 
   readIORef retVal
 
