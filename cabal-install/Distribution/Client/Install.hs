@@ -248,7 +248,7 @@ makeInstallContext verbosity
 
     return (installedPkgIndex, sourcePkgDb, userTargets, pkgSpecifiers)
 
-
+{- For educational purposes only ;-)
 myMakeInstallPlan :: Verbosity -> InstallArgs -> InstallContext ->
                 IO (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan)
 myMakeInstallPlan  verbosity
@@ -270,6 +270,7 @@ myMakeInstallPlan  verbosity
         let (solveLog) = uncurry (runSolver solver) resDepConfigs
             progress = fmap (mkInstallPlan platform compID) . solveLog
         return $ (progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return)
+-}
 
 getTree :: Verbosity -> InstallArgs -> InstallContext -> Tree.Tree QGoalReasonChain
 getTree _
@@ -290,11 +291,12 @@ makeInstallPlan verbosity
   iargs@(_, _, comp, _, _, _, _, _, _, configExFlags, installFlags, _)
   icontext
   = do
-  let tree = getTree verbosity iargs icontext
   solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags)) (compilerId comp)
   pointerProcessor <- makePointerProcessor verbosity solver iargs icontext
+
   if fromFlag (installInteractive installFlags) && solver == Modular -- How could this be handled better? --interactive => Modular ?
     then do
+      let tree = getTree verbosity iargs icontext
       mptr <- runInteractive $ Just tree
 --      case mptr of
 --          (Just ptr) -> return $ Just (fun $ Just ptr)
