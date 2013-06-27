@@ -36,15 +36,23 @@ solve :: SolverConfig ->   -- solver parameters
          (Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap))
 solve sc idx userPrefs userConstraints userGoals = pointerProcessor
   where
-    pointerProcessor Nothing    = explorePhase        $
-                                  spaceReductionPhase $ tree
+    tree = solveTree sc idx userPrefs userConstraints userGoals
 
+    pointerProcessor :: Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap)
+    pointerProcessor Nothing    = solveGivenTree tree
     pointerProcessor (Just ptr) = donePtrToLog ptr --check for a donePtr?
 
 
-    tree                = solveTree sc idx userPrefs userConstraints userGoals
+solveGivenTree ::Tree QGoalReasonChain -> Log Message (Assignment, RevDepMap)
+solveGivenTree tree = assLog
+  where
+    assLog = explorePhase        $
+             spaceReductionPhase $ tree
+
     spaceReductionPhase = P.firstGoal
     explorePhase        = exploreTreeLog . backjump
+
+
 
 
 solveTree :: SolverConfig ->   -- solver parameters
@@ -92,6 +100,6 @@ explorePointer treePointer = snd <$> (runTreePtrLog  .
   where
     explorePhase     = exploreTreePtrLog treePointer . backjump
     heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
-                       if False
+                       if False -- TODO: The interface needs to know about sc here..
                          then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
                          else P.preferBaseGoalChoice

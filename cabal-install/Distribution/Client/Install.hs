@@ -277,10 +277,8 @@ getTree _
   args@(_, _, comp, platform, _, _, _, _, _, _, _installFlags, _)
   ctxt
   = uncurry modularResolverTree  resDepConfigs
-    where solver           = Modular
-          resolverParams   = makeResolverParams args ctxt
-          compID           = compilerId comp
-          resDepConfigs    = resolveDependenciesConfigs platform compID solver resolverParams
+    where resolverParams = makeResolverParams args ctxt
+          resDepConfigs  = resolveDependenciesConfigs platform (compilerId comp) Modular resolverParams
 
 
 
@@ -291,18 +289,18 @@ makeInstallPlan verbosity
   iargs@(_, _, comp, _, _, _, _, _, _, configExFlags, installFlags, _)
   icontext
   = do
-  solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags)) (compilerId comp)
-  pointerProcessor <- makePointerProcessor verbosity solver iargs icontext
+    solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags)) (compilerId comp)
+    pointerProcessor <- makePointerProcessor verbosity solver iargs icontext
 
-  if fromFlag (installInteractive installFlags) && solver == Modular -- How could this be handled better? --interactive => Modular ?
-    then do
-      let tree = getTree verbosity iargs icontext
-      mptr <- runInteractive $ Just tree
---      case mptr of
---          (Just ptr) -> return $ Just (fun $ Just ptr)
---          Nothing    -> return Nothing -- So we silently fail if there is no tree?! Sure, that means interactive produced none.
-      return $ mptr >>= (return . pointerProcessor . return) --hehe
-    else return $ Just (pointerProcessor Nothing)
+    if fromFlag (installInteractive installFlags) && solver == Modular -- How could this be handled better? --interactive => Modular ?
+      then do
+        let tree = getTree verbosity iargs icontext
+        mptr <- runInteractive $ Just tree
+--        case mptr of
+--            (Just ptr) -> return $ Just (fun $ Just ptr)
+--            Nothing    -> return Nothing -- So we silently fail if there is no tree?! Sure, that means interactive produced none.
+        return $ mptr >>= (return . pointerProcessor . return) --hehe
+      else return $ Just (pointerProcessor Nothing)
 
 makePointerProcessor :: Verbosity -> Solver -> InstallArgs -> InstallContext
                 -> IO (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan)
