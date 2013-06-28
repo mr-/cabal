@@ -34,25 +34,17 @@ solve :: SolverConfig ->   -- solver parameters
          Map PN [PackageConstraint] -> -- global constraints
          [PN] ->                       -- global goals
          (Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap))
-solve sc idx userPrefs userConstraints userGoals = pointerProcessor
+solve _  _   _         _               _         (Just ptr) = donePtrToLog ptr
+solve sc idx userPrefs userConstraints userGoals Nothing    = solveGivenTree tree
   where
     tree = solveTree sc idx userPrefs userConstraints userGoals
 
-    pointerProcessor :: Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap)
-    pointerProcessor Nothing    = solveGivenTree tree
-    pointerProcessor (Just ptr) = donePtrToLog ptr --check for a donePtr?
-
-
 solveGivenTree ::Tree QGoalReasonChain -> Log Message (Assignment, RevDepMap)
-solveGivenTree tree = assLog
+solveGivenTree = explorePhase        .
+                 spaceReductionPhase
   where
-    assLog = explorePhase        $
-             spaceReductionPhase $ tree
-
     spaceReductionPhase = P.firstGoal
     explorePhase        = exploreTreeLog . backjump
-
-
 
 
 solveTree :: SolverConfig ->   -- solver parameters
@@ -61,13 +53,13 @@ solveTree :: SolverConfig ->   -- solver parameters
          Map PN [PackageConstraint] -> -- global constraints
          [PN] ->                       -- global goals
          (Tree QGoalReasonChain)
-solveTree sc idx userPrefs userConstraints userGoals = tree
-  where
-    tree = heuristicsPhase  $
+solveTree sc idx userPrefs userConstraints userGoals =
+           heuristicsPhase  $
            preferencesPhase $
            validationPhase  $
-           prunePhase sc    $
-           buildPhase sc
+           prunePhase       $
+           buildPhase
+  where
 
     heuristicsPhase  = -- P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        if preferEasyGoalChoices sc
@@ -77,29 +69,23 @@ solveTree sc idx userPrefs userConstraints userGoals = tree
     validationPhase  = P.enforceManualFlags . -- can only be done after user constraints
                        P.enforcePackageConstraints userConstraints .
                        validateTree idx
-    prunePhase conf  = (if avoidReinstalls conf then P.avoidReinstalls (const True) else id) .
+    prunePhase       = (if avoidReinstalls sc then P.avoidReinstalls (const True) else id) .
                        -- packages that can never be "upgraded":
                        P.requireInstalled (`elem` [PackageName "base",
                                                    PackageName "ghc-prim"])
-    buildPhase conf  = buildTree idx (independentGoals conf) userGoals
-
-
-
-
+    buildPhase       = buildTree idx (independentGoals sc) userGoals
 
 
 -- This either gives an error, or a pointer to a "Done"-node, ignoring the Log stuff
 -- There is a fair amount of "running around in circles" going on
--- This actually needs to know about preferEasyGoalChoices sc ..
--- Either have solve return something like data UIInfo (Maybe (Tree a)) SolverConfig, or somehow
--- redo it all. But.. how
-explorePointer :: Pointer a -> Either String (Pointer a)
-explorePointer treePointer = snd <$> (runTreePtrLog  .
-                                    explorePhase   .
-                                    heuristicsPhase) (toTree treePointer)
+-- TODO: DRY!
+explorePointer :: SolverConfig -> Pointer a -> Either String (Pointer a)
+explorePointer sc treePointer = snd <$> (runTreePtrLog  .
+                                         explorePhase   .
+                                         heuristicsPhase) (toTree treePointer)
   where
     explorePhase     = exploreTreePtrLog treePointer . backjump
     heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
-                       if False -- TODO: The interface needs to know about sc here..
+                       if preferEasyGoalChoices sc -- TODO: The interface needs to know about sc here..
                          then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
                          else P.preferBaseGoalChoice

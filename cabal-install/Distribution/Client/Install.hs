@@ -286,16 +286,21 @@ getTree _
 makeInstallPlan :: Verbosity -> InstallArgs -> InstallContext
                 -> IO (Maybe (Progress String String InstallPlan))
 makeInstallPlan verbosity
-  iargs@(_, _, comp, _, _, _, _, _, _, configExFlags, installFlags, _)
+  iargs@(_, _, comp, platform, _, _, _, _, _, configExFlags, installFlags, _)
   icontext
   = do
     solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags)) (compilerId comp)
     pointerProcessor <- makePointerProcessor verbosity solver iargs icontext
 
+    notice verbosity "Resolving dependencies..."
+
     if fromFlag (installInteractive installFlags) && solver == Modular -- How could this be handled better? --interactive => Modular ?
       then do
         let tree = getTree verbosity iargs icontext
-        mptr <- runInteractive $ Just tree
+            resolverParams = makeResolverParams iargs icontext
+            compID         = compilerId comp
+            (sc,_)         = resolveDependenciesConfigs platform compID solver resolverParams
+        mptr <- runInteractive sc (Just tree)
 --        case mptr of
 --            (Just ptr) -> return $ Just (fun $ Just ptr)
 --            Nothing    -> return Nothing -- So we silently fail if there is no tree?! Sure, that means interactive produced none.
@@ -304,16 +309,13 @@ makeInstallPlan verbosity
 
 makePointerProcessor :: Verbosity -> Solver -> InstallArgs -> InstallContext
                 -> IO (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan)
-makePointerProcessor verbosity solver
+makePointerProcessor _ solver
   args@(_, _, comp, platform, _, _, _, _, _, _, installFlags, _)
   ctxt@(_, _, _, pkgSpecifiers)
   = do
     let resolverParams   = makeResolverParams args ctxt
         onlyDeps         = fromFlag (installOnlyDeps         installFlags)
         progress         = resolveDependencies' platform (compilerId comp) solver resolverParams
-
-    notice verbosity "Resolving dependencies..."
-
     return (progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return)
 
 -- | Make DepResolverParams

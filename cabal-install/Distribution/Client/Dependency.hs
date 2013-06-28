@@ -400,8 +400,7 @@ resolveDependencies :: Platform
                      -> Solver
                      -> DepResolverParams
                      -> Progress String String InstallPlan
-resolveDependencies a b c d = x Nothing
-  where x = resolveDependencies' a b c d
+resolveDependencies platform comp solver params = resolveDependencies' platform comp solver params Nothing
 
 resolveDependencies' :: Platform
                      -> CompilerId
@@ -410,15 +409,14 @@ resolveDependencies' :: Platform
                      -> (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan)
 
     --TODO: is this needed here? see dontUpgradeBasePackage
-resolveDependencies' platform comp _solver params
+resolveDependencies' platform comp _solver params _
   | null (depResolverTargets params)
-  = (const (return (mkInstallPlan platform comp [])))
+  = return (mkInstallPlan platform comp [])
 
-resolveDependencies' platform comp solver params =
-    (fmap (mkInstallPlan platform comp) . pointerProcessor)
+resolveDependencies' platform comp solver params pointer =
+    fmap (mkInstallPlan platform comp) $ runSolver solver sc depResOpts pointer
   where
-    pointerProcessor = uncurry (runSolver solver) $ resolveDependenciesConfigs platform comp solver params
-
+    (sc, depResOpts) = resolveDependenciesConfigs platform comp solver params
 
 resolveDependenciesConfigs :: Platform
                      -> CompilerId
