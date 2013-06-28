@@ -10,8 +10,9 @@ import Distribution.Client.Dependency.Modular                    (SolverConfig (
 import Distribution.Client.Dependency.Modular                    (modularResolverTree)
 import Distribution.Client.Dependency.Modular.Dependency         (QGoalReasonChain)
 import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
-import Distribution.Client.Dependency.Modular.Interactive.Parser (Statement, Statements,
-                                                                  interpretStatements)
+import Distribution.Client.Dependency.Modular.Interactive.Parser (Selection (..), Selections (..),
+                                                                  Statement (..), Statements (..),
+                                                                  readStatements)
 import Distribution.Client.Dependency.Modular.Package            (showQPN)
 import Distribution.Client.Dependency.Modular.Solver             (explorePointer)
 import Distribution.Client.Dependency.Modular.Tree               (ChildType (..), Tree (..),
@@ -67,14 +68,18 @@ runInteractive platform compId solver resolverParams = do
         searchTree           = modularResolverTree sc depResOpts
 
     putStrLn "Welcome to cabali!"
-    putStrLn "go n                 chooses n - alternatively \"n\" does the same. Or just Enter, if there is only one choice"
-    putStrLn "up                   goes up one step"
-    putStrLn "top                  goes all the way to the top"
-    putStrLn "autoLog              prints the log of an automated run"
-    putStrLn "auto                 starts the automatic solver"
-    putStrLn "goto aeson           runs the parser until it sets aeson's version"
-    putStrLn "goto aeson:developer runs the parser until it sets the flag developer for aeson"
-    putStrLn ";                    chains commands (e.g. 1;1;1;top does nothing)"
+    putStrLn "This interface accepts simple commands separated by ';'. E.g. go 1 ; auto"
+    putStrLn "go n            chooses n - alternatively \"n\" does the same. Just Enter, picks the first choice"
+    putStrLn "up              goes up one step"
+    putStrLn "top             goes all the way to the top"
+    putStrLn "auto            starts the automatic solver"
+    putStrLn "goto aeson      runs the parser until it sets aeson's version"
+    putStrLn "goto aeson:test runs the parser until it sets the flag test for aeson"
+    putStrLn "bset name       sets a bookmark called name"
+    putStrLn "blist           lists all bookmarks"
+    putStrLn "bjump name      jumps to the bookmark name"
+    putStrLn "indicateAuto    indicates the choices the solver would have made with a little (*)"
+    putStrLn "install         Once the interface says 'Done', you can type 'install' to install the package"
 
     runInputT defaultSettings (loop sc $ Just $ UIState (fromTree searchTree) [] Nothing Nothing)
   where
