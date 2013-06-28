@@ -274,25 +274,20 @@ makeInstallPlan :: Verbosity -> InstallArgs -> InstallContext
                 -> IO (Maybe (Progress String String InstallPlan))
 makeInstallPlan verbosity
   iargs@(_, _, comp, platform, _, _, _, _, _, configExFlags, installFlags, _)
-  icontext
-  = do
+  icontext = do
     solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags)) (compilerId comp)
     let resolverParams = makeResolverParams iargs icontext
-        resolveUsing    = resolveDependencies platform (compilerId comp) solver resolverParams
-
+        resolveUsing   = resolveDependencies platform (compilerId comp) solver resolverParams
     if fromFlag (installInteractive installFlags) && solver == Modular -- How could this be handled better?
       then do
         notice verbosity "Starting interactive dependency solver..."
         mptr <- runInteractive platform (compilerId comp) solver resolverParams
-        return $ mptr >>= (return . resolveUsing . return) --hehe
+        case mptr of
+            Nothing -> return Nothing                   --Nothing just means that the user does not want to install anything.
+            x       -> return $ Just (resolveUsing x)
       else do
         notice verbosity "Resolving dependencies..."
         return $ Just (resolveUsing Nothing)
-
---        case mptr of
---            Nothing -> return Nothing                   --Nothing just means that the user does not want to install anything.
---            x       -> return $ Just (resolveUsing x)
-
 
 -- | Make DepResolverParams
 makeResolverParams :: InstallArgs -> InstallContext -> DepResolverParams

@@ -1,28 +1,37 @@
 module Distribution.Client.Dependency.Modular.Interactive where
 
-import System.Console.Haskeline (outputStrLn, getInputLine, runInputT, defaultSettings, InputT)
-import Distribution.Client.Dependency.Modular ( SolverConfig(..) )
-import Distribution.Client.Dependency.Modular.TreeZipper
-        (Pointer(..), fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot, filterBetween, findDown, pointsBelow)
-import Distribution.Client.Dependency.Modular.Dependency (QGoalReasonChain)
-import Distribution.Client.Dependency.Modular.Solver (explorePointer)
-import Distribution.Client.Dependency.Modular.Tree (Tree(..), ChildType(..), showChild, showNodeFromTree, isInstalled)
-import Distribution.Client.Dependency.Modular.Interactive.Parser
-import Data.Maybe (fromJust, fromMaybe, isJust)
-import Distribution.Client.Dependency.Modular.Package (showQPN)
-import Distribution.Client.Dependency.Modular.Flag (unQFN, unQSN)
-import Control.Applicative ( (<$>), (<|>), (<*>) )
-import Data.List (isInfixOf)
-import Data.Char (toLower)
-import Distribution.Client.Dependency.Modular ( modularResolverTree )
-import Distribution.System ( Platform )
-import Distribution.Simple.Compiler ( CompilerId )
-import Distribution.Client.Dependency ( resolveDependenciesConfigs, DepResolverParams )
-import Distribution.Client.Dependency.Types ( Solver(..) )
+import Control.Applicative                                       ((<$>), (<*>), (<|>))
+import Data.Char                                                 (toLower)
+import Data.List                                                 (isInfixOf)
+import Data.Maybe                                                (fromJust, fromMaybe, isJust)
+import Distribution.Client.Dependency                            (DepResolverParams,
+                                                                  resolveDependenciesConfigs)
+import Distribution.Client.Dependency.Modular                    (SolverConfig (..))
+import Distribution.Client.Dependency.Modular                    (modularResolverTree)
+import Distribution.Client.Dependency.Modular.Dependency         (QGoalReasonChain)
+import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
+import Distribution.Client.Dependency.Modular.Interactive.Parser (Statement, Statements,
+                                                                  interpretStatements)
+import Distribution.Client.Dependency.Modular.Package            (showQPN)
+import Distribution.Client.Dependency.Modular.Solver             (explorePointer)
+import Distribution.Client.Dependency.Modular.Tree               (ChildType (..), Tree (..),
+                                                                  isInstalled, showChild,
+                                                                  showNodeFromTree)
+import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), children,
+                                                                  filterBetween, findDown,
+                                                                  focusChild, focusRoot, focusUp,
+                                                                  fromTree, isRoot, pointsBelow,
+                                                                  toTree)
+import Distribution.Client.Dependency.Types                      (Solver (..))
+import Distribution.Simple.Compiler                              (CompilerId)
+import Distribution.System                                       (Platform)
+import System.Console.Haskeline                                  (InputT, defaultSettings,
+                                                                  getInputLine, outputStrLn,
+                                                                  runInputT)
 
 data UIState a = UIState {uiPointer     :: Pointer a,
                           uiBookmarks   :: [(String, Pointer a)],
-                          uiInstall     :: Maybe (Pointer a),         -- these point
+                          uiInstall     :: Maybe (Pointer a),       -- these point
                           uiAutoPointer :: Maybe (Pointer a)}       -- to Done
 
 setAutoPointer :: UIState a -> Pointer a -> UIState a
