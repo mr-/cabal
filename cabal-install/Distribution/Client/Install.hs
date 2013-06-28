@@ -266,6 +266,10 @@ myMakeInstallPlan  verbosity
 -- | Make an install plan given install context and install arguments.
 -- This either invokes the automatic or the interactive solver.
 -- The latter may return "Nothing", which aborts installation.
+
+-- TODO: the interactive solver would also fit into "resolveDependencies",
+-- but I don't really want to lift that to IO.
+-- Maybe even into modularResolver ;-)
 makeInstallPlan :: Verbosity -> InstallArgs -> InstallContext
                 -> IO (Maybe (Progress String String InstallPlan))
 makeInstallPlan verbosity
