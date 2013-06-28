@@ -41,7 +41,7 @@ import System.Exit
 import Distribution.Compat.Exception
          ( SomeException, catchIO, catchExit )
 import Control.Monad
-         ( when, unless, (>=>) )
+         ( when, unless )
 import System.Directory
          ( getTemporaryDirectory, doesFileExist, createDirectoryIfMissing )
 import System.FilePath
@@ -53,8 +53,6 @@ import System.IO.Error
 
 import Distribution.Client.Targets
 import Distribution.Client.Dependency
---import Distribution.Client.Dependency.Types
---         ( Solver(..) )
 import Distribution.Client.FetchUtils
 import qualified Distribution.Client.Haddock as Haddock (regenerateHaddockIndex)
 import Distribution.Client.IndexUtils as IndexUtils
@@ -134,15 +132,8 @@ import Distribution.Text
 import Distribution.Verbosity as Verbosity
          ( Verbosity, showForCabal, normal, verbose )
 import Distribution.Simple.BuildPaths ( exeExtension )
-import Distribution.Client.Dependency.Modular.Dependency  ( QGoalReasonChain )
-import qualified Distribution.Client.Dependency.Modular.Tree as Tree
-import Distribution.Client.Dependency.Modular.TreeZipper  ( Pointer )
-import Distribution.Client.Dependency.Modular ( modularResolverTree )
 import Distribution.Client.Dependency.Types ( Solver(..) )
 import Data.Maybe ( fromJust )
-
---import Distribution.Client.SolveTree (makeInstallPlanTree)
-
 import Distribution.Client.Dependency.Modular.Interactive (runInteractive)
 
 --TODO:
@@ -272,17 +263,9 @@ myMakeInstallPlan  verbosity
         return $ (progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return)
 -}
 
-getTree :: Verbosity -> InstallArgs -> InstallContext -> Tree.Tree QGoalReasonChain
-getTree _
-  args@(_, _, comp, platform, _, _, _, _, _, _, _installFlags, _)
-  ctxt
-  = uncurry modularResolverTree  resDepConfigs
-    where resolverParams = makeResolverParams args ctxt
-          resDepConfigs  = resolveDependenciesConfigs platform (compilerId comp) Modular resolverParams
-
-
-
 -- | Make an install plan given install context and install arguments.
+-- This either invokes the automatic or the interactive solver.
+-- The latter may return "Nothing", which aborts installation.
 makeInstallPlan :: Verbosity -> InstallArgs -> InstallContext
                 -> IO (Maybe (Progress String String InstallPlan))
 makeInstallPlan verbosity
@@ -290,32 +273,22 @@ makeInstallPlan verbosity
   icontext
   = do
     solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags)) (compilerId comp)
-    let resolveWith = resolveWrapper verbosity solver iargs icontext
+    let resolverParams = makeResolverParams iargs icontext
+        resolveUsing    = resolveDependencies platform (compilerId comp) solver resolverParams
 
-    notice verbosity "Resolving dependencies..."
-
-    if fromFlag (installInteractive installFlags) && solver == Modular -- How could this be handled better? --interactive => Modular ?
+    if fromFlag (installInteractive installFlags) && solver == Modular -- How could this be handled better?
       then do
-        let tree = getTree verbosity iargs icontext
-            resolverParams = makeResolverParams iargs icontext
-            compID         = compilerId comp
-            (sc,_)         = resolveDependenciesConfigs platform compID solver resolverParams
-        mptr <- runInteractive sc (Just tree)
-        case mptr of
-            Nothing -> return Nothing                   --Nothing just means that the user does not want to install anything.
-            x       -> return $ Just (resolveWith x)
---        return $ mptr >>= (return . resolveWith . return) --hehe
-      else return $ Just (resolveWith Nothing)
+        notice verbosity "Starting interactive dependency solver..."
+        mptr <- runInteractive platform (compilerId comp) solver resolverParams
+        return $ mptr >>= (return . resolveUsing . return) --hehe
+      else do
+        notice verbosity "Resolving dependencies..."
+        return $ Just (resolveUsing Nothing)
 
-resolveWrapper :: Verbosity -> Solver -> InstallArgs -> InstallContext
-                -> Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan
-resolveWrapper _ solver
-  args@(_, _, comp, platform, _, _, _, _, _, _, installFlags, _)
-  ctxt@(_, _, _, pkgSpecifiers) = progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return
-    where
-      resolverParams   = makeResolverParams args ctxt
-      onlyDeps         = fromFlag (installOnlyDeps         installFlags)
-      progress         = resolveDependencies platform (compilerId comp) solver resolverParams
+--        case mptr of
+--            Nothing -> return Nothing                   --Nothing just means that the user does not want to install anything.
+--            x       -> return $ Just (resolveUsing x)
+
 
 -- | Make DepResolverParams
 makeResolverParams :: InstallArgs -> InstallContext -> DepResolverParams

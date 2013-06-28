@@ -388,6 +388,9 @@ runSolver TopDown = const topDownResolver -- TODO: warn about unsuported options
 runSolver Modular = modularResolver
 
 -- | Run the dependency solver.
+-- The Pointer, if provided must point to a Done-node. Called with that
+-- pointer, it will transform the pointer to a Progress.
+-- I.e. it is now possible to "help" the dependency resolver.
 --
 -- Since this is potentially an expensive operation, the result is wrapped in a
 -- a 'Progress' structure that can be unfolded to provide progress information,

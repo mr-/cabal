@@ -1,32 +1,24 @@
 module Distribution.Client.Dependency.Modular.Interactive where
 
-import System.Console.Haskeline (outputStrLn, getInputLine, runInputT,
-                                 defaultSettings, InputT)
-import Distribution.Client.Dependency.Modular
-         ( SolverConfig(..) )
+import System.Console.Haskeline (outputStrLn, getInputLine, runInputT, defaultSettings, InputT)
+import Distribution.Client.Dependency.Modular ( SolverConfig(..) )
 import Distribution.Client.Dependency.Modular.TreeZipper
         (Pointer(..), fromTree, toTree,  children, focusChild, focusUp, isRoot, focusRoot, filterBetween, findDown, pointsBelow)
-
-
-import Distribution.Client.Dependency.Modular.Dependency
-                (QGoalReasonChain)
+import Distribution.Client.Dependency.Modular.Dependency (QGoalReasonChain)
 import Distribution.Client.Dependency.Modular.Solver (explorePointer)
-
 import Distribution.Client.Dependency.Modular.Tree (Tree(..), ChildType(..), showChild, showNodeFromTree, isInstalled)
-
 import Distribution.Client.Dependency.Modular.Interactive.Parser
-
 import Data.Maybe (fromJust, fromMaybe, isJust)
-
 import Distribution.Client.Dependency.Modular.Package (showQPN)
-
 import Distribution.Client.Dependency.Modular.Flag (unQFN, unQSN)
-
 import Control.Applicative ( (<$>), (<|>), (<*>) )
-
 import Data.List (isInfixOf)
-
 import Data.Char (toLower)
+import Distribution.Client.Dependency.Modular ( modularResolverTree )
+import Distribution.System ( Platform )
+import Distribution.Simple.Compiler ( CompilerId )
+import Distribution.Client.Dependency ( resolveDependenciesConfigs, DepResolverParams )
+import Distribution.Client.Dependency.Types ( Solver(..) )
 
 data UIState a = UIState {uiPointer     :: Pointer a,
                           uiBookmarks   :: [(String, Pointer a)],
@@ -54,13 +46,16 @@ getInstall uiState = case uiAutoPointer uiState of
                         _      -> error "Outch.. got wrong install"
 
 -- Better uiBreakPoints :: [(String, Pointer a -> Bool)]
-
 -- features: cut
 
-runInteractive :: SolverConfig -> Maybe (Tree QGoalReasonChain) -> IO (Maybe (Pointer QGoalReasonChain))
-runInteractive _ Nothing =
-    putStrLn "Ooops.. you chose the wrong solver" >> return Nothing
-runInteractive sc (Just searchTree) = do
+runInteractive :: Platform
+               -> CompilerId
+               -> Solver
+               -> DepResolverParams
+               -> IO (Maybe (Pointer QGoalReasonChain))
+runInteractive platform compId solver resolverParams = do
+    let (sc, depResOpts)     = resolveDependenciesConfigs platform compId solver resolverParams
+        searchTree           = modularResolverTree sc depResOpts
 
     putStrLn "Welcome to cabali!"
     putStrLn "go n                 chooses n - alternatively \"n\" does the same. Or just Enter, if there is only one choice"
@@ -72,20 +67,20 @@ runInteractive sc (Just searchTree) = do
     putStrLn "goto aeson:developer runs the parser until it sets the flag developer for aeson"
     putStrLn ";                    chains commands (e.g. 1;1;1;top does nothing)"
 
-    runInputT defaultSettings (loop $ Just $ UIState (fromTree searchTree) [] Nothing Nothing)
+    runInputT defaultSettings (loop sc $ Just $ UIState (fromTree searchTree) [] Nothing Nothing)
   where
-        loop :: Maybe (UIState QGoalReasonChain) -> InputT IO (Maybe (Pointer QGoalReasonChain))
-        loop  Nothing =
+        loop :: SolverConfig -> Maybe (UIState QGoalReasonChain) -> InputT IO (Maybe (Pointer QGoalReasonChain))
+        loop _ Nothing =
           outputStrLn "Bye bye" >> return Nothing
 
-        loop  (Just uiState) | isInstall uiState =
+        loop _ (Just uiState) | isInstall uiState =
           outputStrLn "Bye bye" >> return (uiInstall uiState)
 
-        loop (Just uiState) = do
+        loop sc (Just uiState) = do
           outputStrLn $ "Node: " ++ showNodeFromTree ( toTree $ uiPointer uiState )
           outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
           uiS <- handleCommand sc uiState
-          loop uiS
+          loop sc uiS
 
         thisOrThat :: String -> String -> String
         "" `thisOrThat` s = s
