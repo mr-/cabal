@@ -290,7 +290,7 @@ makeInstallPlan verbosity
   icontext
   = do
     solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags)) (compilerId comp)
-    pointerProcessor <- makePointerProcessor verbosity solver iargs icontext
+    let resolveWith = resolveWrapper verbosity solver iargs icontext
 
     notice verbosity "Resolving dependencies..."
 
@@ -301,22 +301,21 @@ makeInstallPlan verbosity
             compID         = compilerId comp
             (sc,_)         = resolveDependenciesConfigs platform compID solver resolverParams
         mptr <- runInteractive sc (Just tree)
---        case mptr of
---            (Just ptr) -> return $ Just (fun $ Just ptr)
---            Nothing    -> return Nothing -- So we silently fail if there is no tree?! Sure, that means interactive produced none.
-        return $ mptr >>= (return . pointerProcessor . return) --hehe
-      else return $ Just (pointerProcessor Nothing)
+        case mptr of
+            Nothing -> return Nothing                   --Nothing just means that the user does not want to install anything.
+            x       -> return $ Just (resolveWith x)
+--        return $ mptr >>= (return . resolveWith . return) --hehe
+      else return $ Just (resolveWith Nothing)
 
-makePointerProcessor :: Verbosity -> Solver -> InstallArgs -> InstallContext
-                -> IO (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan)
-makePointerProcessor _ solver
+resolveWrapper :: Verbosity -> Solver -> InstallArgs -> InstallContext
+                -> Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan
+resolveWrapper _ solver
   args@(_, _, comp, platform, _, _, _, _, _, _, installFlags, _)
-  ctxt@(_, _, _, pkgSpecifiers)
-  = do
-    let resolverParams   = makeResolverParams args ctxt
-        onlyDeps         = fromFlag (installOnlyDeps         installFlags)
-        progress         = resolveDependencies' platform (compilerId comp) solver resolverParams
-    return (progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return)
+  ctxt@(_, _, _, pkgSpecifiers) = progress  >=> if onlyDeps then pruneInstallPlan pkgSpecifiers else return
+    where
+      resolverParams   = makeResolverParams args ctxt
+      onlyDeps         = fromFlag (installOnlyDeps         installFlags)
+      progress         = resolveDependencies platform (compilerId comp) solver resolverParams
 
 -- | Make DepResolverParams
 makeResolverParams :: InstallArgs -> InstallContext -> DepResolverParams

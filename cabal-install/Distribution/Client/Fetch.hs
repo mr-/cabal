@@ -130,6 +130,7 @@ planPackages verbosity comp platform fetchFlags
                          platform (compilerId comp)
                          solver
                          resolverParams
+                         Nothing
 
       -- The packages we want to fetch are those packages the 'InstallPlan'
       -- that are in the 'InstallPlan.Configured' state.
