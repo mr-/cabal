@@ -4,6 +4,7 @@ import Control.Applicative                                       ((<$>), (<*>), 
 import Data.Char                                                 (toLower)
 import Data.List                                                 (isInfixOf)
 import Data.Maybe                                                (fromJust, fromMaybe, isJust)
+import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency                            (DepResolverParams,
                                                                   resolveDependenciesConfigs)
 import Distribution.Client.Dependency.Modular                    (modularResolverTree)
@@ -14,6 +15,7 @@ import Distribution.Client.Dependency.Modular.Interactive.Parser (Selection (..)
                                                                   readStatements)
 import Distribution.Client.Dependency.Modular.Package            (showQPN)
 import Distribution.Client.Dependency.Modular.Solver             (explorePointer)
+import Distribution.Client.Dependency.Modular.Explore            (donePtrToLog, runTreePtrLog)
 import Distribution.Client.Dependency.Modular.Tree               (ChildType (..), Tree (..),
                                                                   isInstalled, showChild,
                                                                   showNodeFromTree)
@@ -56,6 +58,7 @@ getInstall uiState = case uiAutoPointer uiState of
 
 -- Better uiBreakPoints :: [(String, Pointer a -> Bool)]
 -- features: cut
+-- Figure out what the given bools for flags and Stanzas mean.
 
 runInteractive :: Platform
                -> CompilerId
@@ -79,6 +82,7 @@ runInteractive platform compId solver resolverParams = do
     putStrLn "bjump name      jumps to the bookmark name"
     putStrLn "indicateAuto    indicates the choices the solver would have made with a little (*)"
     putStrLn "install         Once the interface says 'Done', you can type 'install' to install the package"
+    putStrLn "showPlan        shows what is going to be installed/used"
 
     runInputT defaultSettings (loop $ Just $ UIState (fromTree searchTree) [] Nothing Nothing)
   where
@@ -90,7 +94,7 @@ runInteractive platform compId solver resolverParams = do
           outputStrLn "Bye bye" >> return (uiInstall uiState)
 
         loop (Just uiState) = do
-          outputStrLn $ "Node: " ++ showNodeFromTree ( toTree $ uiPointer uiState )
+          outputStrLn $ showNodeFromTree ( toTree $ uiPointer uiState )
           outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
           uiS <- handleCommand uiState
           loop uiS
@@ -164,10 +168,6 @@ interpretStatement uiState (Goto selections) = (setPointer uiState . selectPoint
 
 interpretStatement uiState Install | isDone (uiPointer uiState)
                               = Right $ setInstall uiState $ uiPointer uiState
-    where
-      isDone (Pointer _ (Done _ )  ) = True
-      isDone _                       = False
-
 interpretStatement _ Install  = Left "Need to be on a \"Done\"-Node"
 interpretStatement _ (Cut _) = Left "Ooops.. not implemented yet."
 
@@ -176,6 +176,18 @@ interpretStatement uiState (Find sel) = case findDown (isSelected sel.toTree) (u
                                           _     -> Left "Nothing found"
 
 interpretStatement uiState IndicateAuto = setAutoPointer uiState <$> (explorePointer . uiPointer) uiState
+
+interpretStatement uiState ShowPlan | isDone (uiPointer uiState) =
+    case runTreePtrLog $ donePtrToLog (uiPointer uiState) of
+      Left s                -> Left s
+      Right (assignment, _) -> Left $ showAssignment assignment
+interpretStatement _ _ = Left "Do not have a plan to show"
+
+isDone :: Pointer a -> Bool
+isDone (Pointer _ (Done _ )  ) = True
+isDone _                       = False
+
+
 
 isSelected :: Selections -> Tree QGoalReasonChain ->  Bool
 isSelected (Selections selections) tree  = or [tree `matches` selection | selection <- selections]

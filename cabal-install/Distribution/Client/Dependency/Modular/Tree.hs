@@ -34,7 +34,8 @@ showNodeFromTree (FChoice qfn _ b1 b2 _)      = "Flag: " ++ showQFN qfn ++ "\t B
 showNodeFromTree (SChoice qsn _ b _)          = "Stanza: " ++ showQSN qsn -- The "reason" is obvious here
                                                     ++ "\n\t Bool: " ++ show b -- But what do the bools mean?
 showNodeFromTree (GoalChoice _)               = "Missing dependencies"
-showNodeFromTree (Done _rdm)                  = "Done!"-- \nRevDepMap: \n" ++  showRevDepMap rdm
+showNodeFromTree (Done _rdm)                  = "Created a valid installplan. \n Type install to install, or showPlan to review"
+                                                  -- \nRevDepMap: \n" ++  showRevDepMap rdm
 showNodeFromTree (Fail cfs fr)                = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
   where showConflictSet s = show $ map showVar (toList s)
 

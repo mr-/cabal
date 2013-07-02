@@ -65,7 +65,6 @@ import Text.PrettyPrint
          ( text )
 
 import Distribution.Client.Dependency.Modular.Dependency  (QGoalReasonChain)
-import Distribution.Client.Dependency.Modular.Tree        (Tree)
 import Distribution.Client.Dependency.Modular.TreeZipper (Pointer)
 
 

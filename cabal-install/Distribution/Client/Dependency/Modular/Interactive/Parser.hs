@@ -26,6 +26,7 @@ data Statement  =  BookSet    String
                  | Cut        Int
                  | Install
                  | Find       Selections
+                 | ShowPlan
                  | Empty
                  deriving (Show)
 
@@ -53,6 +54,7 @@ languageDef =
                                      , "install"
                                      , "cut"
                                      , "indicateAuto"
+                                     , "showPlan"
                                      ]
            , Token.reservedOpNames = ["|", ":"]
            }
@@ -94,6 +96,7 @@ statement' =   try bsetStmt
            <|> try goStmt
            <|> try cutStmt
            <|> try installStmt
+           <|> try showPlanStmt
            <|> try emptyStmt
 
 
@@ -136,6 +139,11 @@ upStmt :: Parser Statement
 upStmt =
     do  reserved "up"
         return Up
+
+showPlanStmt :: Parser Statement
+showPlanStmt =
+    do  reserved "showPlan"
+        return ShowPlan
 
 indicateAutoStmt :: Parser Statement
 indicateAutoStmt =

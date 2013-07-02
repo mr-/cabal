@@ -159,7 +159,7 @@ explorePtrLog = cata go
 -- Where, oh where should you go? Here is Ok, I guess.. Now this module knows how to make Log Message (...) and it also knows
 -- how to get information out of it.
 -- Maybe we would also like the Assignment?
-runTreePtrLog :: Log Message (Assignment, Pointer a) -> Either String (Assignment, Pointer a)
+runTreePtrLog :: Log Message (Assignment, a) -> Either String (Assignment, a)
 runTreePtrLog l = case runLog l of
                     (ms, Nothing)                    -> Left $ unlines $ showMessages (const True) True ms
                     (_, Just (assignment, treePtr))  -> Right (assignment, treePtr)

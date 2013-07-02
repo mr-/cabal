@@ -34,7 +34,9 @@ solve :: SolverConfig ->   -- solver parameters
          Map PN [PackageConstraint] -> -- global constraints
          [PN] ->                       -- global goals
          (Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap))
+--make that call explorePointer, for a more flexible interface?
 solve _  _   _         _               _         (Just ptr) = donePtrToLog ptr
+
 solve sc idx userPrefs userConstraints userGoals Nothing    = solveGivenTree tree
   where
     tree = solveTree sc idx userPrefs userConstraints userGoals
@@ -60,7 +62,6 @@ solveTree sc idx userPrefs userConstraints userGoals =
            prunePhase       $
            buildPhase
   where
-
     heuristicsPhase  = -- P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        if preferEasyGoalChoices sc
                          then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
@@ -77,6 +78,7 @@ solveTree sc idx userPrefs userConstraints userGoals =
 
 
 -- This either gives an error, or a pointer to a "Done"-node, ignoring the Log stuff
+-- Better name for that function?
 explorePointer :: Pointer a -> Either String (Pointer a)
 explorePointer treePointer = snd <$> (runTreePtrLog  .
                                       explorePhase   .
