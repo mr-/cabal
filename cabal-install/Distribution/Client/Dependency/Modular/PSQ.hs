@@ -79,6 +79,18 @@ sortBy cmp (PSQ xs) = PSQ (S.sortBy (cmp `on` snd) xs)
 sortByKeys :: (k -> k -> Ordering) -> PSQ k a -> PSQ k a
 sortByKeys cmp (PSQ xs) = PSQ (S.sortBy (cmp `on` fst) xs)
 
+-- TODO: Would this like to be more efficient?
+spanByKeys :: (k -> Bool) -> PSQ k a -> (PSQ k a, PSQ k a)
+spanByKeys f psq = (lefts, rights)
+  where
+    lefts  = filterKeys f psq
+    rights = filterKeys (not.f) psq
+
+toLeft :: (k -> Bool) -> PSQ k a -> PSQ k a
+toLeft f psq = lefts `joinPSQ` rights
+  where
+    (lefts, rights) = spanByKeys f psq
+
 filterKeys :: (k -> Bool) -> PSQ k a -> PSQ k a
 filterKeys p (PSQ xs) = PSQ (S.filter (p . fst) xs)
 

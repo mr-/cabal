@@ -16,7 +16,7 @@ import Distribution.Client.Dependency.Modular.Interactive.Parser (Selection (..)
                                                                   Statement (..), Statements (..),
                                                                   commandList, readStatements)
 import Distribution.Client.Dependency.Modular.Package            (QPN, showQPN)
-import Distribution.Client.Dependency.Modular.PSQ                (sortByKeys)
+import Distribution.Client.Dependency.Modular.PSQ                (toLeft)
 import Distribution.Client.Dependency.Modular.Solver             (explorePointer)
 import Distribution.Client.Dependency.Modular.Tree               (ChildType (..), Tree (..),
                                                                   TreeF (..), isInstalled,
@@ -238,21 +238,14 @@ data FlaggedDep qpn =
 data Dep qpn = Dep qpn (CI qpn)
 -}
 
-
 preferSelections :: Selections -> Tree a -> Tree a
 preferSelections sel = trav go
   where
-    go (GoalChoiceF xs) = GoalChoiceF (sortByKeys preferSel xs)
+    go (GoalChoiceF xs) = GoalChoiceF (toLeft (depMatchesAny sel) xs)
     go x                = x
 
-    preferSel :: OpenGoal -> OpenGoal -> Ordering
-    preferSel (OpenGoal lf _) (OpenGoal rf _) = case (lf `depMatchesAny` sel, rf `depMatchesAny` sel) of
-                        (True, True)   -> EQ
-                        (True, False)  -> LT
-                        (False, True)  -> GT
-                        (False, False) -> EQ
-    depMatchesAny :: FlaggedDep QPN -> Selections -> Bool
-    depMatchesAny dep (Selections selections) = any (depMatches dep) selections
+    depMatchesAny :: Selections -> OpenGoal -> Bool
+    depMatchesAny (Selections selections) (OpenGoal fd _) = any (depMatches fd) selections
 
     depMatches :: FlaggedDep QPN -> Selection -> Bool
     depMatches (Simple (Dep qpn _)) (SelPChoice name)       = name `isSubOf` showQPN qpn
