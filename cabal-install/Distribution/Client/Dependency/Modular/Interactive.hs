@@ -4,33 +4,35 @@ import Control.Applicative                                       ((<$>), (<*>), 
 import Data.Char                                                 (toLower)
 import Data.List                                                 (isInfixOf, isPrefixOf, sort)
 import Data.Maybe                                                (fromJust, fromMaybe, isJust)
-import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency                            (DepResolverParams,
                                                                   resolveDependenciesConfigs)
 import Distribution.Client.Dependency.Modular                    (modularResolverTree)
-import Distribution.Client.Dependency.Modular.Dependency         (QGoalReasonChain)
+import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
+import Distribution.Client.Dependency.Modular.Dependency         (QGoalReasonChain, FlaggedDep(..), OpenGoal(..), Dep(..))
+import Distribution.Client.Dependency.Modular.Explore            (donePtrToLog, runTreePtrLog)
 import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
 import Distribution.Client.Dependency.Modular.Interactive.Parser (Selection (..), Selections (..),
                                                                   Statement (..), Statements (..),
-                                                                  readStatements, commandList)
-import Distribution.Client.Dependency.Modular.Package            (showQPN)
+                                                                  commandList, readStatements)
+import Distribution.Client.Dependency.Modular.Package            (QPN, showQPN)
 import Distribution.Client.Dependency.Modular.Solver             (explorePointer)
-import Distribution.Client.Dependency.Modular.Explore            (donePtrToLog, runTreePtrLog)
 import Distribution.Client.Dependency.Modular.Tree               (ChildType (..), Tree (..),
                                                                   isInstalled, showChild,
-                                                                  showNodeFromTree)
+                                                                  showNodeFromTree, trav, TreeF (..))
 import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), children,
                                                                   filterBetween, findDown,
                                                                   focusChild, focusRoot, focusUp,
                                                                   fromTree, isRoot, pointsBelow,
-                                                                  toTree)
+                                                                  toTree, liftToPtr)
 import Distribution.Client.Dependency.Types                      (Solver (..))
 import Distribution.Simple.Compiler                              (CompilerId)
 import Distribution.System                                       (Platform)
-import System.Console.Haskeline                                  (InputT, defaultSettings,
-                                                                  getInputLine, outputStrLn,
-                                                                  runInputT, setComplete, completeWord)
-import System.Console.Haskeline.Completion                       (Completion(..), CompletionFunc)
+import System.Console.Haskeline                                  (InputT, completeWord,
+                                                                  defaultSettings, getInputLine,
+                                                                  outputStrLn, runInputT,
+                                                                  setComplete)
+import System.Console.Haskeline.Completion                       (Completion (..), CompletionFunc)
+import Distribution.Client.Dependency.Modular.PSQ (sortByKeys)
 
 data UIState a = UIState {uiPointer     :: Pointer a,
                           uiBookmarks   :: [(String, Pointer a)],
@@ -78,6 +80,7 @@ runInteractive platform compId solver resolverParams = do
     putStrLn "auto            starts the automatic solver"
     putStrLn "goto aeson      runs the parser until it sets aeson's version"
     putStrLn "goto aeson:test runs the parser until it sets the flag test for aeson"
+    putStrLn "prefer aeson    sorts the choices so that aeson comes first if it is available (Same arguments as goto)"
     putStrLn "bset name       sets a bookmark called name"
     putStrLn "blist           lists all bookmarks"
     putStrLn "bjump name      jumps to the bookmark name"
@@ -165,6 +168,11 @@ interpretStatement uiState (BookJump name) = case lookup name (uiBookmarks uiSta
                                             Nothing -> Left "No such bookmark."
                                             Just a  -> Right $ uiState {uiPointer = a}
 
+
+-- TODO: Should the selected packages get precedence? Or should they be
+-- traversed in the given order? (order makes a difference in selection,
+-- e.g. when installing cabal-install, goto zlib has fewer options than
+-- selecting it manually as early as possible.)
 interpretStatement uiState (Goto selections) = (setPointer uiState . selectPointer selections) <$> autoRun uiState
   where
     selectPointer :: Selections -> UIState QGoalReasonChain -> Pointer QGoalReasonChain
@@ -188,35 +196,72 @@ interpretStatement uiState ShowPlan | isDone (uiPointer uiState) =
     case runTreePtrLog $ donePtrToLog (uiPointer uiState) of
       Left s                -> Left s
       Right (assignment, _) -> Left $ showAssignment assignment
-interpretStatement _ _ = Left "Do not have a plan to show"
+interpretStatement _ ShowPlan = Left "Do not have a plan to show"
+
+interpretStatement uiState (Prefer sel) = Right $ setPointer uiState ((preferSelections sel) `liftToPtr` (uiPointer uiState))
+
 
 isDone :: Pointer a -> Bool
 isDone (Pointer _ (Done _ )  ) = True
 isDone _                       = False
 
 
-
-isSelected :: Selections -> Tree QGoalReasonChain ->  Bool
-isSelected (Selections selections) tree  = or [tree `matches` selection | selection <- selections]
+isSelected :: Selections -> Tree a ->  Bool
+isSelected (Selections selections) tree  = or [tree `nodeMatches` selection | selection <- selections]
   where
-    matches :: Tree a -> Selection ->  Bool
-    matches (PChoice qpn _ _)     (SelPChoice pname)         =   pname   `isSubOf` showQPN qpn
+    nodeMatches :: Tree a -> Selection ->  Bool
+    nodeMatches (PChoice qpn _ _)     (SelPChoice pname)        =  pname   `isSubOf` showQPN qpn
 
-    matches (FChoice qfn _ _ _ _) (SelFSChoice name flag)    =   (name   `isSubOf` qfnName)
-                                                                          && (flag   `isSubOf` qfnFlag)
-      where
-        (qfnName, qfnFlag) = unQFN qfn
-    matches (SChoice qsn _ _ _ )  (SelFSChoice name stanza)  =   (name   `isSubOf` qsnName)
-                                                                          && (stanza `isSubOf` qsnStanza)
-      where
-        (qsnName, qsnStanza) = unQSN qsn
-    matches _          _                                 = False
+    nodeMatches (FChoice qfn _ _ _ _) (SelFSChoice name flag)   = (name   `isSubOf` qfnName)
+                                                               && (flag   `isSubOf` qfnFlag)
+      where (qfnName, qfnFlag) = unQFN qfn
+    nodeMatches (SChoice qsn _ _ _ )  (SelFSChoice name stanza) = (name   `isSubOf` qsnName)
+                                                               && (stanza `isSubOf` qsnStanza)
+      where (qsnName, qsnStanza) = unQSN qsn
+    nodeMatches _          _                                    = False
 
-    isSubOf :: String -> String -> Bool
-    isSubOf x y = lower x `isInfixOf` lower y
-      where
-        lower :: String -> String
-        lower = map toLower
+isSubOf :: String -> String -> Bool
+isSubOf x y = lower x `isInfixOf` lower y
+  where
+    lower :: String -> String
+    lower = map toLower
+
+{-
+data OpenGoal = OpenGoal (FlaggedDep QPN) QGoalReasonChain
+
+data FlaggedDep qpn =
+    Flagged (FN qpn) FInfo (TrueFlaggedDeps qpn) (FalseFlaggedDeps qpn)
+  | Stanza  (SN qpn)       (TrueFlaggedDeps qpn)
+  | Simple (Dep qpn)
+  deriving (Eq, Show)
+
+data Dep qpn = Dep qpn (CI qpn)
+-}
+
+
+preferSelections :: Selections -> Tree a -> Tree a
+preferSelections sel = trav go
+  where
+    go (GoalChoiceF xs) = GoalChoiceF (sortByKeys preferSel xs)
+    go x                = x
+
+    preferSel :: OpenGoal -> OpenGoal -> Ordering
+    preferSel (OpenGoal lf _) (OpenGoal rf _) = case (lf `depMatchesAny` sel, rf `depMatchesAny` sel) of
+                        (True, True)   -> EQ
+                        (True, False)  -> LT
+                        (False, True)  -> GT
+                        (False, False) -> EQ
+    depMatchesAny :: FlaggedDep QPN -> Selections -> Bool
+    depMatchesAny dep (Selections selections) = any (depMatches dep) selections
+
+    depMatches :: FlaggedDep QPN -> Selection -> Bool
+    depMatches (Simple (Dep qpn _)) (SelPChoice name)       = name `isSubOf` showQPN qpn
+    depMatches (Flagged qfn _ _ _)  (SelFSChoice name flag) = (name `isSubOf` qfnName) && (flag `isSubOf` qfnFlag)
+      where (qfnName, qfnFlag) = unQFN qfn
+    depMatches (Stanza qsn _)       (SelFSChoice name flag) = (name `isSubOf`qsnName) && (flag `isSubOf` qsnFlag)
+      where (qsnName, qsnFlag) = unQSN qsn
+    depMatches _                    _                       = False
+
 
 autoRun :: UIState QGoalReasonChain -> Either String (UIState QGoalReasonChain)
 autoRun uiState = setPointer uiState <$> (explorePointer . uiPointer) uiState
