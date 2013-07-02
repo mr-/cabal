@@ -189,7 +189,7 @@ exploreTreeLog t = transform $ exploreTreePtrLog (fromTree t) t
 donePtrToLog :: Pointer a -> Log Message (Assignment, RevDepMap)
 donePtrToLog ptr = donePtrLog (toTree $ focusRoot ptr) (A M.empty M.empty M.empty, oneWayTrail)
   where
-    oneWayTrail = wrongToOne $ pathToTrail $ toPath ptr
+    oneWayTrail = wrongToOne $ pathToTrail $ toPath ptr -- the trail to the Done-Node
 
     donePtrLog :: Tree a -> ( (Assignment, OneWayTrail) -> Log Message (Assignment, RevDepMap) )
     donePtrLog = cata go
