@@ -6,7 +6,6 @@ import Data.List                                                 (isInfixOf)
 import Data.Maybe                                                (fromJust, fromMaybe, isJust)
 import Distribution.Client.Dependency                            (DepResolverParams,
                                                                   resolveDependenciesConfigs)
-import Distribution.Client.Dependency.Modular                    (SolverConfig (..))
 import Distribution.Client.Dependency.Modular                    (modularResolverTree)
 import Distribution.Client.Dependency.Modular.Dependency         (QGoalReasonChain)
 import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
@@ -81,20 +80,20 @@ runInteractive platform compId solver resolverParams = do
     putStrLn "indicateAuto    indicates the choices the solver would have made with a little (*)"
     putStrLn "install         Once the interface says 'Done', you can type 'install' to install the package"
 
-    runInputT defaultSettings (loop sc $ Just $ UIState (fromTree searchTree) [] Nothing Nothing)
+    runInputT defaultSettings (loop $ Just $ UIState (fromTree searchTree) [] Nothing Nothing)
   where
-        loop :: SolverConfig -> Maybe (UIState QGoalReasonChain) -> InputT IO (Maybe (Pointer QGoalReasonChain))
-        loop _ Nothing =
+        loop :: Maybe (UIState QGoalReasonChain) -> InputT IO (Maybe (Pointer QGoalReasonChain))
+        loop Nothing =
           outputStrLn "Bye bye" >> return Nothing
 
-        loop _ (Just uiState) | isInstall uiState =
+        loop (Just uiState) | isInstall uiState =
           outputStrLn "Bye bye" >> return (uiInstall uiState)
 
-        loop sc (Just uiState) = do
+        loop (Just uiState) = do
           outputStrLn $ "Node: " ++ showNodeFromTree ( toTree $ uiPointer uiState )
           outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
-          uiS <- handleCommand sc uiState
-          loop sc uiS
+          uiS <- handleCommand uiState
+          loop uiS
 
         thisOrThat :: String -> String -> String
         "" `thisOrThat` s = s
@@ -105,57 +104,57 @@ runInteractive platform compId solver resolverParams = do
 generateChoices :: Pointer a -> [(Int, ChildType)]
 generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)
 
-handleCommand :: SolverConfig -> UIState QGoalReasonChain -> InputT IO (Maybe (UIState QGoalReasonChain))
-handleCommand sc uiState = do
+handleCommand :: UIState QGoalReasonChain -> InputT IO (Maybe (UIState QGoalReasonChain))
+handleCommand uiState = do
   inp <- getInputLine "> "
   case inp of
     Nothing    -> return Nothing
-    Just text  -> case readStatements text >>= \cmd -> interpretStatements sc cmd uiState of
+    Just text  -> case readStatements text >>= \cmd -> interpretStatements cmd uiState of
                     Left s  -> do outputStrLn s
-                                  handleCommand sc uiState
+                                  handleCommand uiState
                     Right t -> return $ Just t
 
 
-interpretStatements :: SolverConfig -> Statements -> UIState QGoalReasonChain ->  Either String (UIState QGoalReasonChain)
-interpretStatements _  (Statements [])      _        = error "Internal Error in interpretExpression"
-interpretStatements sc (Statements [cmd])   uiState  = interpretStatement sc uiState cmd
-interpretStatements sc (Statements (x:xs))  uiState  = interpretStatement sc uiState x >>= interpretStatements sc (Statements xs)
+interpretStatements :: Statements -> UIState QGoalReasonChain ->  Either String (UIState QGoalReasonChain)
+interpretStatements (Statements [])     _        = error "Internal Error in interpretExpression"
+interpretStatements (Statements [cmd])  uiState  = interpretStatement uiState cmd
+interpretStatements (Statements (x:xs)) uiState  = interpretStatement uiState x >>= interpretStatements (Statements xs)
 
 
-interpretStatement :: SolverConfig -> UIState QGoalReasonChain -> Statement -> Either String (UIState QGoalReasonChain)
-interpretStatement _ uiState ToTop = Right $ uiState {uiPointer = focusRoot (uiPointer uiState)}
+interpretStatement :: UIState QGoalReasonChain -> Statement -> Either String (UIState QGoalReasonChain)
+interpretStatement uiState ToTop = Right $ uiState {uiPointer = focusRoot (uiPointer uiState)}
 
-interpretStatement _ uiState Up | isRoot (uiPointer uiState)  = Left "We are at the top"
-interpretStatement _ uiState Up                               = Right $ uiState { uiPointer = fromJust $ focusUp (uiPointer uiState)}
+interpretStatement uiState Up | isRoot (uiPointer uiState)  = Left "We are at the top"
+interpretStatement uiState Up                               = Right $ uiState { uiPointer = fromJust $ focusUp (uiPointer uiState)}
 
-interpretStatement _ uiState (Go n) = case focused of
+interpretStatement uiState (Go n) = case focused of
                                         Nothing -> Left "No such child"
                                         Just subPointer -> Right $ uiState {uiPointer = subPointer}
   where focused     = lookup n choices >>= flip focusChild treePointer
         choices     = generateChoices treePointer
         treePointer = uiPointer uiState
 
-interpretStatement _ uiState Empty =  case choices of -- behave differently when indicateAuto is on?
+interpretStatement uiState Empty =  case choices of -- behave differently when indicateAuto is on?
                         ((_, child):_) -> Right $ setPointer uiState $ fromJust $ focusChild child treePointer
                         _              -> Left "No choice left"
   where choices     = generateChoices treePointer
         treePointer = uiPointer uiState
 
 
-interpretStatement sc uiState Auto = autoRun sc uiState
+interpretStatement uiState Auto = autoRun uiState
 
-interpretStatement _ uiState (BookSet name) = Right $ addBookmark name uiState
+interpretStatement uiState (BookSet name) = Right $ addBookmark name uiState
   where
     addBookmark :: String ->  UIState a -> UIState a
     addBookmark s u = u {uiBookmarks = (s, uiPointer u) : uiBookmarks u}
 
-interpretStatement _ uiState BookList = Left $ show $ map fst $ uiBookmarks uiState
+interpretStatement uiState BookList = Left $ show $ map fst $ uiBookmarks uiState
 
-interpretStatement _ uiState (BookJump name) = case lookup name (uiBookmarks uiState) of
+interpretStatement uiState (BookJump name) = case lookup name (uiBookmarks uiState) of
                                             Nothing -> Left "No such bookmark."
                                             Just a  -> Right $ uiState {uiPointer = a}
 
-interpretStatement sc  uiState (Goto selections) = (setPointer uiState . selectPointer selections) <$> autoRun sc uiState
+interpretStatement uiState (Goto selections) = (setPointer uiState . selectPointer selections) <$> autoRun uiState
   where
     selectPointer :: Selections -> UIState QGoalReasonChain -> Pointer QGoalReasonChain
     selectPointer sel autoState = last $ deflt <|> found
@@ -163,20 +162,20 @@ interpretStatement sc  uiState (Goto selections) = (setPointer uiState . selectP
         found = filterBetween (isSelected sel . toTree) (uiPointer uiState) (uiPointer autoState)
         deflt = [uiPointer autoState]
 
-interpretStatement _ uiState Install | isDone (uiPointer uiState)
+interpretStatement uiState Install | isDone (uiPointer uiState)
                               = Right $ setInstall uiState $ uiPointer uiState
     where
       isDone (Pointer _ (Done _ )  ) = True
       isDone _                       = False
 
-interpretStatement _ _ Install  = Left "Need to be on a \"Done\"-Node"
-interpretStatement _ _ (Cut _) = Left "Ooops.. not implemented yet."
+interpretStatement _ Install  = Left "Need to be on a \"Done\"-Node"
+interpretStatement _ (Cut _) = Left "Ooops.. not implemented yet."
 
-interpretStatement _ uiState (Find sel) = case findDown (isSelected sel.toTree) (uiPointer uiState) of
+interpretStatement uiState (Find sel) = case findDown (isSelected sel.toTree) (uiPointer uiState) of
                                           (x:_) -> Right $ setPointer uiState x
                                           _     -> Left "Nothing found"
 
-interpretStatement sc uiState IndicateAuto = setAutoPointer uiState <$> (explorePointer sc . uiPointer) uiState
+interpretStatement uiState IndicateAuto = setAutoPointer uiState <$> (explorePointer . uiPointer) uiState
 
 isSelected :: Selections -> Tree QGoalReasonChain ->  Bool
 isSelected (Selections selections) tree  = or [tree `matches` selection | selection <- selections]
@@ -200,8 +199,8 @@ isSelected (Selections selections) tree  = or [tree `matches` selection | select
         lower :: String -> String
         lower = map toLower
 
-autoRun :: SolverConfig -> UIState QGoalReasonChain -> Either String (UIState QGoalReasonChain)
-autoRun sc uiState = setPointer uiState <$> (explorePointer sc . uiPointer) uiState
+autoRun :: UIState QGoalReasonChain -> Either String (UIState QGoalReasonChain)
+autoRun uiState = setPointer uiState <$> (explorePointer . uiPointer) uiState
 
 
 displayChoices :: UIState QGoalReasonChain -> String

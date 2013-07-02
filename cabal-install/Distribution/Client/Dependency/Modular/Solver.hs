@@ -77,15 +77,15 @@ solveTree sc idx userPrefs userConstraints userGoals =
 
 
 -- This either gives an error, or a pointer to a "Done"-node, ignoring the Log stuff
--- There is a fair amount of "running around in circles" going on
--- TODO: DRY!
-explorePointer :: SolverConfig -> Pointer a -> Either String (Pointer a)
-explorePointer sc treePointer = snd <$> (runTreePtrLog  .
-                                         explorePhase   .
-                                         heuristicsPhase) (toTree treePointer)
+explorePointer :: Pointer a -> Either String (Pointer a)
+explorePointer treePointer = snd <$> (runTreePtrLog  .
+                                      explorePhase   .
+                                      heuristicsPhase) (toTree treePointer)
   where
     explorePhase     = exploreTreePtrLog treePointer . backjump
-    heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
-                       if preferEasyGoalChoices sc -- TODO: The interface needs to know about sc here..
-                         then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
-                         else P.preferBaseGoalChoice
+    heuristicsPhase  = P.firstGoal -- commit to the first choice (saves space)
+
+-- The tree is given by solveTree, which has done that already.
+--                       if preferEasyGoalChoices sc
+--                         then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
+--                         else P.preferBaseGoalChoice

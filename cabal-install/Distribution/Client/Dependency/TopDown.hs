@@ -73,7 +73,6 @@ import Control.Exception
 
 import Distribution.Client.Dependency.Modular.Dependency  (QGoalReasonChain)
 import Distribution.Client.Dependency.Modular.TreeZipper (Pointer)
-import Distribution.Client.Dependency.Modular.Tree (Tree)
 
 
 -- ------------------------------------------------------------
