@@ -62,7 +62,7 @@ pathToTrail (SChoicePoint path context _ _ _   ) = CTS  (P.contextKey context) :
 pathToTrail (GChoicePoint path context         ) = CTOG (P.contextKey context) : pathToTrail path
 
 walk :: OneWayTrail -> Pointer a -> Maybe (Pointer a)
-walk []     _           = Nothing
+walk []     treePointer = Just treePointer
 walk [x]    treePointer = focusChild x treePointer
 walk (x:xs) treePointer = focusChild x treePointer >>= walk xs
 
