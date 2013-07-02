@@ -1,5 +1,5 @@
 module Distribution.Client.Dependency.Modular.Interactive.Parser
-            (readStatements, Statements(..), Statement(..), Selections(..), Selection(..) ) where
+            (commandList, readStatements, Statements(..), Statement(..), Selections(..), Selection(..) ) where
 
 
 import Text.ParserCombinators.Parsec
@@ -38,27 +38,28 @@ data Selection  =  SelPChoice String
                  deriving (Show)
 
 
+commandList =
+           [ "bset"
+           , "bjump"
+           , "blist"
+           , "auto"
+           , "goto"
+           , "up"
+           , "top"
+           , "go"
+           , "install"
+           , "cut"
+           , "indicateAuto"
+           , "showPlan"
+           ]
+
 languageDef =
   emptyDef { Token.commentLine     = "//"
            , Token.identStart      = letter
            , Token.identLetter     = alphaNum <|> oneOf "-_" --is that enough?
-           , Token.reservedNames   = [ "bset"
-                                     , "bjump"
-                                     , "blist"
-                                     , "auto"
-                                     , "goto"
-                                     , "up"
-                                     , "top"
-                                     , "go"
-                                     , "autoLog"
-                                     , "install"
-                                     , "cut"
-                                     , "indicateAuto"
-                                     , "showPlan"
-                                     ]
+           , Token.reservedNames   = commandList
            , Token.reservedOpNames = ["|", ":"]
            }
-
 
 lexer = Token.makeTokenParser languageDef
 

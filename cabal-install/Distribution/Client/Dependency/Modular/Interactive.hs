@@ -2,7 +2,7 @@ module Distribution.Client.Dependency.Modular.Interactive where
 
 import Control.Applicative                                       ((<$>), (<*>), (<|>))
 import Data.Char                                                 (toLower)
-import Data.List                                                 (isInfixOf)
+import Data.List                                                 (isInfixOf, isPrefixOf, sort)
 import Data.Maybe                                                (fromJust, fromMaybe, isJust)
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency                            (DepResolverParams,
@@ -12,7 +12,7 @@ import Distribution.Client.Dependency.Modular.Dependency         (QGoalReasonCha
 import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
 import Distribution.Client.Dependency.Modular.Interactive.Parser (Selection (..), Selections (..),
                                                                   Statement (..), Statements (..),
-                                                                  readStatements)
+                                                                  readStatements, commandList)
 import Distribution.Client.Dependency.Modular.Package            (showQPN)
 import Distribution.Client.Dependency.Modular.Solver             (explorePointer)
 import Distribution.Client.Dependency.Modular.Explore            (donePtrToLog, runTreePtrLog)
@@ -29,7 +29,8 @@ import Distribution.Simple.Compiler                              (CompilerId)
 import Distribution.System                                       (Platform)
 import System.Console.Haskeline                                  (InputT, defaultSettings,
                                                                   getInputLine, outputStrLn,
-                                                                  runInputT)
+                                                                  runInputT, setComplete, completeWord)
+import System.Console.Haskeline.Completion                       (Completion(..), CompletionFunc)
 
 data UIState a = UIState {uiPointer     :: Pointer a,
                           uiBookmarks   :: [(String, Pointer a)],
@@ -84,7 +85,7 @@ runInteractive platform compId solver resolverParams = do
     putStrLn "install         Once the interface says 'Done', you can type 'install' to install the package"
     putStrLn "showPlan        shows what is going to be installed/used"
 
-    runInputT defaultSettings (loop $ Just $ UIState (fromTree searchTree) [] Nothing Nothing)
+    runInputT (setComplete cmdComplete defaultSettings) (loop $ Just $ UIState (fromTree searchTree) [] Nothing Nothing)
   where
         loop :: Maybe (UIState QGoalReasonChain) -> InputT IO (Maybe (Pointer QGoalReasonChain))
         loop Nothing =
@@ -103,7 +104,13 @@ runInteractive platform compId solver resolverParams = do
         "" `thisOrThat` s = s
         s  `thisOrThat` _ = s
 
-
+        cmdComplete :: CompletionFunc IO
+        cmdComplete = completeWord Nothing " " completion
+          where
+            completion :: String -> IO [Completion]
+            completion str = return $ map (\f -> Completion f f False) (x str)
+            x :: String -> [String]
+            x str          = filter (isPrefixOf str) (sort commandList)
 
 generateChoices :: Pointer a -> [(Int, ChildType)]
 generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)
