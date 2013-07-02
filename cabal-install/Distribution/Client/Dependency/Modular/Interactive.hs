@@ -8,22 +8,24 @@ import Distribution.Client.Dependency                            (DepResolverPar
                                                                   resolveDependenciesConfigs)
 import Distribution.Client.Dependency.Modular                    (modularResolverTree)
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
-import Distribution.Client.Dependency.Modular.Dependency         (QGoalReasonChain, FlaggedDep(..), OpenGoal(..), Dep(..))
+import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
+                                                                  OpenGoal (..), QGoalReasonChain)
 import Distribution.Client.Dependency.Modular.Explore            (donePtrToLog, runTreePtrLog)
 import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
 import Distribution.Client.Dependency.Modular.Interactive.Parser (Selection (..), Selections (..),
                                                                   Statement (..), Statements (..),
                                                                   commandList, readStatements)
 import Distribution.Client.Dependency.Modular.Package            (QPN, showQPN)
+import Distribution.Client.Dependency.Modular.PSQ                (sortByKeys)
 import Distribution.Client.Dependency.Modular.Solver             (explorePointer)
 import Distribution.Client.Dependency.Modular.Tree               (ChildType (..), Tree (..),
-                                                                  isInstalled, showChild,
-                                                                  showNodeFromTree, trav, TreeF (..))
+                                                                  TreeF (..), isInstalled,
+                                                                  showChild, showNodeFromTree, trav)
 import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), children,
                                                                   filterBetween, findDown,
                                                                   focusChild, focusRoot, focusUp,
-                                                                  fromTree, isRoot, pointsBelow,
-                                                                  toTree, liftToPtr)
+                                                                  fromTree, isRoot, liftToPtr,
+                                                                  pointsBelow, toTree)
 import Distribution.Client.Dependency.Types                      (Solver (..))
 import Distribution.Simple.Compiler                              (CompilerId)
 import Distribution.System                                       (Platform)
@@ -32,7 +34,6 @@ import System.Console.Haskeline                                  (InputT, comple
                                                                   outputStrLn, runInputT,
                                                                   setComplete)
 import System.Console.Haskeline.Completion                       (Completion (..), CompletionFunc)
-import Distribution.Client.Dependency.Modular.PSQ (sortByKeys)
 
 data UIState a = UIState {uiPointer     :: Pointer a,
                           uiBookmarks   :: [(String, Pointer a)],
@@ -211,14 +212,13 @@ isSelected (Selections selections) tree  = or [tree `nodeMatches` selection | se
   where
     nodeMatches :: Tree a -> Selection ->  Bool
     nodeMatches (PChoice qpn _ _)     (SelPChoice pname)        =  pname   `isSubOf` showQPN qpn
-
     nodeMatches (FChoice qfn _ _ _ _) (SelFSChoice name flag)   = (name   `isSubOf` qfnName)
                                                                && (flag   `isSubOf` qfnFlag)
       where (qfnName, qfnFlag) = unQFN qfn
     nodeMatches (SChoice qsn _ _ _ )  (SelFSChoice name stanza) = (name   `isSubOf` qsnName)
                                                                && (stanza `isSubOf` qsnStanza)
       where (qsnName, qsnStanza) = unQSN qsn
-    nodeMatches _          _                                    = False
+    nodeMatches _                     _                         = False
 
 isSubOf :: String -> String -> Bool
 isSubOf x y = lower x `isInfixOf` lower y

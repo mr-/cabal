@@ -35,13 +35,10 @@ data Pointer a = Pointer { toPath :: Path a, toTree :: Tree a }
 --data PointerPair a = Pair { pairShallow :: Pointer a,  pairDeep :: Pointer a}
 
 instance Functor Pointer where
-  fmap f ptr = fromJust $ walk trail $ fromTree transRoot
-    where
-      transRoot = (fmap f . toTree . focusRoot) ptr
-      trail = (wrongToOne.pathToTrail.toPath) ptr
+  fmap f = liftToPtr (fmap f)
 
 
-liftToPtr :: (Tree a -> Tree a) -> Pointer a -> Pointer a
+liftToPtr :: (Tree a -> Tree b) -> Pointer a -> Pointer b
 liftToPtr f ptr = fromJust $ walk trail $ fromTree transRoot
   where
     transRoot = (f . toTree . focusRoot) ptr
