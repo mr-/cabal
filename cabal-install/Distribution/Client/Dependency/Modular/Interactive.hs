@@ -9,7 +9,7 @@ import Distribution.Client.Dependency                            (DepResolverPar
 import Distribution.Client.Dependency.Modular                    (modularResolverTree)
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
-                                                                  OpenGoal (..), QGoalReasonChain)
+                                                                  OpenGoal (..))
 import Distribution.Client.Dependency.Modular.Explore            (ptrToAssignment)
 import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
 import Distribution.Client.Dependency.Modular.Interactive.Parser (Selection (..), Selections (..),
@@ -26,7 +26,7 @@ import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), 
                                                                   focusChild, focusRoot, focusUp,
                                                                   fromTree, isRoot, liftToPtr,
                                                                   pointsBelow, toTree)
-import Distribution.Client.Dependency.Types                      (Solver (..))
+import Distribution.Client.Dependency.Types                      (Solver (..), QPointer)
 import Distribution.Simple.Compiler                              (CompilerId)
 import Distribution.System                                       (Platform)
 import System.Console.Haskeline                                  (InputT, completeWord,
@@ -35,32 +35,32 @@ import System.Console.Haskeline                                  (InputT, comple
                                                                   setComplete)
 import System.Console.Haskeline.Completion                       (Completion (..), CompletionFunc)
 
-data UIState a = UIState {uiPointer     :: Pointer a,
-                          uiBookmarks   :: [(String, Pointer a)],
-                          uiInstall     :: Maybe (Pointer a),       -- these point
-                          uiAutoPointer :: Maybe (Pointer a)}       -- to Done
+data UIState = UIState {uiPointer     :: QPointer,
+                        uiBookmarks   :: [(String, QPointer)],
+                        uiInstall     :: Maybe (QPointer),       -- these point
+                        uiAutoPointer :: Maybe (QPointer)}       -- to Done
 
-setAutoPointer :: UIState a -> Pointer a -> UIState a
+setAutoPointer :: UIState -> QPointer -> UIState
 setAutoPointer state nP = state {uiAutoPointer = Just nP}
 
-setPointer :: UIState a -> Pointer a -> UIState a
+setPointer :: UIState -> QPointer -> UIState
 setPointer state nP = state {uiPointer = nP}
 
-setInstall :: UIState a -> Pointer a -> UIState a
+setInstall :: UIState -> QPointer -> UIState
 setInstall state nP = state {uiInstall = Just nP}
 
-isInstall :: UIState a -> Bool
+isInstall :: UIState -> Bool
 isInstall = isJust.uiInstall
 
-noInstall :: UIState a -> Bool
+noInstall :: UIState -> Bool
 noInstall = not.isInstall
 
-getInstall :: UIState a -> Pointer a
+getInstall :: UIState -> QPointer
 getInstall uiState = case uiAutoPointer uiState of
                         Just x -> x
                         _      -> error "Outch.. got wrong install"
 
--- Better uiBreakPoints :: [(String, Pointer a -> Bool)]
+-- Better uiBreakPoints :: [(String, QPointer -> Bool)]
 -- features: cut
 -- Figure out what the given bools for flags and Stanzas mean.
 
@@ -68,7 +68,7 @@ runInteractive :: Platform
                -> CompilerId
                -> Solver
                -> DepResolverParams
-               -> IO (Maybe (Pointer QGoalReasonChain))
+               -> IO (Maybe QPointer)
 runInteractive platform compId solver resolverParams = do
     let (sc, depResOpts)     = resolveDependenciesConfigs platform compId solver resolverParams
         searchTree           = modularResolverTree sc depResOpts
@@ -91,7 +91,7 @@ runInteractive platform compId solver resolverParams = do
 
     runInputT (setComplete cmdComplete defaultSettings) (loop $ Just $ UIState (fromTree searchTree) [] Nothing Nothing)
   where
-        loop :: Maybe (UIState QGoalReasonChain) -> InputT IO (Maybe (Pointer QGoalReasonChain))
+        loop :: Maybe UIState -> InputT IO (Maybe QPointer)
         loop Nothing =
           outputStrLn "Bye bye" >> return Nothing
 
@@ -116,10 +116,10 @@ runInteractive platform compId solver resolverParams = do
             x :: String -> [String]
             x str          = filter (isPrefixOf str) commandList
 
-generateChoices :: Pointer a -> [(Int, ChildType)]
+generateChoices :: QPointer -> [(Int, ChildType)]
 generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)
 
-handleCommand :: UIState QGoalReasonChain -> InputT IO (Maybe (UIState QGoalReasonChain))
+handleCommand :: UIState -> InputT IO (Maybe UIState)
 handleCommand uiState = do
   inp <- getInputLine "> "
   case inp of
@@ -130,13 +130,13 @@ handleCommand uiState = do
                     Right t -> return $ Just t
 
 
-interpretStatements :: Statements -> UIState QGoalReasonChain ->  Either String (UIState QGoalReasonChain)
+interpretStatements :: Statements -> UIState ->  Either String UIState
 interpretStatements (Statements [])     _        = error "Internal Error in interpretExpression"
 interpretStatements (Statements [cmd])  uiState  = interpretStatement uiState cmd
 interpretStatements (Statements (x:xs)) uiState  = interpretStatement uiState x >>= interpretStatements (Statements xs)
 
 
-interpretStatement :: UIState QGoalReasonChain -> Statement -> Either String (UIState QGoalReasonChain)
+interpretStatement :: UIState -> Statement -> Either String UIState
 interpretStatement uiState ToTop = Right $ uiState {uiPointer = focusRoot (uiPointer uiState)}
 
 interpretStatement uiState Up | isRoot (uiPointer uiState)  = Left "We are at the top"
@@ -160,7 +160,7 @@ interpretStatement uiState Auto = autoRun uiState
 
 interpretStatement uiState (BookSet name) = Right $ addBookmark name uiState
   where
-    addBookmark :: String ->  UIState a -> UIState a
+    addBookmark :: String ->  UIState -> UIState
     addBookmark s u = u {uiBookmarks = (s, uiPointer u) : uiBookmarks u}
 
 interpretStatement uiState BookList = Left $ show $ map fst $ uiBookmarks uiState
@@ -176,7 +176,7 @@ interpretStatement uiState (BookJump name) = case lookup name (uiBookmarks uiSta
 -- selecting it manually as early as possible.)
 interpretStatement uiState (Goto selections) = (setPointer uiState . selectPointer selections) <$> autoRun uiState
   where
-    selectPointer :: Selections -> UIState QGoalReasonChain -> Pointer QGoalReasonChain
+    selectPointer :: Selections -> UIState -> QPointer
     selectPointer sel autoState = last $ deflt <|> found
       where
         found = filterBetween (isSelected sel . toTree) (uiPointer uiState) (uiPointer autoState)
@@ -198,7 +198,7 @@ interpretStatement uiState ShowPlan = Left $ showAssignment $ ptrToAssignment (u
 interpretStatement uiState (Prefer sel) = Right $ setPointer uiState ((preferSelections sel) `liftToPtr` (uiPointer uiState))
 
 
-isDone :: Pointer a -> Bool
+isDone :: QPointer -> Bool
 isDone (Pointer _ (Done _ )  ) = True
 isDone _                       = False
 
@@ -252,11 +252,11 @@ preferSelections sel = trav go
     depMatches _                    _                       = False
 
 
-autoRun :: UIState QGoalReasonChain -> Either String (UIState QGoalReasonChain)
+autoRun :: UIState -> Either String UIState
 autoRun uiState = setPointer uiState <$> (explorePointer . uiPointer) uiState
 
 
-displayChoices :: UIState QGoalReasonChain -> String
+displayChoices :: UIState -> String
 displayChoices uiState = prettyShow $ map (uncurry makeEntry) $ generateChoices treePointer
   where
     treePointer = uiPointer uiState

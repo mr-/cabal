@@ -77,7 +77,7 @@ import Distribution.Client.Types
 import Distribution.Client.Dependency.Types
          ( PreSolver(..), Solver(..), DependencyResolver, PackageConstraint(..)
          , PackagePreferences(..), InstalledPreference(..)
-         , PackagesPreferenceDefault(..)
+         , PackagesPreferenceDefault(..), QPointer
          , Progress(..), foldProgress, DependencyResolverOptions )
 import Distribution.Client.Sandbox.Types
          ( SandboxPackageInfo(..) )
@@ -99,10 +99,6 @@ import Distribution.Text
          ( display )
 import Distribution.Verbosity
          ( Verbosity )
-
-import Distribution.Client.Dependency.Modular.Dependency  (QGoalReasonChain)
-import Distribution.Client.Dependency.Modular.TreeZipper (Pointer)
-
 import Data.List (maximumBy, foldl')
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as Map
@@ -400,7 +396,7 @@ resolveDependencies  :: Platform
                      -> CompilerId
                      -> Solver
                      -> DepResolverParams
-                     -> (Maybe (Pointer QGoalReasonChain) -> Progress String String InstallPlan)
+                     -> (Maybe QPointer -> Progress String String InstallPlan)
 
     --TODO: is this needed here? see dontUpgradeBasePackage
 resolveDependencies platform comp _solver params _pointer

@@ -25,6 +25,7 @@ module Distribution.Client.Dependency.Types (
 
     Progress(..),
     foldProgress,
+    QPointer,
   ) where
 
 import Control.Applicative
@@ -70,6 +71,9 @@ import Distribution.Client.Dependency.Modular.TreeZipper (Pointer)
 
 
 import Prelude hiding (fail)
+
+
+type QPointer = Pointer QGoalReasonChain
 
 -- | Covers source dependencies and installed dependencies in
 -- one type.
@@ -118,8 +122,8 @@ type DependencyResolverOptions = ( Platform
                                  , [PackageConstraint], [PackageName] )
 
 type DependencyResolver = DependencyResolverOptions
-                       -> Maybe (Pointer QGoalReasonChain) -- The modular solver allows for a pointer
-                                                           -- which tells it where to start solving.
+                       -> Maybe QPointer  -- The modular solver allows for a pointer
+                                          -- which tells it where to start solving.
                        -> Progress String String [InstallPlan.PlanPackage]
 
 -- | Per-package constraints. Package constraints must be respected by the
