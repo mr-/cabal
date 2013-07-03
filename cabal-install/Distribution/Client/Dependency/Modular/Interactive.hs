@@ -10,7 +10,7 @@ import Distribution.Client.Dependency.Modular                    (modularResolve
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
                                                                   OpenGoal (..), QGoalReasonChain)
-import Distribution.Client.Dependency.Modular.Explore            (donePtrToLog, runTreePtrLog)
+import Distribution.Client.Dependency.Modular.Explore            (ptrToAssignment)
 import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
 import Distribution.Client.Dependency.Modular.Interactive.Parser (Selection (..), Selections (..),
                                                                   Statement (..), Statements (..),
@@ -193,11 +193,7 @@ interpretStatement uiState (Find sel) = case findDown (isSelected sel.toTree) (u
 
 interpretStatement uiState IndicateAuto = setAutoPointer uiState <$> (explorePointer . uiPointer) uiState
 
-interpretStatement uiState ShowPlan | isDone (uiPointer uiState) =
-    case runTreePtrLog $ donePtrToLog (uiPointer uiState) of
-      Left s                -> Left s
-      Right (assignment, _) -> Left $ showAssignment assignment
-interpretStatement _ ShowPlan = Left "Do not have a plan to show"
+interpretStatement uiState ShowPlan = Left $ showAssignment $ ptrToAssignment (uiPointer uiState)
 
 interpretStatement uiState (Prefer sel) = Right $ setPointer uiState ((preferSelections sel) `liftToPtr` (uiPointer uiState))
 

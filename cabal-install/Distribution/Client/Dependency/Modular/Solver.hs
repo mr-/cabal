@@ -15,7 +15,7 @@ import Distribution.Client.Dependency.Modular.Package
 import qualified Distribution.Client.Dependency.Modular.Preference as P
 import Distribution.Client.Dependency.Modular.Validate
 import Distribution.Client.Dependency.Modular.Tree        (Tree)
-import Distribution.Client.Dependency.Modular.TreeZipper (Pointer(..))
+import Distribution.Client.Dependency.Modular.TreeZipper (Pointer(..), fromTree)
 import Control.Applicative ((<$>))
 
 
@@ -35,38 +35,20 @@ data ModularConfig = ModularConfig {
   globalGoals       :: [PN]
 }
 
-
---TODO: DRY!
 -- This either gives an error, or a pointer to a "Done"-node, ignoring the Log stuff
 -- Better name for that function?
 explorePointer :: Pointer a -> Either String (Pointer a)
-explorePointer treePointer = snd <$> (runTreePtrLog  .
-                                      explorePhase   .
-                                      heuristicsPhase) (toTree treePointer)
-  where
-    explorePhase     = exploreTreePtrLog treePointer . backjump
-    heuristicsPhase  = P.firstGoal -- commit to the first choice (saves space)
-
+explorePointer treePointer = snd <$> (runTreePtrLog $ findDoneBelow treePointer)
 
 solve :: SolverConfig -> ModularConfig -> Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap)
---make that call explorePointer, for a more flexible interface?
-solve _  (ModularConfig _   _         _               _)         (Just ptr)  = --donePtrToLog ptr
-        transformLog          $
-        exploreTreePtrLog ptr $
-        backjump              $
-        P.firstGoal             (toTree ptr)
+solve _  _  (Just treePointer)  = transformLog $ findDoneBelow treePointer -- was: donePtrToLog treePointer
+solve sc mc  Nothing            = transformLog $ findDoneBelow $ fromTree $ solveTree sc mc
 
-solve sc (ModularConfig idx userPrefs userConstraints userGoals)  Nothing    = solveGivenTree tree
-  where
-    tree = solveTree sc (ModularConfig idx userPrefs userConstraints userGoals)
-
-solveGivenTree ::Tree QGoalReasonChain -> Log Message (Assignment, RevDepMap)
-solveGivenTree = explorePhase        .
-                 spaceReductionPhase
+findDoneBelow :: Pointer a -> Log Message (Assignment, Pointer a)
+findDoneBelow treePointer = (explorePhase . spaceReductionPhase . toTree) treePointer
   where
     spaceReductionPhase = P.firstGoal
-    explorePhase        = exploreTreeLog . backjump
-
+    explorePhase        = exploreTreePtrLog treePointer . backjump
 
 solveTree :: SolverConfig -> ModularConfig -> Tree QGoalReasonChain
 solveTree sc (ModularConfig idx userPrefs userConstraints userGoals) =

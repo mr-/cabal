@@ -115,6 +115,71 @@ exploreTree :: Alternative m => Tree a -> m (Assignment, RevDepMap)
 exploreTree t = explore t (A M.empty M.empty M.empty)
 
 
+-- | Legacy
+donePtrToLog :: Pointer a -> Log Message (Assignment, RevDepMap)
+donePtrToLog ptr = --transformLog $ exploreTreePtrLog ptr (backjump $ toTree ptr)
+
+ donePtrLog (toTree $ focusRoot ptr) (A M.empty M.empty M.empty, oneWayTrail)
+  where
+    oneWayTrail = wrongToOne $ pathToTrail $ toPath ptr -- the trail to the Done-Node
+    donePtrLog :: Tree a -> ( (Assignment, OneWayTrail) -> Log Message (Assignment, RevDepMap) )
+    donePtrLog = cata go
+      where
+
+        go (DoneF rdm)             (a, [])                     =
+          succeedWith Success (a, rdm)
+
+        go (PChoiceF qpn _     ts) (A pa fa sa, (CTP k):xs)    =
+          tryWith (TryP (PI qpn k)) $ r (A (M.insert qpn k pa) fa sa, xs)
+          where r = fromJust $ P.lookup k ts
+
+        go (FChoiceF qfn _ _ _ ts) (A pa fa sa, (CTF k):xs)    =
+          tryWith (TryF qfn k) $ r (A pa (M.insert qfn k fa) sa, xs) -- record the pkg choice
+          where r = fromJust $ P.lookup k ts
+
+        go (SChoiceF qsn _ _   ts) (A pa fa sa, (CTS k):xs)    =
+          tryWith (TryS qsn k) $ r (A pa fa (M.insert qsn k sa), xs) -- record the pkg choice
+          where r = fromJust $ P.lookup k ts
+
+        go (GoalChoiceF        ts) (a, (CTOG k):xs)             =
+          continueWith (Next (close k)) (v (a, xs ))     -- commit to the first goal choice
+          where v = fromJust $ P.lookup k ts
+
+        go _                       _                            =
+          error "Internal error in donePtrToLog" -- This catches cases like (GoalChoiceF...) (a (CTP k)..)
+                                                 -- where childtype and nodetype don't match
+                                                 -- ugly? Maybe. Could have been easy with dependent types.
+
+-- given a pointer, calculate the Assignment up to this point.
+ptrToAssignment :: Pointer a -> Assignment
+ptrToAssignment ptr = --transformLog $ exploreTreePtrLog ptr (backjump $ toTree ptr)
+ mkAssignment (toTree $ focusRoot ptr) (A M.empty M.empty M.empty, oneWayTrail)
+  where
+    oneWayTrail = wrongToOne $ pathToTrail $ toPath ptr -- the trail to the Done-Node
+
+    mkAssignment :: Tree a -> ((Assignment, OneWayTrail) -> Assignment)
+    mkAssignment = cata go
+      where
+        go :: TreeF t ((Assignment, [ChildType]) -> Assignment) -> (Assignment, [ChildType]) -> Assignment
+        go _              (a, [])                           = a
+
+        go (PChoiceF qpn _     ts) (A pa fa sa, (CTP k):xs) = r (A (M.insert qpn k pa) fa sa, xs) -- r ::  (Ass, [Ch]) -> Ass
+          where r = fromJust $ P.lookup k ts                                                      -- ts :: PSQ ChildType ((Ass, [Ch]) -> Ass)
+                                                                                                  -- (clear, look at def of TreeF)
+        go (FChoiceF qfn _ _ _ ts) (A pa fa sa, (CTF k):xs) = r (A pa (M.insert qfn k fa) sa, xs) -- record the pkg choice
+          where r = fromJust $ P.lookup k ts
+
+        go (SChoiceF qsn _ _   ts) (A pa fa sa, (CTS k):xs) = r (A pa fa (M.insert qsn k sa), xs) -- record the pkg choice
+          where r = fromJust $ P.lookup k ts
+
+        go (GoalChoiceF        ts) (a, (CTOG k):xs)         = v (a, xs )     -- commit to the first goal choice
+          where v = fromJust $ P.lookup k ts
+
+        go _                       _                         = error "Internal error in donePtrToLog"
+                                                 -- This catches cases like (GoalChoiceF...) (a (CTP k)..)
+                                                 -- where childtype and nodetype don't match
+                                                 -- ugly? Maybe. Could have been easy with dependent types.
+
 -- | Version of 'explore' that returns a 'Log'.
 explorePtrLog :: Tree (Maybe (ConflictSet QPN)) -> ( (Assignment, Pointer  a) -> Log Message (Assignment, Pointer a) )
 explorePtrLog = cata go
@@ -152,7 +217,17 @@ explorePtrLog = cata go
                    focusChild (CTOG k) treePtr )))     -- commit to the first goal choice
 
 
--- This Interface is used only in Solver.hs, I think
+-- | Interface. -- This finds a path in offsetPtr while traversing conflictTree.
+                -- It is important that conflictTree is a subtree of offsetPtr's tree
+                -- Or else it fails with a fromJust error :->
+                -- This should definitely be handled differently..
+                -- Maybe: data Subtree = Foo (Pointer a) (Tree b)
+                -- Or something..
+                -- Note that this does not backtrack below the pointer,
+                -- so it is save to give it that "offsetAssignment"
+exploreTreePtrLog :: Pointer a -> Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, Pointer a)
+exploreTreePtrLog offsetPtr conflictTree = explorePtrLog conflictTree (offsetAssignment, offsetPtr)
+  where offsetAssignment = ptrToAssignment offsetPtr -- (A M.empty M.empty M.empty)
 
 
 -- | Interface. -- This is to consume the Log and give either a Done-Ptr or an error.
@@ -165,19 +240,10 @@ runTreePtrLog l = case runLog l of
                     (_, Just (assignment, treePtr))  -> Right (assignment, treePtr)
 
 
--- | Interface. -- This finds a path in offsetPtr while traversing conflictTree.
-                -- It is important that conflictTree is a subtree of offsetPtr's tree
-                -- Or else it fails with a fromJust error :->
-                -- This should definitely be handled differently..
-                -- Maybe: data Subtree = Foo (Pointer a) (Tree b)
-                -- Or something..
-exploreTreePtrLog :: Pointer a -> Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, Pointer a)
-exploreTreePtrLog offsetPtr conflictTree = explorePtrLog conflictTree (A M.empty M.empty M.empty, offsetPtr )
-
 
 -- | Interface. -- For the atomatic automatic solver ;-)
-exploreTreeLog :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, RevDepMap)
-exploreTreeLog t = transformLog $ exploreTreePtrLog (fromTree t) t
+--exploreTreeLog :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, RevDepMap)
+--exploreTreeLog t = transformLog $ exploreTreePtrLog (fromTree t) t
 
 transformLog :: Log Message (Assignment, Pointer a) -> Log Message (Assignment, RevDepMap)
 transformLog mLog= (\(x,y) -> (x, fromDone y)) <$> mLog
@@ -186,36 +252,5 @@ transformLog mLog= (\(x,y) -> (x, fromDone y)) <$> mLog
     fromDone (Pointer _ (Done rdm)) = rdm
     fromDone (Pointer _ _)          = error "Uhoh.. Internal error in exploreTreeLog. Have you tried turning it off and on again?"
 
--- | Interface. -- In case you have come about a Done-Pointer, this gives you the neccessary Log ot go on.
-donePtrToLog :: Pointer a -> Log Message (Assignment, RevDepMap)
-donePtrToLog ptr = donePtrLog (toTree $ focusRoot ptr) (A M.empty M.empty M.empty, oneWayTrail)
-  where
-    oneWayTrail = wrongToOne $ pathToTrail $ toPath ptr -- the trail to the Done-Node
 
-    donePtrLog :: Tree a -> ( (Assignment, OneWayTrail) -> Log Message (Assignment, RevDepMap) )
-    donePtrLog = cata go
-      where
 
-        go (DoneF rdm)             (a, [])                     =
-          succeedWith Success (a, rdm)
-
-        go (PChoiceF qpn _     ts) (A pa fa sa, (CTP k):xs)    =
-          tryWith (TryP (PI qpn k)) $ r (A (M.insert qpn k pa) fa sa, xs)
-          where r = fromJust $ P.lookup k ts
-
-        go (FChoiceF qfn _ _ _ ts) (A pa fa sa, (CTF k):xs)    =
-          tryWith (TryF qfn k) $ r (A pa (M.insert qfn k fa) sa, xs) -- record the pkg choice
-          where r = fromJust $ P.lookup k ts
-
-        go (SChoiceF qsn _ _   ts) (A pa fa sa, (CTS k):xs)    =
-          tryWith (TryS qsn k) $ r (A pa fa (M.insert qsn k sa), xs) -- record the pkg choice
-          where r = fromJust $ P.lookup k ts
-
-        go (GoalChoiceF        ts) (a, (CTOG k):xs)             =
-          continueWith (Next (close k)) (v (a, xs ))     -- commit to the first goal choice
-          where v = fromJust $ P.lookup k ts
-
-        go _                       _                            =
-          error "Internal error in donePtrToLog" -- This catches cases like (GoalChoiceF...) (a (CTP k)..)
-                                                 -- where childtype and nodetype don't match
-                                                 -- ugly? Maybe. Could have been easy with dependent types.
