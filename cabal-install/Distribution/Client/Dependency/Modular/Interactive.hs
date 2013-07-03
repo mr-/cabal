@@ -2,7 +2,7 @@ module Distribution.Client.Dependency.Modular.Interactive where
 
 import Control.Applicative                                       ((<$>), (<*>), (<|>))
 import Data.Char                                                 (toLower)
-import Data.List                                                 (isInfixOf, isPrefixOf, sort)
+import Data.List                                                 (isInfixOf, isPrefixOf)
 import Data.Maybe                                                (fromJust, fromMaybe, isJust)
 import Distribution.Client.Dependency                            (DepResolverParams,
                                                                   resolveDependenciesConfigs)
@@ -114,7 +114,7 @@ runInteractive platform compId solver resolverParams = do
             completion :: String -> IO [Completion]
             completion str = return $ map (\f -> Completion f f False) (x str)
             x :: String -> [String]
-            x str          = filter (isPrefixOf str) (sort commandList)
+            x str          = filter (isPrefixOf str) commandList
 
 generateChoices :: Pointer a -> [(Int, ChildType)]
 generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)

@@ -2,6 +2,7 @@ module Distribution.Client.Dependency.Modular.Interactive.Parser
             (commandList, readStatements, Statements(..), Statement(..), Selections(..), Selection(..) ) where
 
 
+import           Data.List                              (sort)
 import           Text.ParserCombinators.Parsec
 import           Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token    as Token
@@ -37,7 +38,7 @@ data Selection  =  SelPChoice String
                  | SelFSChoice String String
                  deriving (Show)
 
-commandList =
+commandList = sort
            [ "bset"
            , "bjump"
            , "blist"

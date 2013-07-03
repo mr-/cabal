@@ -28,18 +28,20 @@ data SolverConfig = SolverConfig {
   maxBackjumps          :: Maybe Int
 }
 
-solve :: SolverConfig ->   -- solver parameters
-         Index ->          -- all available packages as an index
-         (PN -> PackagePreferences) -> -- preferences
-         Map PN [PackageConstraint] -> -- global constraints
-         [PN] ->                       -- global goals
-         (Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap))
---make that call explorePointer, for a more flexible interface?
-solve _  _   _         _               _         (Just ptr) = donePtrToLog ptr
+data ModularConfig = ModularConfig {
+  index :: Index,
+  preferences :: (PN -> PackagePreferences),
+  globalConstraints :: Map PN [PackageConstraint],
+  globalGoals :: [PN]
+}
 
-solve sc idx userPrefs userConstraints userGoals Nothing    = solveGivenTree tree
+solve :: SolverConfig -> ModularConfig -> Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap)
+--make that call explorePointer, for a more flexible interface?
+solve _  (ModularConfig _   _         _               _)         (Just ptr) = donePtrToLog ptr
+
+solve sc (ModularConfig idx userPrefs userConstraints userGoals)  Nothing    = solveGivenTree tree
   where
-    tree = solveTree sc idx userPrefs userConstraints userGoals
+    tree = solveTree sc (ModularConfig idx userPrefs userConstraints userGoals)
 
 solveGivenTree ::Tree QGoalReasonChain -> Log Message (Assignment, RevDepMap)
 solveGivenTree = explorePhase        .
@@ -49,13 +51,8 @@ solveGivenTree = explorePhase        .
     explorePhase        = exploreTreeLog . backjump
 
 
-solveTree :: SolverConfig ->   -- solver parameters
-         Index ->          -- all available packages as an index
-         (PN -> PackagePreferences) -> -- preferences
-         Map PN [PackageConstraint] -> -- global constraints
-         [PN] ->                       -- global goals
-         (Tree QGoalReasonChain)
-solveTree sc idx userPrefs userConstraints userGoals =
+solveTree :: SolverConfig -> ModularConfig -> Tree QGoalReasonChain
+solveTree sc (ModularConfig idx userPrefs userConstraints userGoals) =
            heuristicsPhase  $
            preferencesPhase $
            validationPhase  $
