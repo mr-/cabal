@@ -110,13 +110,17 @@ instance Text PreSolver where
 -- solving the package dependency problem and we want to make it easy to swap
 -- in alternatives.
 
-type DependencyResolverOptions = (Platform, CompilerId, InstalledPackageIndex.PackageIndex,
-                                  PackageIndex.PackageIndex SourcePackage, (PackageName -> PackagePreferences),
-                                  [PackageConstraint], [PackageName])
-
+type DependencyResolverOptions = ( Platform
+                                 , CompilerId
+                                 , InstalledPackageIndex.PackageIndex
+                                 , PackageIndex.PackageIndex SourcePackage
+                                 , (PackageName -> PackagePreferences)
+                                 , [PackageConstraint], [PackageName] )
 
 type DependencyResolver = DependencyResolverOptions
-          -> (Maybe (Pointer QGoalReasonChain) -> Progress String String [InstallPlan.PlanPackage])
+                       -> Maybe (Pointer QGoalReasonChain) -- The modular solver allows for a pointer
+                                                           -- which tells it where to start solving.
+                       -> Progress String String [InstallPlan.PlanPackage]
 
 -- | Per-package constraints. Package constraints must be respected by the
 -- solver. Multiple constraints for each package can be given, though obviously

@@ -29,15 +29,32 @@ data SolverConfig = SolverConfig {
 }
 
 data ModularConfig = ModularConfig {
-  index :: Index,
-  preferences :: (PN -> PackagePreferences),
+  index             :: Index,
+  preferences       :: (PN -> PackagePreferences),
   globalConstraints :: Map PN [PackageConstraint],
-  globalGoals :: [PN]
+  globalGoals       :: [PN]
 }
+
+
+--TODO: DRY!
+-- This either gives an error, or a pointer to a "Done"-node, ignoring the Log stuff
+-- Better name for that function?
+explorePointer :: Pointer a -> Either String (Pointer a)
+explorePointer treePointer = snd <$> (runTreePtrLog  .
+                                      explorePhase   .
+                                      heuristicsPhase) (toTree treePointer)
+  where
+    explorePhase     = exploreTreePtrLog treePointer . backjump
+    heuristicsPhase  = P.firstGoal -- commit to the first choice (saves space)
+
 
 solve :: SolverConfig -> ModularConfig -> Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap)
 --make that call explorePointer, for a more flexible interface?
-solve _  (ModularConfig _   _         _               _)         (Just ptr) = donePtrToLog ptr
+solve _  (ModularConfig _   _         _               _)         (Just ptr)  = --donePtrToLog ptr
+        transformLog          $
+        exploreTreePtrLog ptr $
+        backjump              $
+        P.firstGoal             (toTree ptr)
 
 solve sc (ModularConfig idx userPrefs userConstraints userGoals)  Nothing    = solveGivenTree tree
   where
@@ -72,19 +89,3 @@ solveTree sc (ModularConfig idx userPrefs userConstraints userGoals) =
                        P.requireInstalled (`elem` [PackageName "base",
                                                    PackageName "ghc-prim"])
     buildPhase       = buildTree idx (independentGoals sc) userGoals
-
-
--- This either gives an error, or a pointer to a "Done"-node, ignoring the Log stuff
--- Better name for that function?
-explorePointer :: Pointer a -> Either String (Pointer a)
-explorePointer treePointer = snd <$> (runTreePtrLog  .
-                                      explorePhase   .
-                                      heuristicsPhase) (toTree treePointer)
-  where
-    explorePhase     = exploreTreePtrLog treePointer . backjump
-    heuristicsPhase  = P.firstGoal -- commit to the first choice (saves space)
-
--- The tree is given by solveTree, which has done that already.
---                       if preferEasyGoalChoices sc
---                         then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
---                         else P.preferBaseGoalChoice

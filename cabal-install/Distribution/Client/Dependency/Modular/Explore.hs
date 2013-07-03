@@ -177,10 +177,11 @@ exploreTreePtrLog offsetPtr conflictTree = explorePtrLog conflictTree (A M.empty
 
 -- | Interface. -- For the atomatic automatic solver ;-)
 exploreTreeLog :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, RevDepMap)
-exploreTreeLog t = transform $ exploreTreePtrLog (fromTree t) t
+exploreTreeLog t = transformLog $ exploreTreePtrLog (fromTree t) t
+
+transformLog :: Log Message (Assignment, Pointer a) -> Log Message (Assignment, RevDepMap)
+transformLog mLog= (\(x,y) -> (x, fromDone y)) <$> mLog
   where
-    transform :: Log Message (Assignment, Pointer a) -> Log Message (Assignment, RevDepMap)
-    transform mLog= (\(x,y) -> (x, fromDone y)) <$> mLog
     fromDone :: Pointer a -> RevDepMap
     fromDone (Pointer _ (Done rdm)) = rdm
     fromDone (Pointer _ _)          = error "Uhoh.. Internal error in exploreTreeLog. Have you tried turning it off and on again?"
