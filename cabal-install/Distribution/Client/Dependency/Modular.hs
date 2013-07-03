@@ -24,7 +24,7 @@ import Distribution.Client.Dependency.Modular.Log
 import Distribution.Client.Dependency.Modular.Package
          ( PN )
 import Distribution.Client.Dependency.Modular.Solver
-         ( SolverConfig(..), solve, solveTree, ModularConfig(..) )
+         ( SolverConfig(..), solve, getDepTree, ModularConfig(..) )
 import Distribution.Client.Dependency.Types
          ( DependencyResolver, DependencyResolverOptions, PackageConstraint(..) )
 import Distribution.Client.InstallPlan
@@ -46,7 +46,7 @@ modularResolver sc conf@(_,_,iidx,sidx,_,_,_) =
     postprocess a rdm = map (convCP iidx sidx) (toCPs a rdm)
 
 modularResolverTree :: SolverConfig -> DependencyResolverOptions -> Tree QGoalReasonChain
-modularResolverTree sc conf = solveTree sc $ makeModularConfig sc conf
+modularResolverTree sc conf = getDepTree sc $ makeModularConfig sc conf
 
 makeModularConfig :: SolverConfig -> DependencyResolverOptions -> ModularConfig
 makeModularConfig sc (Platform arch os, cid, iidx, sidx, pprefs, pcs, pns)

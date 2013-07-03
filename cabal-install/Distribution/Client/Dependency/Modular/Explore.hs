@@ -1,4 +1,6 @@
-module Distribution.Client.Dependency.Modular.Explore where
+module Distribution.Client.Dependency.Modular.Explore
+  (runTreePtrLog, transformLog, exploreTreePtrLog, backjump, ptrToAssignment)
+where
 
 import Control.Applicative as A
 import Data.Foldable
@@ -15,6 +17,8 @@ import Distribution.Client.Dependency.Modular.Package
 import Distribution.Client.Dependency.Modular.PSQ as P
 import Distribution.Client.Dependency.Modular.Tree
 import Distribution.Client.Dependency.Modular.TreeZipper
+
+
 
 -- | Backjumping.
 --
@@ -72,32 +76,6 @@ combine var ((k, (     d, v)) : xs) c = (\ ~(e, ys) -> (e, (k, v) : ys)) $
                                                  | otherwise              -> combine var xs (e `S.union` c)
                                           Nothing                         -> (Nothing, snd $ combine var xs S.empty)
 
--- | Naive backtracking exploration of the search tree. This will yield correct
--- assignments only once the tree itself is validated.
-explore :: Alternative m => Tree a -> (Assignment -> m (Assignment, RevDepMap))
-explore = cata go
-  where
-    go (FailF _ _)           _           = A.empty
-    go (DoneF rdm)           a           = pure (a, rdm)
-    go (PChoiceF qpn _     ts) (A pa fa sa)   =
-      asum $                                      -- try children in order,
-      P.mapWithKey                                -- when descending ...
-        (\ k r -> r (A (M.insert qpn k pa) fa sa)) -- record the pkg choice
-      ts
-    go (FChoiceF qfn _ _ _ ts) (A pa fa sa)   =
-      asum $                                      -- try children in order,
-      P.mapWithKey                                -- when descending ...
-        (\ k r -> r (A pa (M.insert qfn k fa) sa)) -- record the flag choice
-      ts
-    go (SChoiceF qsn _ _   ts) (A pa fa sa)   =
-      asum $                                      -- try children in order,
-      P.mapWithKey                                -- when descending ...
-        (\ k r -> r (A pa fa (M.insert qsn k sa))) -- record the flag choice
-      ts
-    go (GoalChoiceF        ts) a              =
-      casePSQ ts A.empty                      -- empty goal choice is an internal error
-        (\ _k v _xs -> v a)                   -- commit to the first goal choice
-
 
 -- | Add in information about pruned trees.
 --
@@ -110,45 +88,7 @@ backjumpInfo c m = m <|> case c of -- important to produce 'm' before matching o
                            Nothing -> A.empty
                            Just cs -> failWith (Failure cs Backjump)
 
--- | Interface.
-exploreTree :: Alternative m => Tree a -> m (Assignment, RevDepMap)
-exploreTree t = explore t (A M.empty M.empty M.empty)
 
-
--- | Legacy
-donePtrToLog :: Pointer a -> Log Message (Assignment, RevDepMap)
-donePtrToLog ptr = --transformLog $ exploreTreePtrLog ptr (backjump $ toTree ptr)
-
- donePtrLog (toTree $ focusRoot ptr) (A M.empty M.empty M.empty, oneWayTrail)
-  where
-    oneWayTrail = wrongToOne $ pathToTrail $ toPath ptr -- the trail to the Done-Node
-    donePtrLog :: Tree a -> ( (Assignment, OneWayTrail) -> Log Message (Assignment, RevDepMap) )
-    donePtrLog = cata go
-      where
-
-        go (DoneF rdm)             (a, [])                     =
-          succeedWith Success (a, rdm)
-
-        go (PChoiceF qpn _     ts) (A pa fa sa, (CTP k):xs)    =
-          tryWith (TryP (PI qpn k)) $ r (A (M.insert qpn k pa) fa sa, xs)
-          where r = fromJust $ P.lookup k ts
-
-        go (FChoiceF qfn _ _ _ ts) (A pa fa sa, (CTF k):xs)    =
-          tryWith (TryF qfn k) $ r (A pa (M.insert qfn k fa) sa, xs) -- record the pkg choice
-          where r = fromJust $ P.lookup k ts
-
-        go (SChoiceF qsn _ _   ts) (A pa fa sa, (CTS k):xs)    =
-          tryWith (TryS qsn k) $ r (A pa fa (M.insert qsn k sa), xs) -- record the pkg choice
-          where r = fromJust $ P.lookup k ts
-
-        go (GoalChoiceF        ts) (a, (CTOG k):xs)             =
-          continueWith (Next (close k)) (v (a, xs ))     -- commit to the first goal choice
-          where v = fromJust $ P.lookup k ts
-
-        go _                       _                            =
-          error "Internal error in donePtrToLog" -- This catches cases like (GoalChoiceF...) (a (CTP k)..)
-                                                 -- where childtype and nodetype don't match
-                                                 -- ugly? Maybe. Could have been easy with dependent types.
 
 -- given a pointer, calculate the Assignment up to this point.
 ptrToAssignment :: Pointer a -> Assignment
@@ -241,10 +181,6 @@ runTreePtrLog l = case runLog l of
 
 
 
--- | Interface. -- For the atomatic automatic solver ;-)
---exploreTreeLog :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, RevDepMap)
---exploreTreeLog t = transformLog $ exploreTreePtrLog (fromTree t) t
-
 transformLog :: Log Message (Assignment, Pointer a) -> Log Message (Assignment, RevDepMap)
 transformLog mLog= (\(x,y) -> (x, fromDone y)) <$> mLog
   where
@@ -253,4 +189,74 @@ transformLog mLog= (\(x,y) -> (x, fromDone y)) <$> mLog
     fromDone (Pointer _ _)          = error "Uhoh.. Internal error in exploreTreeLog. Have you tried turning it off and on again?"
 
 
+{-  -- Legacy --
+-- | Naive backtracking exploration of the search tree. This will yield correct
+-- assignments only once the tree itself is validated.
+explore :: Alternative m => Tree a -> (Assignment -> m (Assignment, RevDepMap))
+explore = cata go
+  where
+    go (FailF _ _)           _           = A.empty
+    go (DoneF rdm)           a           = pure (a, rdm)
+    go (PChoiceF qpn _     ts) (A pa fa sa)   =
+      asum $                                      -- try children in order,
+      P.mapWithKey                                -- when descending ...
+        (\ k r -> r (A (M.insert qpn k pa) fa sa)) -- record the pkg choice
+      ts
+    go (FChoiceF qfn _ _ _ ts) (A pa fa sa)   =
+      asum $                                      -- try children in order,
+      P.mapWithKey                                -- when descending ...
+        (\ k r -> r (A pa (M.insert qfn k fa) sa)) -- record the flag choice
+      ts
+    go (SChoiceF qsn _ _   ts) (A pa fa sa)   =
+      asum $                                      -- try children in order,
+      P.mapWithKey                                -- when descending ...
+        (\ k r -> r (A pa fa (M.insert qsn k sa))) -- record the flag choice
+      ts
+    go (GoalChoiceF        ts) a              =
+      casePSQ ts A.empty                      -- empty goal choice is an internal error
+        (\ _k v _xs -> v a)                   -- commit to the first goal choice
 
+
+-- | Interface.
+exploreTree :: Alternative m => Tree a -> m (Assignment, RevDepMap)
+exploreTree t = explore t (A M.empty M.empty M.empty)
+
+-- | Legacy
+donePtrToLog :: Pointer a -> Log Message (Assignment, RevDepMap)
+donePtrToLog ptr = --transformLog $ exploreTreePtrLog ptr (backjump $ toTree ptr)
+
+ donePtrLog (toTree $ focusRoot ptr) (A M.empty M.empty M.empty, oneWayTrail)
+  where
+    oneWayTrail = wrongToOne $ pathToTrail $ toPath ptr -- the trail to the Done-Node
+    donePtrLog :: Tree a -> ( (Assignment, OneWayTrail) -> Log Message (Assignment, RevDepMap) )
+    donePtrLog = cata go
+      where
+
+        go (DoneF rdm)             (a, [])                     =
+          succeedWith Success (a, rdm)
+
+        go (PChoiceF qpn _     ts) (A pa fa sa, (CTP k):xs)    =
+          tryWith (TryP (PI qpn k)) $ r (A (M.insert qpn k pa) fa sa, xs)
+          where r = fromJust $ P.lookup k ts
+
+        go (FChoiceF qfn _ _ _ ts) (A pa fa sa, (CTF k):xs)    =
+          tryWith (TryF qfn k) $ r (A pa (M.insert qfn k fa) sa, xs) -- record the pkg choice
+          where r = fromJust $ P.lookup k ts
+
+        go (SChoiceF qsn _ _   ts) (A pa fa sa, (CTS k):xs)    =
+          tryWith (TryS qsn k) $ r (A pa fa (M.insert qsn k sa), xs) -- record the pkg choice
+          where r = fromJust $ P.lookup k ts
+
+        go (GoalChoiceF        ts) (a, (CTOG k):xs)             =
+          continueWith (Next (close k)) (v (a, xs ))     -- commit to the first goal choice
+          where v = fromJust $ P.lookup k ts
+
+        go _                       _                            =
+          error "Internal error in donePtrToLog" -- This catches cases like (GoalChoiceF...) (a (CTP k)..)
+                                                 -- where childtype and nodetype don't match
+                                                 -- ugly? Maybe. Could have been easy with dependent types.
+
+| Interface. -- For the atomatic automatic solver ;-)
+exploreTreeLog :: Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, RevDepMap)
+exploreTreeLog t = transformLog $ exploreTreePtrLog (fromTree t) t
+-}
