@@ -105,14 +105,14 @@ ptrToAssignment ptr = --transformLog $ exploreTreePtrLog ptr (backjump $ toTree 
 
         go (PChoiceF qpn _     ts) (A pa fa sa, (CTP k):xs) = r (A (M.insert qpn k pa) fa sa, xs) -- r ::  (Ass, [Ch]) -> Ass
           where r = fromJust $ P.lookup k ts                                                      -- ts :: PSQ ChildType ((Ass, [Ch]) -> Ass)
-                                                                                                  -- (clear, look at def of TreeF)
-        go (FChoiceF qfn _ _ _ ts) (A pa fa sa, (CTF k):xs) = r (A pa (M.insert qfn k fa) sa, xs) -- record the pkg choice
+
+        go (FChoiceF qfn _ _ _ ts) (A pa fa sa, (CTF k):xs) = r (A pa (M.insert qfn k fa) sa, xs)
           where r = fromJust $ P.lookup k ts
 
-        go (SChoiceF qsn _ _   ts) (A pa fa sa, (CTS k):xs) = r (A pa fa (M.insert qsn k sa), xs) -- record the pkg choice
+        go (SChoiceF qsn _ _   ts) (A pa fa sa, (CTS k):xs) = r (A pa fa (M.insert qsn k sa), xs)
           where r = fromJust $ P.lookup k ts
 
-        go (GoalChoiceF        ts) (a, (CTOG k):xs)         = v (a, xs )     -- commit to the first goal choice
+        go (GoalChoiceF        ts) (a, (CTOG k):xs)         = v (a, xs )
           where v = fromJust $ P.lookup k ts
 
         go _                       _                         = error "Internal error in donePtrToLog"
