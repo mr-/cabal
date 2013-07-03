@@ -282,8 +282,9 @@ makeInstallPlan verbosity
         notice verbosity "Starting interactive dependency solver..."
         mptr <- runInteractive platform (compilerId comp) solver resolverParams
         case mptr of
-            Nothing -> return Nothing                   --Nothing just means that the user does not want to install anything.
+            Nothing -> return Nothing                   -- The user does not want to install anything.
             x       -> return $ Just (resolveUsing x)
+--        return $ mptr >>= return . resolveUsing . return -- hehe
       else do
         notice verbosity "Resolving dependencies..."
         return $ Just (resolveUsing Nothing)
