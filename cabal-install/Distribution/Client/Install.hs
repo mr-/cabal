@@ -132,7 +132,6 @@ import Distribution.Verbosity as Verbosity
          ( Verbosity, showForCabal, normal, verbose )
 import Distribution.Simple.BuildPaths ( exeExtension )
 import Distribution.Client.Dependency.Types ( Solver(..) )
-import Data.Maybe ( fromJust )
 import Distribution.Client.Dependency.Modular.Interactive (runInteractive)
 
 --TODO:
@@ -174,9 +173,10 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
   userTargets0 = do
     installContext <- makeInstallContext verbosity args (Just userTargets0)
     preInstallPlan <- makeInstallPlan verbosity args installContext
-    when (isJust preInstallPlan) $ do
-        installPlan <- foldProgress logMsg die return (fromJust preInstallPlan)
-        processInstallPlan verbosity args installContext installPlan
+    case preInstallPlan of
+      Just progress ->
+          processInstallPlan verbosity args installContext =<< foldProgress logMsg die return progress
+      _             -> return ()
   where
     args :: InstallArgs
     args = (packageDBs, repos, comp, platform, conf, useSandbox, mSandboxPkgInfo,

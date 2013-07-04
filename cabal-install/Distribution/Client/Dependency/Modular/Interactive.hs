@@ -37,8 +37,8 @@ import System.Console.Haskeline.Completion                       (Completion (..
 
 data UIState = UIState {uiPointer     :: QPointer,
                         uiBookmarks   :: [(String, QPointer)],
-                        uiInstall     :: Maybe (QPointer),       -- these point
-                        uiAutoPointer :: Maybe (QPointer)}       -- to Done
+                        uiInstall     :: Maybe QPointer,       -- these point
+                        uiAutoPointer :: Maybe QPointer}       -- to Done
 
 setAutoPointer :: UIState -> QPointer -> UIState
 setAutoPointer state nP = state {uiAutoPointer = Just nP}
@@ -88,6 +88,7 @@ runInteractive platform compId solver resolverParams = do
     putStrLn "indicateAuto    indicates the choices the solver would have made with a little (*)"
     putStrLn "install         Once the interface says 'Done', you can type 'install' to install the package"
     putStrLn "showPlan        shows what is going to be installed/used"
+    putStrLn "whatWorks       lists the choices that lead to a valid installplan"
 
     runInputT (setComplete cmdComplete defaultSettings) (loop $ Just $ UIState (fromTree searchTree) [] Nothing Nothing)
   where
@@ -195,7 +196,23 @@ interpretStatement uiState IndicateAuto = setAutoPointer uiState <$> (explorePoi
 
 interpretStatement uiState ShowPlan = Left $ showAssignment $ ptrToAssignment (uiPointer uiState)
 
-interpretStatement uiState (Prefer sel) = Right $ setPointer uiState ((preferSelections sel) `liftToPtr` (uiPointer uiState))
+interpretStatement uiState (Prefer sel) = Right $ setPointer uiState (preferSelections sel `liftToPtr` uiPointer uiState)
+
+interpretStatement uiState WhatWorks =
+                      Left                                    $
+                      unlines                                 $
+                      map showChild                           $
+                      filter works                            $
+                      fromJust                                $
+                      children (uiPointer uiState)
+  where
+    isRight :: Either a b -> Bool
+    isRight (Right _) = True
+    isRight _         = False
+    focus :: ChildType -> QPointer
+    focus ch = fromJust $ focusChild ch (uiPointer uiState)
+    works :: ChildType -> Bool
+    works ch = isRight $ explorePointer $ focus ch
 
 
 isDone :: QPointer -> Bool
@@ -261,15 +278,10 @@ displayChoices uiState = prettyShow $ map (uncurry makeEntry) $ generateChoices 
   where
     treePointer = uiPointer uiState
     makeEntry :: Int -> ChildType -> String
-    makeEntry n child = "(" ++ show n ++ ") " ++ showChild child ++ " " ++ comment child
+    makeEntry n child = comment n child ++ " " ++ showChild child
 
-    -- I am not sure I like this..
-    comment :: ChildType -> String
-    comment child = case str of
-                [] -> ""
-                x  -> "(" ++ x ++ ")"
-      where
-        str = concatMap (\f -> f child) [autoComment, installComment, failComment]
+    comment :: Int -> ChildType -> String
+    comment n child = autoComment child ++ show n ++ installComment child ++ failComment child ++ ":"
 
     autoComment :: ChildType -> String
     autoComment child | isAuto child = "*"
@@ -294,26 +306,15 @@ displayChoices uiState = prettyShow $ map (uncurry makeEntry) $ generateChoices 
     prettyShow :: [String] -> String
     prettyShow l = unlines $ map concat $ splitEvery nrOfCols paddedList
       where
-        paddedList = map (pad (maxLen+1)) l
+        paddedList = map (pad maxLen) l
         pad :: Int -> String -> String
         pad n string = string ++ replicate (n - length string ) ' '
 
         nrOfCols = lineWidth `div` maxLen
         lineWidth = 100
-        maxLen = maximum (length <$> l) + 1
+        maxLen = maximum (length <$> l) + 2
 
         splitEvery :: Int -> [a] -> [[a]]
         splitEvery _ [] = []
         splitEvery n list = first : splitEvery n rest
           where (first,rest) = splitAt n list
-
-
-
-
-
-{-
-showRevDepMap :: RevDepMap -> String
-showRevDepMap rdm =  unlines $ map showKey (Map.keys rdm)
-  where showKey key = showQPN key ++ ": " ++ showValues key
-        showValues key = show (map showQPN (fromJust $ Map.lookup key rdm))
--}

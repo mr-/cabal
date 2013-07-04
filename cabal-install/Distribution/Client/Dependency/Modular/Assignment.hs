@@ -36,7 +36,7 @@ data Assignment = A PAssignment FAssignment SAssignment
   deriving (Show, Eq)
 
 showAssignment :: Assignment -> String
-showAssignment (A pa fa sa) = unlines $
+showAssignment (A pa fa sa) = unlines
    ["Packages: " ++ showMap showQPN showI pa,
     "Flags: "    ++ showMap showQFN show fa,
     "Stanzas: "  ++ showMap showQSN show sa]
@@ -45,6 +45,7 @@ showMap :: (Ord a ) => (a -> String) -> (b -> String) ->  Map a b -> String
 showMap showA showB rdm =  unlines $ map showKey (M.keys rdm)
   where showKey key   = showA key ++ ": " ++ showValue key
         showValue key =  showB (fromJust $ M.lookup key rdm)
+
 -- | A preassignment comprises knowledge about variables, but not
 -- necessarily fixed values.
 data PreAssignment = PA PPreAssignment FAssignment SAssignment

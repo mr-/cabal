@@ -28,6 +28,7 @@ data Statement  =  BookSet    String
                  | Find       Selections
                  | Prefer     Selections
                  | ShowPlan
+                 | WhatWorks
                  | Empty
                  deriving (Show)
 
@@ -52,6 +53,7 @@ commandList = sort
            , "indicateAuto"
            , "showPlan"
            , "prefer"
+           , "whatWorks"
            ]
 
 languageDef =
@@ -90,8 +92,9 @@ statement' =   try bsetStmt
            <|> try indicateAutoStmt
            <|> try topStmt
            <|> try singleNumberStmt
-           <|> try goStmt
            <|> try cutStmt
+           <|> try goStmt
+           <|> try whatWorksStmt
            <|> try installStmt
            <|> try showPlanStmt
            <|> try preferStmt
@@ -137,6 +140,11 @@ goStmt =
     do  reserved "go"
         var <- lexeme integer
         return $ Go (fromInteger var)
+
+whatWorksStmt :: Parser Statement
+whatWorksStmt =
+    do  reserved "whatWorks"
+        return WhatWorks
 
 upStmt :: Parser Statement
 upStmt =

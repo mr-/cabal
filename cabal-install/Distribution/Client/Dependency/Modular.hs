@@ -40,16 +40,16 @@ modularResolver :: SolverConfig -> DependencyResolver
 modularResolver sc conf@(_,_,iidx,sidx,_,_,_) =
       fmap (uncurry postprocess)     . -- convert install plan
       logToProgress (maxBackjumps sc) . -- convert log format into progress format
-      (solve sc $ makeModularConfig sc conf)
+      (solve sc $ translateConfig sc conf)
   where
     postprocess :: Assignment -> RevDepMap -> [PlanPackage]
     postprocess a rdm = map (convCP iidx sidx) (toCPs a rdm)
 
 modularResolverTree :: SolverConfig -> DependencyResolverOptions -> Tree QGoalReasonChain
-modularResolverTree sc conf = getDepTree sc $ makeModularConfig sc conf
+modularResolverTree sc conf = getDepTree sc $ translateConfig sc conf
 
-makeModularConfig :: SolverConfig -> DependencyResolverOptions -> ModularConfig
-makeModularConfig sc (Platform arch os, cid, iidx, sidx, pprefs, pcs, pns)
+translateConfig :: SolverConfig -> DependencyResolverOptions -> ModularConfig
+translateConfig sc (Platform arch os, cid, iidx, sidx, pprefs, pcs, pns)
     = ModularConfig idx pprefs gcs pns
     where
       -- Indices have to be converted into solver-specific uniform index.
