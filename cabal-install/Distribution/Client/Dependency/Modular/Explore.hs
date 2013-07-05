@@ -163,6 +163,12 @@ explorePtrLog = cata go
                 -- This should definitely be handled differently..
                 -- Maybe: data Subtree = Foo (Pointer a) (Tree b)
                 -- Or something..
+                --
+                -- TODO: That may work if I only provide "smart"
+                -- constructors that ensure that property.
+                -- However, the tree comes from backjump..
+                -- Need to think more.
+                --
                 -- Note that this does not backtrack below the pointer,
                 -- so it is save to give it that "offsetAssignment"
 exploreTreePtrLog :: Pointer a -> Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, Pointer a)
