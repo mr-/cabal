@@ -200,7 +200,7 @@ interpretStatement uiState (Prefer sel) = Right $ setPointer uiState (preferSele
 
 interpretStatement uiState WhatWorks =
                       Left                                    $
-                      unlines                                 $
+                      show                                    $
                       map showChild                           $
                       filter works                            $
                       fromJust                                $
