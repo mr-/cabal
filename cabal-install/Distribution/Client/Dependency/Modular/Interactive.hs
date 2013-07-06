@@ -70,9 +70,6 @@ runInteractive :: Platform
                -> DepResolverParams
                -> IO (Maybe QPointer)
 runInteractive platform compId solver resolverParams = do
-    let (sc, depResOpts)     = resolveDependenciesConfigs platform compId solver resolverParams
-        searchTree           = modularResolverTree sc depResOpts
-
     putStrLn "Welcome to cabali!"
     putStrLn "This interface accepts simple commands separated by ';'. E.g. go 1 ; auto"
     putStrLn "go n            chooses n - alternatively \"n\" does the same. Just Enter, picks the first choice"
@@ -90,10 +87,13 @@ runInteractive platform compId solver resolverParams = do
     putStrLn "showPlan        shows what is going to be installed/used"
     putStrLn "whatWorks       lists the choices that lead to a valid installplan"
 
+    let (sc, depResOpts) = resolveDependenciesConfigs platform compId solver resolverParams
+        searchTree       = modularResolverTree sc depResOpts
+        initialState     = Just $ UIState (fromTree searchTree) [] Nothing Nothing
+        completion       = setComplete cmdComplete defaultSettings
+
     runInputT completion (loop initialState)
       where
-        completion   = setComplete cmdComplete defaultSettings
-        initialState =  Just $ UIState (fromTree searchTree) [] Nothing Nothing)
         loop :: Maybe UIState -> InputT IO (Maybe QPointer)
         loop Nothing =
           outputStrLn "Bye bye" >> return Nothing
@@ -112,10 +112,10 @@ runInteractive platform compId solver resolverParams = do
         s  `thisOrThat` _ = s
 
         cmdComplete :: CompletionFunc IO
-        cmdComplete = completeWord Nothing " " completion
+        cmdComplete = completeWord Nothing " " completions
           where
-            completion :: String -> IO [Completion]
-            completion str = return $ map (\f -> Completion f f False) (x str)
+            completions :: String -> IO [Completion]
+            completions str = return $ map (\f -> Completion f f False) (x str)
             x :: String -> [String]
             x str          = filter (isPrefixOf str) commandList
 
