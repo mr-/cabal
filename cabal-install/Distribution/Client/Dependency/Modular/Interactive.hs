@@ -90,8 +90,10 @@ runInteractive platform compId solver resolverParams = do
     putStrLn "showPlan        shows what is going to be installed/used"
     putStrLn "whatWorks       lists the choices that lead to a valid installplan"
 
-    runInputT (setComplete cmdComplete defaultSettings) (loop $ Just $ UIState (fromTree searchTree) [] Nothing Nothing)
-  where
+    runInputT completion (loop initialState)
+      where
+        completion   = setComplete cmdComplete defaultSettings
+        initialState =  Just $ UIState (fromTree searchTree) [] Nothing Nothing)
         loop :: Maybe UIState -> InputT IO (Maybe QPointer)
         loop Nothing =
           outputStrLn "Bye bye" >> return Nothing
