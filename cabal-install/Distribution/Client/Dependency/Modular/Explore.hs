@@ -121,40 +121,37 @@ ptrToAssignment ptr = --transformLog $ exploreTreePtrLog ptr (backjump $ toTree 
                                                  -- ugly? Maybe. Could have been easy with dependent types.
 
 -- | Version of 'explore' that returns a 'Log'.
-explorePtrLog :: Tree (Maybe (ConflictSet QPN)) -> ( (Assignment, Pointer  a) -> Log Message (Assignment, Pointer a) )
+explorePtrLog :: Tree (Maybe (ConflictSet QPN)) -> Pointer a -> Log Message (Pointer a)
 explorePtrLog = cata go
   where
     go (FailF c fr)          _                          = failWith (Failure c fr)
-    go (DoneF _)               (a,treePtr)              = succeedWith Success (a, treePtr)
-    go (PChoiceF qpn c     ts) (A pa fa sa, treePtr)    =
+    go (DoneF _)               treePtr                  = succeedWith Success treePtr
+    go (PChoiceF qpn c     ts) treePtr                  =
       backjumpInfo c $
       asum $                                      -- try children in order,
       P.mapWithKey                                -- when descending ...
         (\ k r -> tryWith (TryP (PI qpn k)) $     -- log and ...
-                    r (A (M.insert qpn k pa) fa sa, fromJust $
-                    focusChild (CTP k) treePtr))  -- record the pkg choice
+                    r (fromJust $ focusChild (CTP k) treePtr))  -- record the pkg choice
       ts
-    go (FChoiceF qfn c _ _ ts) (A pa fa sa, treePtr)    =
+    go (FChoiceF qfn c _ _ ts) treePtr    =
       backjumpInfo c $
       asum $                                      -- try children in order,
       P.mapWithKey                                -- when descending ...
         (\ k r -> tryWith (TryF qfn k) $          -- log and ...
-                    r (A pa (M.insert qfn k fa) sa, fromJust $
-                     focusChild (CTF k) treePtr)) -- record the pkg choice
+                    r (fromJust $ focusChild (CTF k) treePtr)) -- record the pkg choice
       ts
-    go (SChoiceF qsn c _   ts) (A pa fa sa, treePtr)    =
+    go (SChoiceF qsn c _   ts) treePtr    =
       backjumpInfo c $
       asum $                                      -- try children in order,
       P.mapWithKey                                -- when descending ...
         (\ k r -> tryWith (TryS qsn k) $          -- log and ...
-                    r (A pa fa (M.insert qsn k sa), fromJust $
-                    focusChild (CTS k) treePtr)) -- record the pkg choice
+                    r (fromJust $ focusChild (CTS k) treePtr)) -- record the pkg choice
       ts
-    go (GoalChoiceF        ts) (a, treePtr)             =
+    go (GoalChoiceF        ts) treePtr             =
       casePSQ ts
         (failWith (Failure S.empty EmptyGoalChoice))   -- empty goal choice is an internal error
-        (\ k v _xs -> continueWith (Next (close k)) (v (a, fromJust $
-                   focusChild (CTOG k) treePtr )))     -- commit to the first goal choice
+        (\ k v _xs -> continueWith (Next (close k))
+            (v ( fromJust $ focusChild (CTOG k) treePtr )))     -- commit to the first goal choice
 
 
 -- | Interface. -- This finds a path in offsetPtr while traversing conflictTree.
@@ -171,24 +168,23 @@ explorePtrLog = cata go
                 --
                 -- Note that this does not backtrack below the pointer,
                 -- so it is save to give it that "offsetAssignment"
-exploreTreePtrLog :: Pointer a -> Tree (Maybe (ConflictSet QPN)) -> Log Message (Assignment, Pointer a)
-exploreTreePtrLog offsetPtr conflictTree = explorePtrLog conflictTree (offsetAssignment, offsetPtr)
-  where offsetAssignment = ptrToAssignment offsetPtr -- (A M.empty M.empty M.empty)
+exploreTreePtrLog :: Pointer a -> Tree (Maybe (ConflictSet QPN)) -> Log Message (Pointer a)
+exploreTreePtrLog offsetPtr conflictTree = explorePtrLog conflictTree offsetPtr
 
 
 -- | Interface. -- This is to consume the Log and give either a Done-Ptr or an error.
 -- Where, oh where should you go? Here is Ok, I guess.. Now this module knows how to make Log Message (...) and it also knows
 -- how to get information out of it.
 -- Maybe we would also like the Assignment?
-runTreePtrLog :: Log Message (Assignment, a) -> Either String (Assignment, a)
+runTreePtrLog :: Log Message a -> Either String a
 runTreePtrLog l = case runLog l of
-                    (ms, Nothing)                    -> Left $ unlines $ showMessages (const True) True ms
-                    (_, Just (assignment, treePtr))  -> Right (assignment, treePtr)
+                    (ms, Nothing) -> Left $ unlines $ showMessages (const True) True ms
+                    (_, Just x)   -> Right x
 
 
 
-transformLog :: Log Message (Assignment, Pointer a) -> Log Message (Assignment, RevDepMap)
-transformLog mLog= (\(x,y) -> (x, fromDone y)) <$> mLog
+transformLog :: Log Message (Pointer a) -> Log Message (Assignment, RevDepMap)
+transformLog mLog = (\x -> (ptrToAssignment x, fromDone x)) <$> mLog
   where
     fromDone :: Pointer a -> RevDepMap
     fromDone (Pointer _ (Done rdm)) = rdm
