@@ -18,7 +18,6 @@ import qualified Distribution.Client.Dependency.Modular.Preference as P
 import Distribution.Client.Dependency.Modular.Validate
 import Distribution.Client.Dependency.Modular.Tree        (Tree)
 import Distribution.Client.Dependency.Modular.TreeZipper (Pointer(..), fromTree)
-import Control.Applicative ((<$>))
 
 
 -- | Various options for the modular solver.
@@ -48,7 +47,7 @@ solve sc mc  Nothing            = transformLog $ findDoneBelow $ fromTree $ getD
 
 -- This either gives an error (Left: showMessage message from the Log), or a pointer to a "Done"-node
 explorePointer :: Pointer a -> Either String (Pointer a)
-explorePointer treePointer = snd <$> (runTreePtrLog $ findDoneBelow treePointer)
+explorePointer treePointer = runTreePtrLog $ findDoneBelow treePointer
 
 
 -- Get the tree, given the configs.
@@ -76,7 +75,7 @@ getDepTree sc (ModularConfig idx userPrefs userConstraints userGoals) =
 
 -- | "internal"
 -- Try to find a solution below the pointer.
-findDoneBelow :: Pointer a -> Log Message (Assignment, Pointer a)
+findDoneBelow :: Pointer a -> Log Message (Pointer a)
 findDoneBelow treePointer = (explorePhase . spaceReductionPhase . toTree) treePointer
   where
     spaceReductionPhase = P.firstGoal                               -- Commit to the first choice (saves space)
