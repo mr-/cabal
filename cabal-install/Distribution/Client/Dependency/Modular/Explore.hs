@@ -97,7 +97,7 @@ ptrToAssignment ptr = --transformLog $ exploreTreePtrLog ptr (backjump $ toTree 
   where
     oneWayTrail = wrongToOne $ pathToTrail $ toPath ptr -- the trail to the Done-Node
 
-    mkAssignment :: Tree a -> ((Assignment, OneWayTrail) -> Assignment)
+    mkAssignment :: Tree a -> (Assignment, OneWayTrail) -> Assignment
     mkAssignment = cata go
       where
         go :: TreeF t ((Assignment, [ChildType]) -> Assignment) -> (Assignment, [ChildType]) -> Assignment

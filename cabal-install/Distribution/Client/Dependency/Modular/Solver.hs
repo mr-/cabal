@@ -31,7 +31,7 @@ data SolverConfig = SolverConfig {
 
 data ModularConfig = ModularConfig {
   index             :: Index,
-  preferences       :: (PN -> PackagePreferences),
+  preferences       :: PN -> PackagePreferences,
   globalConstraints :: Map PN [PackageConstraint],
   globalGoals       :: [PN]
 }

@@ -216,7 +216,7 @@ isSelected :: Selections -> Tree a ->  Bool
 isSelected (Selections selections) tree  = or [tree `nodeMatches` selection | selection <- selections]
   where
     nodeMatches :: Tree a -> Selection ->  Bool
-    nodeMatches (PChoice qpn _ _)     (SelPChoice pname)        =  pname   `isSubOf` showQPN qpn
+    nodeMatches (PChoice qpn _ _)     (SelPChoice pname)        =  pname  `isSubOf` showQPN qpn
     nodeMatches (FChoice qfn _ _ _ _) (SelFSChoice name flag)   = (name   `isSubOf` qfnName)
                                                                && (flag   `isSubOf` qfnFlag)
       where (qfnName, qfnFlag) = unQFN qfn
@@ -254,7 +254,7 @@ preferSelections sel = trav go
     depMatches (Simple (Dep qpn _)) (SelPChoice name)       = name `isSubOf` showQPN qpn
     depMatches (Flagged qfn _ _ _)  (SelFSChoice name flag) = (name `isSubOf` qfnName) && (flag `isSubOf` qfnFlag)
       where (qfnName, qfnFlag) = unQFN qfn
-    depMatches (Stanza qsn _)       (SelFSChoice name flag) = (name `isSubOf`qsnName) && (flag `isSubOf` qsnFlag)
+    depMatches (Stanza qsn _)       (SelFSChoice name flag) = (name `isSubOf` qsnName) && (flag `isSubOf` qsnFlag)
       where (qsnName, qsnFlag) = unQSN qsn
     depMatches _                    _                       = False
 
