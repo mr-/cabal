@@ -91,6 +91,8 @@ backjumpInfo c m = m <|> case c of -- important to produce 'm' before matching o
 
 
 -- given a pointer, calculate the Assignment up to this point.
+-- TODO: This does not really need to be using cata. The Trail should be
+-- enough.
 ptrToAssignment :: Pointer a -> Assignment
 ptrToAssignment ptr = --transformLog $ exploreTreePtrLog ptr (backjump $ toTree ptr)
  mkAssignment (toTree $ focusRoot ptr) (A M.empty M.empty M.empty, oneWayTrail)
@@ -103,8 +105,8 @@ ptrToAssignment ptr = --transformLog $ exploreTreePtrLog ptr (backjump $ toTree 
         go :: TreeF t ((Assignment, [ChildType]) -> Assignment) -> (Assignment, [ChildType]) -> Assignment
         go _              (a, [])                           = a
 
-        go (PChoiceF qpn _     ts) (A pa fa sa, (CTP k):xs) = r (A (M.insert qpn k pa) fa sa, xs) -- r ::  (Ass, [Ch]) -> Ass
-          where r = fromJust $ P.lookup k ts                                                      -- ts :: PSQ ChildType ((Ass, [Ch]) -> Ass)
+        go (PChoiceF qpn _     ts) (A pa fa sa, (CTP k):xs) = r (A (M.insert qpn k pa) fa sa, xs)
+          where r = fromJust $ P.lookup k ts
 
         go (FChoiceF qfn _ _ _ ts) (A pa fa sa, (CTF k):xs) = r (A pa (M.insert qfn k fa) sa, xs)
           where r = fromJust $ P.lookup k ts
@@ -120,38 +122,42 @@ ptrToAssignment ptr = --transformLog $ exploreTreePtrLog ptr (backjump $ toTree 
                                                  -- where childtype and nodetype don't match
                                                  -- ugly? Maybe. Could have been easy with dependent types.
 
+
 -- | Version of 'explore' that returns a 'Log'.
 explorePtrLog :: Tree (Maybe (ConflictSet QPN)) -> Pointer a -> Log Message (Pointer a)
-explorePtrLog = cata go
+explorePtrLog tree pointer = (fromJust . (flip walk) pointer . wrongToOne) <$> (worker tree [])
   where
-    go (FailF c fr)          _                          = failWith (Failure c fr)
-    go (DoneF _)               treePtr                  = succeedWith Success treePtr
-    go (PChoiceF qpn c     ts) treePtr                  =
-      backjumpInfo c $
-      asum $                                      -- try children in order,
-      P.mapWithKey                                -- when descending ...
-        (\ k r -> tryWith (TryP (PI qpn k)) $     -- log and ...
-                    r (fromJust $ focusChild (CTP k) treePtr))  -- record the pkg choice
-      ts
-    go (FChoiceF qfn c _ _ ts) treePtr    =
-      backjumpInfo c $
-      asum $                                      -- try children in order,
-      P.mapWithKey                                -- when descending ...
-        (\ k r -> tryWith (TryF qfn k) $          -- log and ...
-                    r (fromJust $ focusChild (CTF k) treePtr)) -- record the pkg choice
-      ts
-    go (SChoiceF qsn c _   ts) treePtr    =
-      backjumpInfo c $
-      asum $                                      -- try children in order,
-      P.mapWithKey                                -- when descending ...
-        (\ k r -> tryWith (TryS qsn k) $          -- log and ...
-                    r (fromJust $ focusChild (CTS k) treePtr)) -- record the pkg choice
-      ts
-    go (GoalChoiceF        ts) treePtr             =
-      casePSQ ts
-        (failWith (Failure S.empty EmptyGoalChoice))   -- empty goal choice is an internal error
-        (\ k v _xs -> continueWith (Next (close k))
-            (v ( fromJust $ focusChild (CTOG k) treePtr )))     -- commit to the first goal choice
+  worker :: Tree (Maybe (ConflictSet QPN)) -> WrongWayTrail -> Log Message WrongWayTrail
+  worker = cata go
+    where
+      go (FailF c fr)          _                          = failWith (Failure c fr)
+      go (DoneF _)               treePtr                  = succeedWith Success treePtr
+      go (PChoiceF qpn c     ts) treePtr                  =
+        backjumpInfo c $
+        asum $                                      -- try children in order,
+        P.mapWithKey                                -- when descending ...
+          (\ k r -> tryWith (TryP (PI qpn k)) $     -- log and ...
+                      r ((CTP k):treePtr))  -- record the pkg choice
+        ts
+      go (FChoiceF qfn c _ _ ts) treePtr    =
+        backjumpInfo c $
+        asum $                                      -- try children in order,
+        P.mapWithKey                                -- when descending ...
+          (\ k r -> tryWith (TryF qfn k) $          -- log and ...
+                      r ((CTF k):treePtr)) -- record the pkg choice
+        ts
+      go (SChoiceF qsn c _   ts) treePtr    =
+        backjumpInfo c $
+        asum $                                      -- try children in order,
+        P.mapWithKey                                -- when descending ...
+          (\ k r -> tryWith (TryS qsn k) $          -- log and ...
+                      r ((CTS k):treePtr)) -- record the pkg choice
+        ts
+      go (GoalChoiceF        ts) treePtr             =
+        casePSQ ts
+          (failWith (Failure S.empty EmptyGoalChoice))   -- empty goal choice is an internal error
+          (\ k v _xs -> continueWith (Next (close k))
+              (v ( (CTOG k):treePtr )))     -- commit to the first goal choice
 
 
 -- | Interface. -- This finds a path in offsetPtr while traversing conflictTree.
