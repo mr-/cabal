@@ -888,10 +888,11 @@ buildExe verbosity _pkg_descr lbi
       cObjs         = map (`replaceExtension` objExtension) cSrcs
       baseOpts   = (componentGhcOptions verbosity lbi exeBi clbi exeDir)
                     `mappend` mempty {
-                      ghcOptMode           = toFlag GhcModeMake,
-                      ghcOptInputFiles     = [ srcMainFile  |     isHaskellMain],
-                      ghcOptInputModules   = [ m            | not isHaskellMain
-                                                            , m <- exeModules exe]
+                      ghcOptMode         = toFlag GhcModeMake,
+                      ghcOptInputFiles   =
+                        [ srcMainFile | isHaskellMain],
+                      ghcOptInputModules =
+                        [ m | not isHaskellMain, m <- exeModules exe]
                     }
       staticOpts = baseOpts `mappend` mempty {
                       ghcOptDynamic        = toFlag False
@@ -923,7 +924,7 @@ buildExe verbosity _pkg_descr lbi
                  }
 
   -- For building exe's for profiling that use TH we actually
-  -- have to build twice, once without profiling and the again
+  -- have to build twice, once without profiling and then again
   -- with profiling. This is because the code that TH needs to
   -- run at compile time needs to be the vanilla ABI so it can
   -- be loaded up and run by the compiler.
