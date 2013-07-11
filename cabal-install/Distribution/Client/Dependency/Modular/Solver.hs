@@ -31,7 +31,7 @@ data SolverConfig = SolverConfig {
 
 data ModularConfig = ModularConfig {
   index             :: Index,
-  preferences       :: (PN -> PackagePreferences),
+  preferences       :: PN -> PackagePreferences,
   globalConstraints :: Map PN [PackageConstraint],
   globalGoals       :: [PN]
 }
@@ -43,11 +43,6 @@ data ModularConfig = ModularConfig {
 solve :: SolverConfig -> ModularConfig -> Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap)
 solve _  _  (Just treePointer)  = transformLog $ findDoneBelow treePointer -- was: donePtrToLog treePointer
 solve sc mc  Nothing            = transformLog $ findDoneBelow $ fromTree $ getDepTree sc mc
-
-
--- This either gives an error (Left: showMessage message from the Log), or a pointer to a "Done"-node
-explorePointer :: Pointer a -> Either String (Pointer a)
-explorePointer treePointer = runTreePtrLog $ findDoneBelow treePointer
 
 
 -- Get the tree, given the configs.
@@ -71,6 +66,11 @@ getDepTree sc (ModularConfig idx userPrefs userConstraints userGoals) =
                        P.requireInstalled (`elem` [PackageName "base",
                                                    PackageName "ghc-prim"])
     buildPhase       = buildTree idx (independentGoals sc) userGoals
+
+
+-- This either gives an error (Left: showMessage message from the Log), or a pointer to a "Done"-node
+explorePointer :: Pointer a -> Either String (Pointer a)
+explorePointer treePointer = runTreePtrLog $ findDoneBelow treePointer
 
 
 -- | "internal"

@@ -3,7 +3,7 @@ module Distribution.Client.Dependency.Modular.Interactive where
 import Control.Applicative                                       ((<$>), (<*>), (<|>))
 import Data.Char                                                 (toLower)
 import Data.List                                                 (isInfixOf, isPrefixOf)
-import Data.Maybe                                                (fromJust, fromMaybe, isJust)
+import Data.Maybe                                                (fromJust, fromMaybe)
 import Distribution.Client.Dependency                            (DepResolverParams,
                                                                   resolveDependenciesConfigs)
 import Distribution.Client.Dependency.Modular                    (modularResolverTree)
@@ -40,6 +40,10 @@ data UIState = UIState {uiPointer     :: QPointer,
                         uiInstall     :: Maybe QPointer,       -- these point
                         uiAutoPointer :: Maybe QPointer}       -- to Done
 
+-- Better uiBreakPoints :: [(String, QPointer -> Bool)]
+-- features: cut
+-- Figure out what the given bools for flags and Stanzas mean.
+
 setAutoPointer :: UIState -> QPointer -> UIState
 setAutoPointer state nP = state {uiAutoPointer = Just nP}
 
@@ -48,21 +52,6 @@ setPointer state nP = state {uiPointer = nP}
 
 setInstall :: UIState -> QPointer -> UIState
 setInstall state nP = state {uiInstall = Just nP}
-
-isInstall :: UIState -> Bool
-isInstall = isJust.uiInstall
-
-noInstall :: UIState -> Bool
-noInstall = not.isInstall
-
-getInstall :: UIState -> QPointer
-getInstall uiState = case uiAutoPointer uiState of
-                        Just x -> x
-                        _      -> error "Outch.. got wrong install"
-
--- Better uiBreakPoints :: [(String, QPointer -> Bool)]
--- features: cut
--- Figure out what the given bools for flags and Stanzas mean.
 
 runInteractive :: Platform
                -> CompilerId
@@ -97,8 +86,9 @@ runInteractive platform compId solver resolverParams = do
         loop :: Maybe UIState -> InputT IO (Maybe QPointer)
         loop Nothing =
           outputStrLn "Bye bye" >> return Nothing
-
-        loop (Just uiState) | isInstall uiState =
+--        which is better?
+--        loop (Just uiState) | isInstall uiState =
+        loop (Just uiState@UIState{ uiInstall=(Just _) }) =
           outputStrLn "Bye bye" >> return (uiInstall uiState)
 
         loop (Just uiState) = do
@@ -226,7 +216,7 @@ isSelected :: Selections -> Tree a ->  Bool
 isSelected (Selections selections) tree  = or [tree `nodeMatches` selection | selection <- selections]
   where
     nodeMatches :: Tree a -> Selection ->  Bool
-    nodeMatches (PChoice qpn _ _)     (SelPChoice pname)        =  pname   `isSubOf` showQPN qpn
+    nodeMatches (PChoice qpn _ _)     (SelPChoice pname)        =  pname  `isSubOf` showQPN qpn
     nodeMatches (FChoice qfn _ _ _ _) (SelFSChoice name flag)   = (name   `isSubOf` qfnName)
                                                                && (flag   `isSubOf` qfnFlag)
       where (qfnName, qfnFlag) = unQFN qfn
@@ -239,19 +229,17 @@ isSubOf :: String -> String -> Bool
 isSubOf x y = lower x `isInfixOf` lower y
   where
     lower :: String -> String
-    lower = map toLower
+    lower = map toLower -- I think cabal is case-insensitive too
 
-{-
-data OpenGoal = OpenGoal (FlaggedDep QPN) QGoalReasonChain
+-- data OpenGoal = OpenGoal (FlaggedDep QPN) QGoalReasonChain
 
-data FlaggedDep qpn =
-    Flagged (FN qpn) FInfo (TrueFlaggedDeps qpn) (FalseFlaggedDeps qpn)
-  | Stanza  (SN qpn)       (TrueFlaggedDeps qpn)
-  | Simple (Dep qpn)
-  deriving (Eq, Show)
+--data FlaggedDep qpn =
+    --Flagged (FN qpn) FInfo (TrueFlaggedDeps qpn) (FalseFlaggedDeps qpn)
+  -- | Stanza  (SN qpn)       (TrueFlaggedDeps qpn)
+  -- | Simple (Dep qpn)
+  --deriving (Eq, Show)
 
-data Dep qpn = Dep qpn (CI qpn)
--}
+--data Dep qpn = Dep qpn (CI qpn)
 
 preferSelections :: Selections -> Tree a -> Tree a
 preferSelections sel = trav go
@@ -266,7 +254,7 @@ preferSelections sel = trav go
     depMatches (Simple (Dep qpn _)) (SelPChoice name)       = name `isSubOf` showQPN qpn
     depMatches (Flagged qfn _ _ _)  (SelFSChoice name flag) = (name `isSubOf` qfnName) && (flag `isSubOf` qfnFlag)
       where (qfnName, qfnFlag) = unQFN qfn
-    depMatches (Stanza qsn _)       (SelFSChoice name flag) = (name `isSubOf`qsnName) && (flag `isSubOf` qsnFlag)
+    depMatches (Stanza qsn _)       (SelFSChoice name flag) = (name `isSubOf` qsnName) && (flag `isSubOf` qsnFlag)
       where (qsnName, qsnFlag) = unQSN qsn
     depMatches _                    _                       = False
 

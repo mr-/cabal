@@ -131,7 +131,7 @@ import Distribution.Text
 import Distribution.Verbosity as Verbosity
          ( Verbosity, showForCabal, normal, verbose )
 import Distribution.Simple.BuildPaths ( exeExtension )
-import Distribution.Client.Dependency.Types ( Solver(..) )
+import Distribution.Client.Dependency.Types ( Solver(..), QPointer )
 import Distribution.Client.Dependency.Modular.Interactive (runInteractive)
 
 --TODO:
@@ -266,9 +266,6 @@ myMakeInstallPlan  verbosity
 -- This either invokes the automatic or the interactive solver.
 -- The latter may return "Nothing", which aborts installation.
 
--- TODO: the interactive solver would also fit into "resolveDependencies",
--- but I don't really want to lift that to IO.
--- Maybe even into modularResolver ;-)
 makeInstallPlan :: Verbosity -> InstallArgs -> InstallContext
                 -> IO (Maybe (Progress String String InstallPlan))
 makeInstallPlan verbosity
@@ -276,6 +273,7 @@ makeInstallPlan verbosity
   icontext = do
     solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags)) (compilerId comp)
     let resolverParams = makeResolverParams iargs icontext
+        resolveUsing :: Maybe QPointer -> Progress String String InstallPlan
         resolveUsing   = resolveDependencies platform (compilerId comp) solver resolverParams
     if fromFlag (installInteractive installFlags) && solver == Modular -- How could this be handled better?
       then do
