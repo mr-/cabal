@@ -124,6 +124,8 @@ ptrToAssignment ptr = --transformLog $ exploreTreePtrLog ptr (backjump $ toTree 
 
 
 -- | Version of 'explore' that returns a 'Log'.
+-- | Does it really save space? Or is Haskell clever enough to know that
+-- | the Tree is a subtree of the Pointer?
 explorePtrLog :: Tree (Maybe (ConflictSet QPN)) -> Pointer a -> Log Message (Pointer a)
 explorePtrLog tree pointer = (fromJust . (flip walk) pointer . wrongToOne) <$> (worker tree [])
   where
@@ -163,14 +165,6 @@ explorePtrLog tree pointer = (fromJust . (flip walk) pointer . wrongToOne) <$> (
 -- | Interface. -- This finds a path in offsetPtr while traversing conflictTree.
                 -- It is important that conflictTree is a subtree of offsetPtr's tree
                 -- Or else it fails with a fromJust error :->
-                -- This should definitely be handled differently..
-                -- Maybe: data Subtree = Foo (Pointer a) (Tree b)
-                -- Or something..
-                --
-                -- TODO: That may work if I only provide "smart"
-                -- constructors that ensure that property.
-                -- However, the tree comes from backjump..
-                -- Need to think more.
                 --
                 -- Note that this does not backtrack below the pointer,
                 -- so it is save to give it that "offsetAssignment"
