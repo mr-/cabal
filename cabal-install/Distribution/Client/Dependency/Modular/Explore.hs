@@ -93,8 +93,10 @@ backjumpInfo c m = m <|> case c of -- important to produce 'm' before matching o
 -- given a pointer, calculate the Assignment up to this point.
 -- TODO: This does not really need to be using cata. The Trail should be
 -- enough.
+-- But: It needs the q[pfs]n where the trail is pointing to. Maybe it's
+-- good the way it is.
 ptrToAssignment :: Pointer a -> Assignment
-ptrToAssignment ptr = --transformLog $ exploreTreePtrLog ptr (backjump $ toTree ptr)
+ptrToAssignment ptr =
  mkAssignment (toTree $ focusRoot ptr) (A M.empty M.empty M.empty, oneWayTrail)
   where
     oneWayTrail = wrongToOne $ pathToTrail $ toPath ptr -- the trail to the Done-Node
