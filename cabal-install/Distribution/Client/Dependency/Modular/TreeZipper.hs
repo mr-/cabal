@@ -24,9 +24,9 @@ data Tree a =
 
 data Path a =
     Top
-  | PChoicePoint (Path a) (PSQContext I (Tree a))           QPN a
-  | FChoicePoint (Path a) (PSQContext Bool (Tree a))        QFN a Bool Bool
-  | SChoicePoint (Path a) (PSQContext Bool (Tree a))        QSN a Bool
+  | PChoicePoint (Path a) (PSQContext I        (Tree a)) QPN a
+  | FChoicePoint (Path a) (PSQContext Bool     (Tree a)) QFN a Bool Bool
+  | SChoicePoint (Path a) (PSQContext Bool     (Tree a)) QSN a Bool
   | GChoicePoint (Path a) (PSQContext OpenGoal (Tree a))
 
 
