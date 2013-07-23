@@ -38,7 +38,8 @@ import System.Console.Haskeline.Completion                       (Completion (..
 data UIState = UIState {uiPointer     :: QPointer,
                         uiBookmarks   :: [(String, QPointer)],
                         uiInstall     :: Maybe QPointer,       -- these point
-                        uiAutoPointer :: Maybe QPointer}       -- to Done
+                        uiAutoPointer :: Maybe QPointer,
+                        uiHistory     :: [Statement]}       -- to Done
 
 -- Better uiBreakPoints :: [(String, QPointer -> Bool)]
 -- features: cut
@@ -75,10 +76,11 @@ runInteractive platform compId solver resolverParams = do
     putStrLn "install         Once the interface says 'Done', you can type 'install' to install the package"
     putStrLn "showPlan        shows what is going to be installed/used"
     putStrLn "whatWorks       lists the choices that lead to a valid installplan"
+    putStrLn "back            goes back to the last command"
 
     let (sc, depResOpts) = resolveDependenciesConfigs platform compId solver resolverParams
         searchTree       = modularResolverTree sc depResOpts
-        initialState     = Just $ UIState (fromTree searchTree) [] Nothing Nothing
+        initialState     = Just $ UIState (fromTree searchTree) [] Nothing Nothing []
         completion       = setComplete cmdComplete defaultSettings
 
     runInputT completion (loop initialState)
@@ -129,27 +131,34 @@ interpretStatements (Statements [cmd])  uiState  = interpretStatement uiState cm
 interpretStatements (Statements (x:xs)) uiState  = interpretStatement uiState x >>= interpretStatements (Statements xs)
 
 
+addHistory :: Statement -> UIState -> UIState
+addHistory statement uiState = uiState {uiHistory = statement:oldHistory}
+  where oldHistory = uiHistory uiState
+
 interpretStatement :: UIState -> Statement -> Either String UIState
-interpretStatement uiState ToTop = Right $ uiState {uiPointer = focusRoot (uiPointer uiState)}
+interpretStatement uiState ToTop = addHistory ToTop <$> ( Right $ uiState {uiPointer = focusRoot (uiPointer uiState)} )
 
 interpretStatement uiState Up | isRoot (uiPointer uiState)  = Left "We are at the top"
-interpretStatement uiState Up                               = Right $ uiState { uiPointer = fromJust $ focusUp (uiPointer uiState)}
+interpretStatement uiState Up                               = addHistory Up <$>
+                                                              ( Right $ uiState { uiPointer = fromJust $ focusUp (uiPointer uiState)})
 
-interpretStatement uiState (Go n) = case focused of
+interpretStatement uiState (Go n) = addHistory (Go n) <$>
+                                    case focused of
                                         Nothing -> Left "No such child"
                                         Just subPointer -> Right $ uiState {uiPointer = subPointer}
   where focused     = lookup n choices >>= flip focusChild treePointer
         choices     = generateChoices treePointer
         treePointer = uiPointer uiState
 
-interpretStatement uiState Empty =  case choices of -- behave differently when indicateAuto is on?
+interpretStatement uiState Empty = addHistory Empty <$>
+                  case choices of -- behave differently when indicateAuto is on?
                         ((_, child):_) -> Right $ setPointer uiState $ fromJust $ focusChild child treePointer
                         _              -> Left "No choice left"
   where choices     = generateChoices treePointer
         treePointer = uiPointer uiState
 
 
-interpretStatement uiState Auto = autoRun uiState
+interpretStatement uiState Auto = addHistory Empty <$> autoRun uiState
 
 interpretStatement uiState (BookSet name) = Right $ addBookmark name uiState
   where
@@ -167,7 +176,8 @@ interpretStatement uiState (BookJump name) = case lookup name (uiBookmarks uiSta
 -- traversed in the given order? (order makes a difference in selection,
 -- e.g. when installing cabal-install, goto zlib has fewer options than
 -- selecting it manually as early as possible.)
-interpretStatement uiState (Goto selections) = (setPointer uiState . selectPointer selections) <$> autoRun uiState
+interpretStatement uiState (Goto selections) = addHistory (Goto selections) <$>
+                (setPointer uiState . selectPointer selections) <$> autoRun uiState
   where
     selectPointer :: Selections -> UIState -> QPointer
     selectPointer sel autoState = last $ deflt <|> found
@@ -188,7 +198,12 @@ interpretStatement uiState IndicateAuto = setAutoPointer uiState <$> (explorePoi
 
 interpretStatement uiState ShowPlan = Left $ showAssignment $ ptrToAssignment (uiPointer uiState)
 
-interpretStatement uiState (Prefer sel) = Right $ setPointer uiState (preferSelections sel `liftToPtr` uiPointer uiState)
+interpretStatement uiState (Prefer sel) = addHistory (Prefer sel) <$>
+                        (Right $ setPointer uiState (preferSelections sel `liftToPtr` uiPointer uiState))
+
+interpretStatement uiState@(UIState {uiHistory = (_:reminder)}) Back =
+        interpretStatements (Statements (ToTop : reverse reminder)) ( uiState { uiHistory = reminder } )
+interpretStatement _ Back = Left "Cannot go back"
 
 interpretStatement uiState WhatWorks =
                       Left                                    $

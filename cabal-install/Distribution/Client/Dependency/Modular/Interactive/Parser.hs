@@ -30,6 +30,7 @@ data Statement  =  BookSet    String
                  | ShowPlan
                  | WhatWorks
                  | Empty
+                 | Back
                  deriving (Show)
 
 data Selections =  Selections [Selection]
@@ -54,6 +55,7 @@ commandList = sort
            , "showPlan"
            , "prefer"
            , "whatWorks"
+           , "back"
            ]
 
 languageDef =
@@ -98,6 +100,7 @@ statement' =   try bsetStmt
            <|> try installStmt
            <|> try showPlanStmt
            <|> try preferStmt
+           <|> try backStmt
            <|> try emptyStmt
 
 
@@ -150,6 +153,11 @@ upStmt :: Parser Statement
 upStmt =
     do  reserved "up"
         return Up
+
+backStmt :: Parser Statement
+backStmt =
+    do  reserved "back"
+        return Back
 
 showPlanStmt :: Parser Statement
 showPlanStmt =
