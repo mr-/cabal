@@ -127,38 +127,42 @@ handleCommand uiState = do
 
 interpretStatements :: Statements -> UIState ->  Either String UIState
 interpretStatements (Statements [])     _        = error "Internal Error in interpretExpression"
-interpretStatements (Statements [cmd])  uiState  = interpretStatement uiState cmd
-interpretStatements (Statements (x:xs)) uiState  = interpretStatement uiState x >>= interpretStatements (Statements xs)
+interpretStatements (Statements [cmd])  uiState  = addHistory cmd <$> (interpretStatement uiState cmd)
+interpretStatements (Statements (c:md)) uiState  = addHistory c   <$> (interpretStatement uiState c) >>= interpretStatements (Statements md)
+
+interpretStatementsWithoutHistory :: Statements -> UIState ->  Either String UIState
+interpretStatementsWithoutHistory (Statements [])     _        = error "Internal Error in interpretExpression"
+interpretStatementsWithoutHistory (Statements [cmd])  uiState  = interpretStatement uiState cmd
+interpretStatementsWithoutHistory (Statements (c:md)) uiState  = interpretStatement uiState c >>= interpretStatementsWithoutHistory (Statements md)
+
 
 
 addHistory :: Statement -> UIState -> UIState
+addHistory Back uiState = uiState
 addHistory statement uiState = uiState {uiHistory = statement:oldHistory}
   where oldHistory = uiHistory uiState
 
 interpretStatement :: UIState -> Statement -> Either String UIState
-interpretStatement uiState ToTop = addHistory ToTop <$> ( Right $ uiState {uiPointer = focusRoot (uiPointer uiState)} )
+interpretStatement uiState ToTop = Right $ uiState {uiPointer = focusRoot (uiPointer uiState)}
 
 interpretStatement uiState Up | isRoot (uiPointer uiState)  = Left "We are at the top"
-interpretStatement uiState Up                               = addHistory Up <$>
-                                                              ( Right $ uiState { uiPointer = fromJust $ focusUp (uiPointer uiState)})
+interpretStatement uiState Up                               = Right $ uiState { uiPointer = fromJust $ focusUp (uiPointer uiState)}
 
-interpretStatement uiState (Go n) = addHistory (Go n) <$>
-                                    case focused of
+interpretStatement uiState (Go n) = case focused of
                                         Nothing -> Left "No such child"
                                         Just subPointer -> Right $ uiState {uiPointer = subPointer}
   where focused     = lookup n choices >>= flip focusChild treePointer
         choices     = generateChoices treePointer
         treePointer = uiPointer uiState
 
-interpretStatement uiState Empty = addHistory Empty <$>
-                  case choices of -- behave differently when indicateAuto is on?
+interpretStatement uiState Empty = case choices of -- behave differently when indicateAuto is on?
                         ((_, child):_) -> Right $ setPointer uiState $ fromJust $ focusChild child treePointer
                         _              -> Left "No choice left"
   where choices     = generateChoices treePointer
         treePointer = uiPointer uiState
 
 
-interpretStatement uiState Auto = addHistory Empty <$> autoRun uiState
+interpretStatement uiState Auto = autoRun uiState
 
 interpretStatement uiState (BookSet name) = Right $ addBookmark name uiState
   where
@@ -176,8 +180,7 @@ interpretStatement uiState (BookJump name) = case lookup name (uiBookmarks uiSta
 -- traversed in the given order? (order makes a difference in selection,
 -- e.g. when installing cabal-install, goto zlib has fewer options than
 -- selecting it manually as early as possible.)
-interpretStatement uiState (Goto selections) = addHistory (Goto selections) <$>
-                (setPointer uiState . selectPointer selections) <$> autoRun uiState
+interpretStatement uiState (Goto selections) = (setPointer uiState . selectPointer selections) <$> autoRun uiState
   where
     selectPointer :: Selections -> UIState -> QPointer
     selectPointer sel autoState = last $ deflt <|> found
@@ -198,12 +201,13 @@ interpretStatement uiState IndicateAuto = setAutoPointer uiState <$> (explorePoi
 
 interpretStatement uiState ShowPlan = Left $ showAssignment $ ptrToAssignment (uiPointer uiState)
 
-interpretStatement uiState (Prefer sel) = addHistory (Prefer sel) <$>
-                        (Right $ setPointer uiState (preferSelections sel `liftToPtr` uiPointer uiState))
+interpretStatement uiState (Prefer sel) = Right $ setPointer uiState (preferSelections sel `liftToPtr` uiPointer uiState)
 
 interpretStatement uiState@(UIState {uiHistory = (_:reminder)}) Back =
-        interpretStatements (Statements (ToTop : reverse reminder)) ( uiState { uiHistory = reminder } )
+        interpretStatementsWithoutHistory (Statements (ToTop : reverse reminder)) ( uiState { uiHistory = reminder } )
 interpretStatement _ Back = Left "Cannot go back"
+
+interpretStatement (UIState {uiHistory = history}) ShowHistory = Left $ show history
 
 interpretStatement uiState WhatWorks =
                       Left                                    $
