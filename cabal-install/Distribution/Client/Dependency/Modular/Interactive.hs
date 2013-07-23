@@ -130,12 +130,6 @@ interpretStatements (Statements [])     _        = error "Internal Error in inte
 interpretStatements (Statements [cmd])  uiState  = addHistory cmd <$> (interpretStatement uiState cmd)
 interpretStatements (Statements (c:md)) uiState  = addHistory c   <$> (interpretStatement uiState c) >>= interpretStatements (Statements md)
 
-interpretStatementsWithoutHistory :: Statements -> UIState ->  Either String UIState
-interpretStatementsWithoutHistory (Statements [])     _        = error "Internal Error in interpretExpression"
-interpretStatementsWithoutHistory (Statements [cmd])  uiState  = interpretStatement uiState cmd
-interpretStatementsWithoutHistory (Statements (c:md)) uiState  = interpretStatement uiState c >>= interpretStatementsWithoutHistory (Statements md)
-
-
 
 addHistory :: Statement -> UIState -> UIState
 addHistory Back uiState = uiState
@@ -205,6 +199,14 @@ interpretStatement uiState (Prefer sel) = Right $ setPointer uiState (preferSele
 
 interpretStatement uiState@(UIState {uiHistory = (_:reminder)}) Back =
         interpretStatementsWithoutHistory (Statements (ToTop : reverse reminder)) ( uiState { uiHistory = reminder } )
+  where
+    -- DRY?!
+    interpretStatementsWithoutHistory :: Statements -> UIState ->  Either String UIState
+    interpretStatementsWithoutHistory (Statements [])     _     = error "Internal Error in interpretExpressionWithoutHistory"
+    interpretStatementsWithoutHistory (Statements [cmd])  state = interpretStatement state cmd
+    interpretStatementsWithoutHistory (Statements (c:md)) state = interpretStatement state c >>=
+                                                                     interpretStatementsWithoutHistory (Statements md)
+
 interpretStatement _ Back = Left "Cannot go back"
 
 interpretStatement (UIState {uiHistory = history}) ShowHistory = Left $ show history
