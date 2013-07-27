@@ -109,6 +109,9 @@ generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)
 
 handleCommands :: AppState Action
 handleCommands = do
+  uiState <- get
+  lift $ outputStrLn $ showNodeFromTree ( toTree $ uiPointer uiState )
+  lift $ outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
   inp <- lift $ getInputLine "> "
   case inp of
     Nothing    -> return Abort
@@ -116,24 +119,24 @@ handleCommands = do
                     Left s     -> do lift $ outputStrLn s
                                      handleCommands
                     Right cmds -> handleCommands' cmds
+  where
+    handleCommands' :: Statements -> AppState Action
+    handleCommands' cmds = do
+      uiState <- get
+      lift $ outputStrLn $ showNodeFromTree ( toTree $ uiPointer uiState )
+      lift $ outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
+      results <- interpretStatements cmds
+      lift $ outputStrLn $ showResults results -- TODO: check what's needed to show here
+      install <- gets uiInstall
+      return (if isInstall install then InstallNow else Continue)
 
+    thisOrThat :: String -> String -> String
+    "" `thisOrThat` s = s
+    s  `thisOrThat` _ = s
 
-handleCommands' :: Statements -> AppState Action
-handleCommands' cmds = do
-       results <- interpretStatements cmds
-       lift $ outputStrLn $ showResults results -- TODO: check what's needed to show here
-       install <- gets uiInstall
-       uiState <- get
-       lift $ outputStrLn $ showNodeFromTree ( toTree $ uiPointer uiState )
-       lift $ outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
-       return (if isInstall install then InstallNow else Continue)
-    where
-        thisOrThat :: String -> String -> String
-        "" `thisOrThat` s = s
-        s  `thisOrThat` _ = s
-        isInstall :: Maybe a -> Bool
-        isInstall Nothing = False
-        isInstall _       = True
+    isInstall :: Maybe a -> Bool
+    isInstall Nothing = False
+    isInstall _       = True
 
 
 showResults :: [Result] -> String
