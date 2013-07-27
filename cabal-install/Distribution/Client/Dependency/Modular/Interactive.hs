@@ -118,7 +118,7 @@ handleCommands = do
                     Right cmds -> handleCommands' cmds
 
 
-handleCommands' :: Statements -> App Action
+handleCommands' :: Statements -> AppState Action
 handleCommands' cmds = do
        results <- interpretStatements cmds
        lift $ outputStrLn $ showResults results -- TODO: check what's needed to show here
