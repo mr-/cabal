@@ -1,7 +1,7 @@
 module Distribution.Client.Dependency.Modular.Interactive where
 
 import Control.Applicative                                       ((<$>), (<*>), (<|>))
-import Control.Monad.State                                       (StateT(..), gets,  get, put, lift, evalStateT)
+import Control.Monad.State                                       (StateT(..), gets, get, lift, evalStateT, modify)
 import Data.Char                                                 (toLower)
 import Data.List                                                 (isInfixOf, isPrefixOf)
 import Data.Maybe                                                (fromJust, fromMaybe)
@@ -25,7 +25,7 @@ import Distribution.Client.Dependency.Modular.Tree               (ChildType (..)
 import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), children,
                                                                   filterBetween, findDown,
                                                                   focusChild, focusRoot, focusUp,
-                                                                  fromTree, isRoot, liftToPtr,
+                                                                  fromTree, liftToPtr,
                                                                   pointsBelow, toTree)
 import Distribution.Client.Dependency.Types                      (Solver (..), QPointer)
 import Distribution.Simple.Compiler                              (CompilerId)
@@ -43,8 +43,8 @@ data UIState = UIState {uiPointer     :: QPointer,
                         uiHistory     :: [Statement]}
 
 type AppState = StateT UIState (InputT IO)
-
 data Action = InstallNow | Abort | Continue
+
 
 -- Better uiBreakPoints :: [(String, QPointer -> Bool)]
 -- features: cut
@@ -126,120 +126,167 @@ generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)
 handleCommand :: AppState Action
 handleCommand = do
   inp <- lift $ getInputLine "> "
-  uiState <- get
   case inp of
     Nothing    -> return Abort
-    Just text  -> case readStatements text >>= \cmd -> interpretStatements cmd uiState of
-                    Left s  -> do lift $ outputStrLn s
-                                  handleCommand
-                    Right t -> do put t
-                                  install <- gets uiInstall
-                                  return (if isInstall install then InstallNow else Continue)
+    Just text  -> case readStatements text of
+                    Left s     -> do lift $ outputStrLn s
+                                     handleCommand
+                    Right cmds -> do results <- interpretStatements cmds
+                                     lift $ outputStrLn $ showResults results
+                                     install <- gets uiInstall
+                                     return (if isInstall install then InstallNow else Continue)
   where
    isInstall Nothing = False
    isInstall _       = True
 
-interpretStatements :: Statements -> UIState ->  Either String UIState
-interpretStatements (Statements [])     _        = error "Internal Error in interpretExpression"
-interpretStatements (Statements [cmd])  uiState  = addHistory cmd <$> interpretStatement uiState cmd
-interpretStatements (Statements (c:md)) uiState  = interpretStatements (Statements md) =<< (addHistory c <$> interpretStatement uiState c)
+showResults :: [Result] -> String
+showResults = show
+
+data Result = Error String | Progress String | Success deriving (Show, Eq)
+
+interpretStatements :: Statements -> AppState [Result]
+interpretStatements (Statements [])     = error "Internal Error in interpretExpression"
+interpretStatements (Statements [cmd])  = do
+      addHistory cmd
+      result <- interpretStatement cmd
+      return [result]
+
+interpretStatements (Statements (c:md)) = do
+      addHistory c
+      result <- interpretStatement c
+      case result of
+        (Error _ ) -> return [result] -- return the result and stop processing commands.
+        _          -> do list   <- interpretStatements (Statements md)
+                         return (result:list)
+
+addHistory :: Statement -> AppState ()
+addHistory Back      = return ()
+addHistory statement = modify (\uiState -> uiState {uiHistory = statement:uiHistory uiState})
+
+setPointer' :: QPointer -> AppState ()
+setPointer' ptr = modifyPointer (const ptr)
+
+modifyPointer :: (QPointer -> QPointer) -> AppState ()
+modifyPointer f = do ptr <- gets uiPointer
+                     modify (\uiState ->uiState{uiPointer = f ptr})
 
 
-addHistory :: Statement -> UIState -> UIState
-addHistory Back uiState = uiState
-addHistory statement uiState = uiState {uiHistory = statement:oldHistory}
-  where oldHistory = uiHistory uiState
+interpretStatement :: Statement -> AppState Result
+interpretStatement ToTop = modifyPointer focusRoot >> return Success
 
-interpretStatement :: UIState -> Statement -> Either String UIState
-interpretStatement uiState ToTop = Right $ uiState {uiPointer = focusRoot (uiPointer uiState)}
+interpretStatement Up = do
+  ptr <- gets uiPointer
+  setPointer' (fromMaybe ptr (focusUp ptr))
+  return Success
 
-interpretStatement uiState Up | isRoot (uiPointer uiState)  = Left "We are at the top"
-interpretStatement uiState Up                               = Right $ uiState { uiPointer = fromJust $ focusUp (uiPointer uiState)}
+interpretStatement (Go n) = do
+  treePointer <- gets uiPointer
+  let choices = generateChoices treePointer
+      focused = lookup n choices >>= flip focusChild treePointer
+  case focused of
+    Nothing -> return $ Error "No such child"
+    Just subPointer -> do setPointer' subPointer
+                          return Success
 
-interpretStatement uiState (Go n) = case focused of
-                                        Nothing -> Left "No such child"
-                                        Just subPointer -> Right $ uiState {uiPointer = subPointer}
-  where focused     = lookup n choices >>= flip focusChild treePointer
-        choices     = generateChoices treePointer
-        treePointer = uiPointer uiState
+interpretStatement Empty = interpretStatement (Go 1)
 
-interpretStatement uiState Empty = case choices of -- behave differently when indicateAuto is on?
-                        ((_, child):_) -> Right $ setPointer uiState $ fromJust $ focusChild child treePointer
-                        _              -> Left "No choice left"
-  where choices     = generateChoices treePointer
-        treePointer = uiPointer uiState
+interpretStatement Auto = do
+  pointer <- gets uiPointer
+  case explorePointer pointer of
+    Left e  -> return $ Error e
+    Right t -> setPointer' t >> return Success -- TODO: Progress?
 
 
-interpretStatement uiState Auto = autoRun uiState
-
-interpretStatement uiState (BookSet name) = Right $ addBookmark name uiState
+interpretStatement (BookSet name) = addBookmark name >> return Success
   where
-    addBookmark :: String ->  UIState -> UIState
-    addBookmark s u = u {uiBookmarks = (s, uiPointer u) : uiBookmarks u}
+    addBookmark :: String -> AppState ()
+    addBookmark s = modify (\u -> u {uiBookmarks = (s, uiPointer u) : uiBookmarks u})
 
-interpretStatement uiState BookList = Left $ show $ map fst $ uiBookmarks uiState
+interpretStatement BookList = do bookmarks <- gets uiBookmarks
+                                 return $ Progress $ show $ map fst bookmarks
 
-interpretStatement uiState (BookJump name) = case lookup name (uiBookmarks uiState) of
-                                            Nothing -> Left "No such bookmark."
-                                            Just a  -> Right $ uiState {uiPointer = a}
+interpretStatement (BookJump name) = do
+    bookmarks <- gets uiBookmarks
+    case lookup name bookmarks of
+        Nothing -> return $ Error "No such bookmark."
+        Just a  -> setPointer' a >> return Success
 
 
 -- TODO: Should the selected packages get precedence? Or should they be
 -- traversed in the given order? (order makes a difference in selection,
 -- e.g. when installing cabal-install, goto zlib has fewer options than
 -- selecting it manually as early as possible.)
-interpretStatement uiState (Goto selections) = (setPointer uiState . selectPointer selections) <$> autoRun uiState
-  where
-    selectPointer :: Selections -> UIState -> QPointer
-    selectPointer sel autoState = last $ deflt <|> found
-      where
-        found = filterBetween (isSelected sel . toTree) (uiPointer uiState) (uiPointer autoState)
-        deflt = [uiPointer autoState]
+interpretStatement (Goto selections) = do
+    pointer <- gets uiPointer
+    case explorePointer pointer of
+        Left e  -> return $ Error e
+        Right t -> setPointer' (selectPointer selections pointer t) >> return Success -- TODO: Progress
+    where
+      selectPointer :: Selections -> QPointer -> QPointer -> QPointer
+      selectPointer sel here done = head $ found <|> [done]
+        where
+          found = filterBetween (isSelected sel . toTree) here done
 
-interpretStatement uiState Install | isDone (uiPointer uiState)
-                              = Right $ setInstall uiState $ uiPointer uiState
-interpretStatement _ Install  = Left "Need to be on a \"Done\"-Node"
-interpretStatement _ (Cut _) = Left "Ooops.. not implemented yet."
+interpretStatement Install = do ptr <- gets uiPointer
+                                case isDone ptr of
+                                  True -> modify (\x -> x{uiInstall = Just ptr}) >> return Success
+                                  False -> return $ Error "Need to be on a \"Done\"-Node"
 
-interpretStatement uiState (Find sel) = case findDown (isSelected sel.toTree) (uiPointer uiState) of
-                                          (x:_) -> Right $ setPointer uiState x
-                                          _     -> Left "Nothing found"
+interpretStatement (Cut _) = return $ Error "Ooops.. not implemented yet."
 
-interpretStatement uiState IndicateAuto = setAutoPointer uiState <$> (explorePointer . uiPointer) uiState
+ -- Need to make that more efficient, prune tree first. (firstchoice..)
+interpretStatement (Find sel) = do
+    ptr <- gets uiPointer
+    case findDown (isSelected sel.toTree) ptr of
+        (x:_) -> setPointer' x >> return Success
+        _     -> return $ Error "Nothing found"
 
-interpretStatement uiState ShowPlan = Left $ showAssignment $ ptrToAssignment (uiPointer uiState)
 
-interpretStatement uiState (Prefer sel) = Right $ setPointer uiState (preferSelections sel `liftToPtr` uiPointer uiState)
+interpretStatement IndicateAuto = do
+    ptr <- gets uiPointer
+    case explorePointer ptr of
+      Left e  -> return $ Error e
+      Right t -> modify (\x -> x{uiAutoPointer = Just t}) >> return Success
 
-interpretStatement uiState@(UIState {uiHistory = (_:reminder)}) Back =
-        interpretStatementsWithoutHistory (Statements (ToTop : reverse reminder)) ( uiState { uiHistory = reminder } )
-  where
-    -- DRY?!
-    interpretStatementsWithoutHistory :: Statements -> UIState ->  Either String UIState
-    interpretStatementsWithoutHistory (Statements [])     _     = error "Internal Error in interpretExpressionWithoutHistory"
-    interpretStatementsWithoutHistory (Statements [cmd])  state = interpretStatement state cmd
-    interpretStatementsWithoutHistory (Statements (c:md)) state = interpretStatement state c >>=
-                                                                     interpretStatementsWithoutHistory (Statements md)
 
-interpretStatement _ Back = Left "Cannot go back"
+interpretStatement ShowPlan = do
+    ptr <- gets uiPointer
+    return $ Progress $ showAssignment $ ptrToAssignment ptr
 
-interpretStatement (UIState {uiHistory = history}) ShowHistory = Left $ show history
+interpretStatement (Prefer sel) = do
+    modifyPointer (\x -> preferSelections sel `liftToPtr` x)
+    return Success
 
-interpretStatement uiState WhatWorks =
-                      Left                                    $
-                      show                                    $
-                      map showChild                           $
-                      filter works                            $
-                      fromJust                                $
-                      children (uiPointer uiState)
+
+interpretStatement Back = do
+  history <- gets uiHistory
+  case history of
+    (_:reminder) -> do _ <- interpretStatements (Statements (ToTop : reverse reminder)) --TODO: simply discard the return values?
+                       modify (\x -> x{uiHistory = reminder})
+                       return Success
+    _            -> return $ Error "Nothing to go back to"
+
+interpretStatement ShowHistory = do history <- gets uiHistory
+                                    return $ Progress $ show history
+
+interpretStatement WhatWorks =
+    do ptr <- gets uiPointer
+       return                  $
+          Progress             $
+          show                 $
+          map showChild        $
+          filter (works ptr)   $
+          fromJust             $
+          children ptr
   where
     isRight :: Either a b -> Bool
     isRight (Right _) = True
     isRight _         = False
-    focus :: ChildType -> QPointer
-    focus ch = fromJust $ focusChild ch (uiPointer uiState)
-    works :: ChildType -> Bool
-    works ch = isRight $ explorePointer $ focus ch
+    focus :: QPointer -> ChildType -> QPointer
+    focus ptr ch = fromJust $ focusChild ch ptr
+    works :: QPointer -> ChildType -> Bool
+    works ptr ch = isRight $ explorePointer $ focus ptr ch
+
 
 
 isDone :: QPointer -> Bool
