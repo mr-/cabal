@@ -93,15 +93,8 @@ runInteractive platform compId solver resolverParams = do
           return toInstall
 
         loop Continue = do
-          uiState <- get
-          lift $ outputStrLn $ showNodeFromTree ( toTree $ uiPointer uiState )
-          lift $ outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
-          action <- handleCommand
+          action <- handleCommands
           loop action
-
-        thisOrThat :: String -> String -> String
-        "" `thisOrThat` s = s
-        s  `thisOrThat` _ = s
 
         cmdComplete :: CompletionFunc IO
         cmdComplete = completeWord Nothing " " completions
@@ -114,21 +107,34 @@ runInteractive platform compId solver resolverParams = do
 generateChoices :: QPointer -> [(Int, ChildType)]
 generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)
 
-handleCommand :: AppState Action
-handleCommand = do
+handleCommands :: AppState Action
+handleCommands = do
   inp <- lift $ getInputLine "> "
   case inp of
     Nothing    -> return Abort
     Just text  -> case readStatements text of
                     Left s     -> do lift $ outputStrLn s
-                                     handleCommand
-                    Right cmds -> do results <- interpretStatements cmds
-                                     lift $ outputStrLn $ showResults results
-                                     install <- gets uiInstall
-                                     return (if isInstall install then InstallNow else Continue)
-  where
-   isInstall Nothing = False
-   isInstall _       = True
+                                     handleCommands
+                    Right cmds -> handleCommands' cmds
+
+
+handleCommands' :: Statements -> App Action
+handleCommands' cmds = do
+       results <- interpretStatements cmds
+       lift $ outputStrLn $ showResults results -- TODO: check what's needed to show here
+       install <- gets uiInstall
+       uiState <- get
+       lift $ outputStrLn $ showNodeFromTree ( toTree $ uiPointer uiState )
+       lift $ outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
+       return (if isInstall install then InstallNow else Continue)
+    where
+        thisOrThat :: String -> String -> String
+        "" `thisOrThat` s = s
+        s  `thisOrThat` _ = s
+        isInstall :: Maybe a -> Bool
+        isInstall Nothing = False
+        isInstall _       = True
+
 
 showResults :: [Result] -> String
 showResults = show
