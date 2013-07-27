@@ -1,7 +1,6 @@
 module Distribution.Client.Dependency.Modular.Interactive where
 
 import Control.Applicative                                       ((<$>), (<*>), (<|>))
-import Control.Monad.State                                       (StateT(..), gets,  get, put, lift, evalStateT)
 import Data.Char                                                 (toLower)
 import Data.List                                                 (isInfixOf, isPrefixOf)
 import Data.Maybe                                                (fromJust, fromMaybe)
@@ -38,13 +37,9 @@ import System.Console.Haskeline.Completion                       (Completion (..
 
 data UIState = UIState {uiPointer     :: QPointer,
                         uiBookmarks   :: [(String, QPointer)],
-                        uiInstall     :: Maybe QPointer,
+                        uiInstall     :: Maybe QPointer,       -- these point
                         uiAutoPointer :: Maybe QPointer,
-                        uiHistory     :: [Statement]}
-
-type AppState = StateT UIState (InputT IO)
-
-data Action = InstallNow | Abort | Continue
+                        uiHistory     :: [Statement]}       -- to Done
 
 -- Better uiBreakPoints :: [(String, QPointer -> Bool)]
 -- features: cut
@@ -58,7 +53,6 @@ setPointer state nP = state {uiPointer = nP}
 
 setInstall :: UIState -> QPointer -> UIState
 setInstall state nP = state {uiInstall = Just nP}
-
 
 runInteractive :: Platform
                -> CompilerId
@@ -86,27 +80,24 @@ runInteractive platform compId solver resolverParams = do
 
     let (sc, depResOpts) = resolveDependenciesConfigs platform compId solver resolverParams
         searchTree       = modularResolverTree sc depResOpts
-        initialState     = UIState (fromTree searchTree) [] Nothing Nothing []
+        initialState     = Just $ UIState (fromTree searchTree) [] Nothing Nothing []
         completion       = setComplete cmdComplete defaultSettings
 
-    runInputT completion $ evalStateT (loop Continue) initialState
+    runInputT completion (loop initialState)
       where
-        loop :: Action -> AppState (Maybe QPointer)
-        loop Abort = do
-          lift $ outputStrLn "Bye bye"
-          return Nothing
+        loop :: Maybe UIState -> InputT IO (Maybe QPointer)
+        loop Nothing =
+          outputStrLn "Bye bye" >> return Nothing
+--        which is better?
+--        loop (Just uiState) | isInstall uiState =
+        loop (Just uiState@UIState{ uiInstall=(Just _) }) =
+          outputStrLn "Bye bye" >> return (uiInstall uiState)
 
-        loop InstallNow = do
-          toInstall <- gets uiInstall
-          lift $ outputStrLn "Bye bye"
-          return toInstall
-
-        loop Continue = do
-          uiState <- get
-          lift $ outputStrLn $ showNodeFromTree ( toTree $ uiPointer uiState )
-          lift $ outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
-          action <- handleCommand
-          loop action
+        loop (Just uiState) = do
+          outputStrLn $ showNodeFromTree ( toTree $ uiPointer uiState )
+          outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
+          uiS <- handleCommand uiState
+          loop uiS
 
         thisOrThat :: String -> String -> String
         "" `thisOrThat` s = s
@@ -123,26 +114,21 @@ runInteractive platform compId solver resolverParams = do
 generateChoices :: QPointer -> [(Int, ChildType)]
 generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)
 
-handleCommand :: AppState Action
-handleCommand = do
-  inp <- lift $ getInputLine "> "
-  uiState <- get
+handleCommand :: UIState -> InputT IO (Maybe UIState)
+handleCommand uiState = do
+  inp <- getInputLine "> "
   case inp of
-    Nothing    -> return Abort
+    Nothing    -> return Nothing
     Just text  -> case readStatements text >>= \cmd -> interpretStatements cmd uiState of
-                    Left s  -> do lift $ outputStrLn s
-                                  handleCommand
-                    Right t -> do put t
-                                  install <- gets uiInstall
-                                  return (if isInstall install then InstallNow else Continue)
-  where
-   isInstall Nothing = False
-   isInstall _       = True
+                    Left s  -> do outputStrLn s
+                                  handleCommand uiState
+                    Right t -> return $ Just t
+
 
 interpretStatements :: Statements -> UIState ->  Either String UIState
 interpretStatements (Statements [])     _        = error "Internal Error in interpretExpression"
-interpretStatements (Statements [cmd])  uiState  = addHistory cmd <$> interpretStatement uiState cmd
-interpretStatements (Statements (c:md)) uiState  = interpretStatements (Statements md) =<< (addHistory c <$> interpretStatement uiState c)
+interpretStatements (Statements [cmd])  uiState  = addHistory cmd <$> (interpretStatement uiState cmd)
+interpretStatements (Statements (c:md)) uiState  = addHistory c   <$> (interpretStatement uiState c) >>= interpretStatements (Statements md)
 
 
 addHistory :: Statement -> UIState -> UIState

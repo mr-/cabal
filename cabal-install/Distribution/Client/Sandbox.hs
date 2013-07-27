@@ -541,32 +541,16 @@ reinstallAddSourceDeps verbosity configFlags' configExFlags
       -- lower-level API because of layer separation reasons. Additionally, we
       -- might want to use some lower-level features this in the future.
       withSandboxBinDirOnSearchPath sandboxDir $ do
-<<<<<<< HEAD
         installContext   <- makeInstallContext verbosity args Nothing
         maybeInstallPlan <- makeInstallPlan verbosity args installContext
         when (isJust maybeInstallPlan) $ do
           installPlan    <- foldProgress logMsg die return (fromJust maybeInstallPlan)
           processInstallPlan verbosity args installContext installPlan
           writeIORef retVal ReinstalledSomeDeps
-=======
-        installContext <- makeInstallContext verbosity args Nothing
-        installPlan    <- foldProgress logMsg die' return =<<
-                          makeInstallPlan verbosity args installContext
-
-        processInstallPlan verbosity args installContext installPlan
-        writeIORef retVal ReinstalledSomeDeps
->>>>>>> upstream/master
 
   readIORef retVal
 
     where
-      die' message = die (message ++ installFailedInSandbox)
-      -- TODO: use a better error message, remove duplication.
-      installFailedInSandbox =
-        "Note: when using a sandbox, all packages are required to have \
-        \consistent dependencies. \
-        \Try reinstalling/unregistering the offending packages or \
-        \recreating the sandbox."
       logMsg message rest = debugNoWrap verbosity message >> rest
 
       topHandler' = topHandlerWith $ \_ -> do
