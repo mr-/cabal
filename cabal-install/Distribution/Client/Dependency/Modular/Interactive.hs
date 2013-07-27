@@ -50,15 +50,6 @@ data Action = InstallNow | Abort | Continue
 -- features: cut
 -- Figure out what the given bools for flags and Stanzas mean.
 
-setAutoPointer :: UIState -> QPointer -> UIState
-setAutoPointer state nP = state {uiAutoPointer = Just nP}
-
-setPointer :: UIState -> QPointer -> UIState
-setPointer state nP = state {uiPointer = nP}
-
-setInstall :: UIState -> QPointer -> UIState
-setInstall state nP = state {uiInstall = Just nP}
-
 
 runInteractive :: Platform
                -> CompilerId
@@ -249,9 +240,7 @@ interpretStatement IndicateAuto = do
       Right t -> modify (\x -> x{uiAutoPointer = Just t}) >> return Success
 
 
-interpretStatement ShowPlan = do
-    ptr <- gets uiPointer
-    return $ Progress $ showAssignment $ ptrToAssignment ptr
+interpretStatement ShowPlan = (return . Progress . showAssignment . ptrToAssignment) =<< gets uiPointer
 
 interpretStatement (Prefer sel) = do
     modifyPointer (\x -> preferSelections sel `liftToPtr` x)
@@ -259,12 +248,12 @@ interpretStatement (Prefer sel) = do
 
 
 interpretStatement Back = do
-  history <- gets uiHistory
-  case history of
-    (_:reminder) -> do _ <- interpretStatements (Statements (ToTop : reverse reminder)) --TODO: simply discard the return values?
-                       modify (\x -> x{uiHistory = reminder})
-                       return Success
-    _            -> return $ Error "Nothing to go back to"
+    history <- gets uiHistory
+    case history of
+        (_:reminder) -> do _ <- interpretStatements (Statements (ToTop : reverse reminder)) --TODO: simply discard the return values?
+                           modify (\x -> x{uiHistory = reminder})
+                           return Success
+        _            -> return $ Error "Nothing to go back to"
 
 interpretStatement ShowHistory = do history <- gets uiHistory
                                     return $ Progress $ show history
@@ -278,14 +267,14 @@ interpretStatement WhatWorks =
           filter (works ptr)   $
           fromJust             $
           children ptr
-  where
-    isRight :: Either a b -> Bool
-    isRight (Right _) = True
-    isRight _         = False
-    focus :: QPointer -> ChildType -> QPointer
-    focus ptr ch = fromJust $ focusChild ch ptr
-    works :: QPointer -> ChildType -> Bool
-    works ptr ch = isRight $ explorePointer $ focus ptr ch
+    where
+      isRight :: Either a b -> Bool
+      isRight (Right _) = True
+      isRight _         = False
+      focus :: QPointer -> ChildType -> QPointer
+      focus ptr ch = fromJust $ focusChild ch ptr
+      works :: QPointer -> ChildType -> Bool
+      works ptr ch = isRight $ explorePointer $ focus ptr ch
 
 
 
@@ -339,10 +328,6 @@ preferSelections sel = trav go
     depMatches (Stanza qsn _)       (SelFSChoice name flag) = (name `isSubOf` qsnName) && (flag `isSubOf` qsnFlag)
       where (qsnName, qsnFlag) = unQSN qsn
     depMatches _                    _                       = False
-
-
-autoRun :: UIState -> Either String UIState
-autoRun uiState = setPointer uiState <$> (explorePointer . uiPointer) uiState
 
 
 displayChoices :: UIState -> String
