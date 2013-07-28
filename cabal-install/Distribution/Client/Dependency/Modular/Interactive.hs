@@ -1,30 +1,32 @@
 module Distribution.Client.Dependency.Modular.Interactive where
 
-import Control.Applicative                                       ((<$>), (<*>))
-import Control.Monad.State                                       (gets, get, lift, evalStateT)
-import Data.List                                                 (isPrefixOf)
-import Distribution.Client.Dependency                            (DepResolverParams,
-                                                                  resolveDependenciesConfigs)
-import Distribution.Client.Dependency.Modular                    (modularResolverTree)
-import Distribution.Client.Dependency.Modular.Interactive.Parser (Statements (..),
-                                                                  commandList, readStatements)
-import Distribution.Client.Dependency.Modular.Interactive.Types  (AppState, UIState(..), UICommand(..), Action(..))
-import Distribution.Client.Dependency.Modular.Interactive.Interpreter (interpretStatements, generateChoices)
-import Distribution.Client.Dependency.Modular.Tree               (ChildType (..), Tree (..),
-                                                                  isInstalled,
-                                                                  showChild, showNodeFromTree)
-import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..),
-                                                                  focusChild,
-                                                                  fromTree,
-                                                                  pointsBelow, toTree)
-import Distribution.Client.Dependency.Types                      (Solver (..), QPointer)
-import Distribution.Simple.Compiler                              (CompilerId)
-import Distribution.System                                       (Platform)
-import System.Console.Haskeline                                  (completeWord,
-                                                                  defaultSettings, getInputLine,
-                                                                  outputStrLn, runInputT,
-                                                                  setComplete)
-import System.Console.Haskeline.Completion                       (Completion (..), CompletionFunc)
+import Control.Applicative                                            ((<$>), (<*>))
+import Control.Monad.State                                            (evalStateT, get, gets, lift)
+import Data.List                                                      (isPrefixOf)
+import Distribution.Client.Dependency                                 (DepResolverParams,
+                                                                       resolveDependenciesConfigs)
+import Distribution.Client.Dependency.Modular                         (modularResolverTree)
+import Distribution.Client.Dependency.Modular.Interactive.Interpreter (generateChoices,
+                                                                       interpretStatements)
+import Distribution.Client.Dependency.Modular.Interactive.Parser      (Statements (..), commandList,
+                                                                       readStatements)
+import Distribution.Client.Dependency.Modular.Interactive.Types       (Action (..), AppState,
+                                                                       UICommand (..), UIState (..))
+import Distribution.Client.Dependency.Modular.Tree                    (ChildType (..), Tree (..),
+                                                                       isInstalled, showChild,
+                                                                       showNodeFromTree)
+import Distribution.Client.Dependency.Modular.TreeZipper              (Pointer (..), focusChild,
+                                                                       fromTree, pointsBelow,
+                                                                       toTree)
+import Distribution.Client.Dependency.Types                           (QPointer, Solver (..))
+import Distribution.Simple.Compiler                                   (CompilerId)
+import Distribution.System                                            (Platform)
+import System.Console.Haskeline                                       (completeWord,
+                                                                       defaultSettings,
+                                                                       getInputLine, outputStrLn,
+                                                                       runInputT, setComplete)
+import System.Console.Haskeline.Completion                            (Completion (..),
+                                                                       CompletionFunc)
 
 
 
@@ -56,10 +58,12 @@ runInteractive platform compId solver resolverParams = do
     let (sc, depResOpts) = resolveDependenciesConfigs platform compId solver resolverParams
         searchTree       = modularResolverTree sc depResOpts
         initialState     = UIState (fromTree searchTree) [] Nothing Nothing []
-        completion       = setComplete cmdComplete defaultSettings
 
-    runInputT completion $ evalStateT (loop First) initialState
+    runLoop initialState
       where
+        runLoop :: UIState -> IO (Maybe QPointer)
+        runLoop s = runInputT completion $ evalStateT (loop First) s
+
         loop :: Action -> AppState (Maybe QPointer)
         loop Abort = do
           lift $ outputStrLn "Bye bye"
@@ -78,6 +82,9 @@ runInteractive platform compId solver resolverParams = do
         loop Continue = do
           action <- handleCommands
           loop action
+
+
+        completion = setComplete cmdComplete defaultSettings
 
         cmdComplete :: CompletionFunc IO
         cmdComplete = completeWord Nothing " " completions
@@ -99,7 +106,7 @@ handleCommands = do
   where
     handleCommands' :: Statements -> AppState Action
     handleCommands' cmds = do
-      uiCommands<- interpretStatements cmds
+      uiCommands <- interpretStatements cmds
       r <- mapM executeUICommand uiCommands
       return (if InstallNow `elem` r then InstallNow else Continue)
 

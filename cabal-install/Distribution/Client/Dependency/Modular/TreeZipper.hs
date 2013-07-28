@@ -55,11 +55,23 @@ wrongToOne :: WrongWayTrail -> OneWayTrail
 wrongToOne = reverse
 
 pathToTrail :: Path a -> WrongWayTrail
-pathToTrail Top = []
-pathToTrail (PChoicePoint path context _ _     ) = CTP  (P.contextKey context) : pathToTrail path
-pathToTrail (FChoicePoint path context _ _ _ _ ) = CTF  (P.contextKey context) : pathToTrail path
-pathToTrail (SChoicePoint path context _ _ _   ) = CTS  (P.contextKey context) : pathToTrail path
-pathToTrail (GChoicePoint path context         ) = CTOG (P.contextKey context) : pathToTrail path
+pathToTrail p = case pathToChild p of
+  Nothing -> []
+  Just ch -> ch : pathToTrail (fromJust $ innerPath p) -- it has an inner path, because it had ch
+
+pathToChild :: Path a -> Maybe ChildType
+pathToChild Top = Nothing
+pathToChild (PChoicePoint _ context _ _     ) = Just $ CTP  (P.contextKey context)
+pathToChild (FChoicePoint _ context _ _ _ _ ) = Just $ CTF  (P.contextKey context)
+pathToChild (SChoicePoint _ context _ _ _   ) = Just $ CTS  (P.contextKey context)
+pathToChild (GChoicePoint _ context         ) = Just $ CTOG (P.contextKey context)
+
+innerPath :: Path a -> Maybe (Path a)
+innerPath Top = Nothing
+innerPath (PChoicePoint path _ _ _     ) = Just path
+innerPath (FChoicePoint path _ _ _ _ _ ) = Just path
+innerPath (SChoicePoint path _ _ _ _   ) = Just path
+innerPath (GChoicePoint path _         ) = Just path
 
 walk :: OneWayTrail -> Pointer a -> Maybe (Pointer a)
 walk []     treePointer = Just treePointer
@@ -75,6 +87,12 @@ intermediates :: Pointer a -> Pointer a -> [Pointer a]
 intermediates shallow deep | shallow `pointsToSame` deep = []
 intermediates shallow deep = deep : intermediates  shallow oneUp
   where oneUp = fromMaybe (error "Internal error: Provided malformed Pair") (focusUp deep)
+
+intermediateTrail :: Pointer a -> Pointer a -> WrongWayTrail
+intermediateTrail shallow deep | shallow `pointsToSame` deep = []
+intermediateTrail shallow deep = (fromJust $ pathToChild $ toPath deep) : intermediateTrail shallow oneUp
+  where oneUp = fromMaybe (error "Internal error: Provided malformed Pair") (focusUp deep)
+
 
 filterBetween :: (Pointer a -> Bool) -> Pointer a -> Pointer a -> [Pointer a]
 filterBetween pre nearPtr farPtr = filterUpTill (pointsToSame nearPtr) pre farPtr
@@ -112,6 +130,7 @@ toTop = toTop'
     toTop' pointer | isRoot pointer = []
     toTop' pointer = pointer : (toTop $ fromJust $ focusUp pointer)
 
+
 focusUp :: Pointer a -> Maybe (Pointer a)
 focusUp (Pointer Top _) = Nothing
 
@@ -131,27 +150,26 @@ focusUp (Pointer (GChoicePoint path context) t) = Just $ Pointer path newTree
   where newTree = GoalChoice  newPSQ
         newPSQ  = P.joinContext t context
 
+
 focusChild :: ChildType -> Pointer a -> Maybe (Pointer a)
 focusChild (CTP key)  (Pointer oldPath (PChoice q a psq))        = Pointer newPath <$> P.lookup key psq
   where newPath = PChoicePoint oldPath newContext q a
         newContext = P.makeContextAt key psq
 
-
 focusChild (CTF key)  (Pointer oldPath (FChoice q a b1 b2 psq))  = Pointer newPath <$> P.lookup key psq
   where newPath = FChoicePoint oldPath newContext q a b1 b2
         newContext = P.makeContextAt key psq
 
-
 focusChild (CTS key)  (Pointer oldPath (SChoice q a b psq))      = Pointer newPath <$> P.lookup key psq
   where newPath = SChoicePoint oldPath newContext q a b
         newContext = P.makeContextAt key psq
-
 
 focusChild (CTOG key) (Pointer oldPath (GoalChoice psq))         = Pointer newPath <$> P.lookup key psq
   where newPath = GChoicePoint oldPath newContext
         newContext = P.makeContextAt key psq
 
 focusChild _ _ = Nothing
+
 
 focusRoot :: Pointer a -> Pointer a
 focusRoot treePointer = maybe treePointer focusRoot (focusUp treePointer)

@@ -1,5 +1,5 @@
 module Distribution.Client.Dependency.Modular.Explore
-  (runTreePtrLog, transformLog, exploreTreePtrLog, backjump, ptrToAssignment)
+  (runTreePtrLog, transformLog, exploreTreePtrLog, backjump, ptrToAssignment, intermediateAssignment)
 where
 
 import Control.Applicative as A
@@ -8,6 +8,8 @@ import Data.List as L
 import Data.Map as M
 import Data.Set as S
 import Data.Maybe (fromJust)
+
+import Control.Arrow ((&&&))
 
 import Distribution.Client.Dependency.Modular.Assignment
 import Distribution.Client.Dependency.Modular.Dependency
@@ -107,16 +109,16 @@ ptrToAssignment ptr =
         go :: TreeF t ((Assignment, [ChildType]) -> Assignment) -> (Assignment, [ChildType]) -> Assignment
         go _              (a, [])                           = a
 
-        go (PChoiceF qpn _     ts) (A pa fa sa, (CTP k):xs) = r (A (M.insert qpn k pa) fa sa, xs)
+        go (PChoiceF qpn _     ts) (A pa fa sa, CTP k : xs) = r (A (M.insert qpn k pa) fa sa, xs)
           where r = fromJust $ P.lookup k ts
 
-        go (FChoiceF qfn _ _ _ ts) (A pa fa sa, (CTF k):xs) = r (A pa (M.insert qfn k fa) sa, xs)
+        go (FChoiceF qfn _ _ _ ts) (A pa fa sa, CTF k : xs) = r (A pa (M.insert qfn k fa) sa, xs)
           where r = fromJust $ P.lookup k ts
 
-        go (SChoiceF qsn _ _   ts) (A pa fa sa, (CTS k):xs) = r (A pa fa (M.insert qsn k sa), xs)
+        go (SChoiceF qsn _ _   ts) (A pa fa sa, CTS k : xs) = r (A pa fa (M.insert qsn k sa), xs)
           where r = fromJust $ P.lookup k ts
 
-        go (GoalChoiceF        ts) (a, (CTOG k):xs)         = v (a, xs )
+        go (GoalChoiceF        ts) (a, CTOG k : xs)         = v (a, xs )
           where v = fromJust $ P.lookup k ts
 
         go _                       _                         = error "Internal error in donePtrToLog"
@@ -124,12 +126,37 @@ ptrToAssignment ptr =
                                                  -- where childtype and nodetype don't match
                                                  -- ugly? Maybe. Could have been easy with dependent types.
 
+intermediateAssignment :: Pointer a -> Pointer a -> Assignment
+intermediateAssignment root ptr =
+ mkAssignment (toTree root) (A M.empty M.empty M.empty, oneWayTrail)
+  where
+    oneWayTrail = wrongToOne $ intermediateTrail root ptr -- the trail to the Done-Node
+
+    mkAssignment :: Tree a -> (Assignment, OneWayTrail) -> Assignment
+    mkAssignment = cata go
+      where
+        go :: TreeF t ((Assignment, [ChildType]) -> Assignment) -> (Assignment, [ChildType]) -> Assignment
+        go _              (a, [])                           = a
+
+        go (PChoiceF qpn _     ts) (A pa fa sa, CTP k : xs) = r (A (M.insert qpn k pa) fa sa, xs)
+          where r = fromJust $ P.lookup k ts
+
+        go (FChoiceF qfn _ _ _ ts) (A pa fa sa, CTF k : xs) = r (A pa (M.insert qfn k fa) sa, xs)
+          where r = fromJust $ P.lookup k ts
+
+        go (SChoiceF qsn _ _   ts) (A pa fa sa, CTS k : xs) = r (A pa fa (M.insert qsn k sa), xs)
+          where r = fromJust $ P.lookup k ts
+
+        go (GoalChoiceF        ts) (a, CTOG k : xs)         = v (a, xs )
+          where v = fromJust $ P.lookup k ts
+
+        go _                       _                         = error "Internal error in donePtrToLog"
 
 -- | Version of 'explore' that returns a 'Log'.
 -- | Does it really save space? Or is Haskell clever enough to know that
 -- | the Tree is a subtree of the Pointer?
 explorePtrLog :: Tree (Maybe (ConflictSet QPN)) -> Pointer a -> Log Message (Pointer a)
-explorePtrLog tree pointer = (fromJust . (flip walk) pointer . wrongToOne) <$> (worker tree [])
+explorePtrLog tree pointer = (fromJust . flip walk pointer . wrongToOne) <$> worker tree []
   where
   worker :: Tree (Maybe (ConflictSet QPN)) -> WrongWayTrail -> Log Message WrongWayTrail
   worker = cata go
@@ -141,27 +168,27 @@ explorePtrLog tree pointer = (fromJust . (flip walk) pointer . wrongToOne) <$> (
         asum $                                      -- try children in order,
         P.mapWithKey                                -- when descending ...
           (\ k r -> tryWith (TryP (PI qpn k)) $     -- log and ...
-                      r ((CTP k):treePtr))  -- record the pkg choice
+                      r (CTP k : treePtr))  -- record the pkg choice
         ts
       go (FChoiceF qfn c _ _ ts) treePtr    =
         backjumpInfo c $
         asum $                                      -- try children in order,
         P.mapWithKey                                -- when descending ...
           (\ k r -> tryWith (TryF qfn k) $          -- log and ...
-                      r ((CTF k):treePtr)) -- record the pkg choice
+                      r (CTF k : treePtr)) -- record the pkg choice
         ts
       go (SChoiceF qsn c _   ts) treePtr    =
         backjumpInfo c $
         asum $                                      -- try children in order,
         P.mapWithKey                                -- when descending ...
           (\ k r -> tryWith (TryS qsn k) $          -- log and ...
-                      r ((CTS k):treePtr)) -- record the pkg choice
+                      r (CTS k : treePtr)) -- record the pkg choice
         ts
       go (GoalChoiceF        ts) treePtr             =
         casePSQ ts
           (failWith (Failure S.empty EmptyGoalChoice))   -- empty goal choice is an internal error
           (\ k v _xs -> continueWith (Next (close k))
-              (v ( (CTOG k):treePtr )))     -- commit to the first goal choice
+              (v ( CTOG k : treePtr )))     -- commit to the first goal choice
 
 
 -- | Interface. -- This finds a path in offsetPtr while traversing conflictTree.
@@ -186,7 +213,7 @@ runTreePtrLog l = case runLog l of
 
 
 transformLog :: Log Message (Pointer a) -> Log Message (Assignment, RevDepMap)
-transformLog mLog = (\x -> (ptrToAssignment x, fromDone x)) <$> mLog
+transformLog mLog = (ptrToAssignment &&& fromDone) <$> mLog
   where
     fromDone :: Pointer a -> RevDepMap
     fromDone (Pointer _ (Done rdm)) = rdm

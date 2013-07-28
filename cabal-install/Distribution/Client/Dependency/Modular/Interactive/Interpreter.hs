@@ -7,23 +7,23 @@ import Data.List                                                 (isInfixOf)
 import Data.Maybe                                                (fromJust, fromMaybe)
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
-                                                                OpenGoal (..))
-import Distribution.Client.Dependency.Modular.Explore            (ptrToAssignment)
+                                                                  OpenGoal (..))
+import Distribution.Client.Dependency.Modular.Explore            (intermediateAssignment,
+                                                                  ptrToAssignment)
 import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
 import Distribution.Client.Dependency.Modular.Interactive.Parser (Selection (..), Selections (..),
-                                                                Statement (..), Statements (..))
-import Distribution.Client.Dependency.Modular.Interactive.Types  (UICommand(..), AppState, UIState(..))
+                                                                  Statement (..), Statements (..))
+import Distribution.Client.Dependency.Modular.Interactive.Types  (AppState, UICommand (..),
+                                                                  UIState (..))
 import Distribution.Client.Dependency.Modular.Package            (QPN, showQPN)
 import Distribution.Client.Dependency.Modular.PSQ                (toLeft)
 import Distribution.Client.Dependency.Modular.Solver             (explorePointer)
 import Distribution.Client.Dependency.Modular.Tree               (ChildType (..), Tree (..),
-                                                                TreeF (..),
-                                                                showChild, trav)
+                                                                  TreeF (..), showChild, trav)
 import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), children,
-                                                                filterBetween, findDown,
-                                                                focusChild, focusRoot, focusUp,
-                                                                liftToPtr,
-                                                                toTree)
+                                                                  filterBetween, findDown,
+                                                                  focusChild, focusRoot, focusUp,
+                                                                  liftToPtr, toTree)
 import Distribution.Client.Dependency.Types                      (QPointer)
 
 
@@ -42,7 +42,7 @@ interpretStatement (Go n) = do
   let choices = generateChoices treePointer
       focused = lookup n choices >>= flip focusChild treePointer
   case focused of
-    Nothing -> return $ [Error "No such child"]
+    Nothing -> return [Error "No such child"]
     Just subPointer -> do setPointer' subPointer
                           return [ShowChoices]
 
@@ -51,7 +51,7 @@ interpretStatement Empty = interpretStatement (Go 1)
 interpretStatement Auto = do
   pointer <- gets uiPointer
   case explorePointer pointer of
-    Left e  -> return $ [Error e]
+    Left e  -> return [Error e]
     Right t -> setPointer' t >> return [ShowChoices] -- TODO: Progress?
 
 
@@ -78,7 +78,11 @@ interpretStatement (Goto selections) = do
     pointer <- gets uiPointer
     case explorePointer pointer of
         Left e  -> return [Error e]
-        Right t -> setPointer' (selectPointer selections pointer t) >> return [ShowChoices] -- TODO: Progress
+        Right t -> do
+          let newPointer = selectPointer selections pointer t
+              res        = intermediateAssignment pointer newPointer
+          setPointer' newPointer
+          return [ShowResult $ showAssignment res, ShowChoices] -- TODO: Progress
     where
       selectPointer :: Selections -> QPointer -> QPointer -> QPointer
       selectPointer sel here done = head $ found <|> [done]
@@ -86,9 +90,9 @@ interpretStatement (Goto selections) = do
           found = filterBetween (isSelected sel . toTree) here done
 
 interpretStatement Install = do ptr <- gets uiPointer
-                                case isDone ptr of
-                                  True -> modify (\x -> x{uiInstall = Just ptr}) >> return [DoInstall]
-                                  False -> return [Error "Need to be on a \"Done\"-Node"]
+                                if isDone ptr
+                                 then modify (\x -> x{uiInstall = Just ptr}) >> return [DoInstall]
+                                 else return [Error "Need to be on a \"Done\"-Node"]
 
 interpretStatement (Cut _) = return [Error "Ooops.. not implemented yet."]
 
@@ -202,16 +206,15 @@ interpretStatements :: Statements -> AppState [UICommand]
 interpretStatements (Statements [])     = error "Internal Error in interpretExpression"
 interpretStatements (Statements [cmd])  = do
       addHistory cmd
-      result <- interpretStatement cmd
-      return result
+      interpretStatement cmd
 
 interpretStatements (Statements (c:md)) = do
       addHistory c
       result <- interpretStatement c
       case result of
-        [(Error _ )] -> return result -- return the result and stop processing commands.
-        _            -> do list   <- interpretStatements (Statements md)
-                           return $ result ++ list
+        [Error _ ] -> return result -- return the result and stop processing commands.
+        _          -> do list   <- interpretStatements (Statements md)
+                         return $ result ++ list
 
 addHistory :: Statement -> AppState ()
 addHistory Back      = return ()
