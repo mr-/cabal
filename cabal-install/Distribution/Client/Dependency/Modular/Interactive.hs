@@ -1,54 +1,32 @@
 module Distribution.Client.Dependency.Modular.Interactive where
 
-import Control.Applicative                                       ((<$>), (<*>), (<|>))
-import Control.Monad.State                                       (StateT(..), gets, get, lift, evalStateT, modify)
-import Data.Char                                                 (toLower)
-import Data.List                                                 (isInfixOf, isPrefixOf)
-import Data.Maybe                                                (fromJust, fromMaybe)
+import Control.Applicative                                       ((<$>), (<*>))
+import Control.Monad.State                                       (gets, get, lift, evalStateT)
+import Data.List                                                 (isPrefixOf)
 import Distribution.Client.Dependency                            (DepResolverParams,
                                                                   resolveDependenciesConfigs)
 import Distribution.Client.Dependency.Modular                    (modularResolverTree)
-import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
-import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
-                                                                  OpenGoal (..))
-import Distribution.Client.Dependency.Modular.Explore            (ptrToAssignment)
-import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
-import Distribution.Client.Dependency.Modular.Interactive.Parser (Selection (..), Selections (..),
-                                                                  Statement (..), Statements (..),
+import Distribution.Client.Dependency.Modular.Interactive.Parser (Statements (..),
                                                                   commandList, readStatements)
-import Distribution.Client.Dependency.Modular.Package            (QPN, showQPN)
-import Distribution.Client.Dependency.Modular.PSQ                (toLeft)
-import Distribution.Client.Dependency.Modular.Solver             (explorePointer)
+import Distribution.Client.Dependency.Modular.Interactive.Types  (AppState, UIState(..), UICommand(..), Action(..))
+import Distribution.Client.Dependency.Modular.Interactive.Interpreter (interpretStatements, generateChoices)
 import Distribution.Client.Dependency.Modular.Tree               (ChildType (..), Tree (..),
-                                                                  TreeF (..), isInstalled,
-                                                                  showChild, showNodeFromTree, trav)
-import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), children,
-                                                                  filterBetween, findDown,
-                                                                  focusChild, focusRoot, focusUp,
-                                                                  fromTree, liftToPtr,
+                                                                  isInstalled,
+                                                                  showChild, showNodeFromTree)
+import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..),
+                                                                  focusChild,
+                                                                  fromTree,
                                                                   pointsBelow, toTree)
 import Distribution.Client.Dependency.Types                      (Solver (..), QPointer)
 import Distribution.Simple.Compiler                              (CompilerId)
 import Distribution.System                                       (Platform)
-import System.Console.Haskeline                                  (InputT, completeWord,
+import System.Console.Haskeline                                  (completeWord,
                                                                   defaultSettings, getInputLine,
                                                                   outputStrLn, runInputT,
                                                                   setComplete)
 import System.Console.Haskeline.Completion                       (Completion (..), CompletionFunc)
 
-data UIState = UIState {uiPointer     :: QPointer,
-                        uiBookmarks   :: [(String, QPointer)],
-                        uiInstall     :: Maybe QPointer,
-                        uiAutoPointer :: Maybe QPointer,
-                        uiHistory     :: [Statement]}
 
-type AppState = StateT UIState (InputT IO)
-data Action = InstallNow | Abort | Continue
-
-
--- Better uiBreakPoints :: [(String, QPointer -> Bool)]
--- features: cut
--- Figure out what the given bools for flags and Stanzas mean.
 
 
 runInteractive :: Platform
@@ -80,7 +58,7 @@ runInteractive platform compId solver resolverParams = do
         initialState     = UIState (fromTree searchTree) [] Nothing Nothing []
         completion       = setComplete cmdComplete defaultSettings
 
-    runInputT completion $ evalStateT (loop Continue) initialState
+    runInputT completion $ evalStateT (loop First) initialState
       where
         loop :: Action -> AppState (Maybe QPointer)
         loop Abort = do
@@ -91,6 +69,11 @@ runInteractive platform compId solver resolverParams = do
           toInstall <- gets uiInstall
           lift $ outputStrLn "Bye bye"
           return toInstall
+
+        loop First = do
+          _ <- executeUICommand ShowChoices
+          action <- handleCommands
+          loop action
 
         loop Continue = do
           action <- handleCommands
@@ -104,14 +87,8 @@ runInteractive platform compId solver resolverParams = do
             x :: String -> [String]
             x str          = filter (isPrefixOf str) commandList
 
-generateChoices :: QPointer -> [(Int, ChildType)]
-generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)
-
 handleCommands :: AppState Action
 handleCommands = do
-  uiState <- get
-  lift $ outputStrLn $ showNodeFromTree ( toTree $ uiPointer uiState )
-  lift $ outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
   inp <- lift $ getInputLine "> "
   case inp of
     Nothing    -> return Abort
@@ -122,221 +99,28 @@ handleCommands = do
   where
     handleCommands' :: Statements -> AppState Action
     handleCommands' cmds = do
-      uiState <- get
-      lift $ outputStrLn $ showNodeFromTree ( toTree $ uiPointer uiState )
-      lift $ outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
-      results <- interpretStatements cmds
-      lift $ outputStrLn $ showResults results -- TODO: check what's needed to show here
-      install <- gets uiInstall
-      return (if isInstall install then InstallNow else Continue)
+      uiCommands<- interpretStatements cmds
+      r <- mapM executeUICommand uiCommands
+      return (if InstallNow `elem` r then InstallNow else Continue)
 
+
+executeUICommand :: UICommand -> AppState Action
+executeUICommand (Error s)      = do
+    lift $ outputStrLn s
+    return Continue
+executeUICommand (ShowChoices)  = do
+    uiState <- get
+    lift $ outputStrLn $ showNodeFromTree ( toTree $ uiPointer uiState )
+    lift $ outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
+    return Continue
+  where
     thisOrThat :: String -> String -> String
     "" `thisOrThat` s = s
     s  `thisOrThat` _ = s
-
-    isInstall :: Maybe a -> Bool
-    isInstall Nothing = False
-    isInstall _       = True
-
-
-showResults :: [Result] -> String
-showResults = show
-
-data Result = Error String | Progress String | Success deriving (Show, Eq)
-
-interpretStatements :: Statements -> AppState [Result]
-interpretStatements (Statements [])     = error "Internal Error in interpretExpression"
-interpretStatements (Statements [cmd])  = do
-      addHistory cmd
-      result <- interpretStatement cmd
-      return [result]
-
-interpretStatements (Statements (c:md)) = do
-      addHistory c
-      result <- interpretStatement c
-      case result of
-        (Error _ ) -> return [result] -- return the result and stop processing commands.
-        _          -> do list   <- interpretStatements (Statements md)
-                         return (result:list)
-
-addHistory :: Statement -> AppState ()
-addHistory Back      = return ()
-addHistory statement = modify (\uiState -> uiState {uiHistory = statement:uiHistory uiState})
-
-setPointer' :: QPointer -> AppState ()
-setPointer' ptr = modifyPointer (const ptr)
-
-modifyPointer :: (QPointer -> QPointer) -> AppState ()
-modifyPointer f = do ptr <- gets uiPointer
-                     modify (\uiState ->uiState{uiPointer = f ptr})
-
-
-interpretStatement :: Statement -> AppState Result
-interpretStatement ToTop = modifyPointer focusRoot >> return Success
-
-interpretStatement Up = do
-  ptr <- gets uiPointer
-  setPointer' (fromMaybe ptr (focusUp ptr))
-  return Success
-
-interpretStatement (Go n) = do
-  treePointer <- gets uiPointer
-  let choices = generateChoices treePointer
-      focused = lookup n choices >>= flip focusChild treePointer
-  case focused of
-    Nothing -> return $ Error "No such child"
-    Just subPointer -> do setPointer' subPointer
-                          return Success
-
-interpretStatement Empty = interpretStatement (Go 1)
-
-interpretStatement Auto = do
-  pointer <- gets uiPointer
-  case explorePointer pointer of
-    Left e  -> return $ Error e
-    Right t -> setPointer' t >> return Success -- TODO: Progress?
-
-
-interpretStatement (BookSet name) = addBookmark name >> return Success
-  where
-    addBookmark :: String -> AppState ()
-    addBookmark s = modify (\u -> u {uiBookmarks = (s, uiPointer u) : uiBookmarks u})
-
-interpretStatement BookList = do bookmarks <- gets uiBookmarks
-                                 return $ Progress $ show $ map fst bookmarks
-
-interpretStatement (BookJump name) = do
-    bookmarks <- gets uiBookmarks
-    case lookup name bookmarks of
-        Nothing -> return $ Error "No such bookmark."
-        Just a  -> setPointer' a >> return Success
-
-
--- TODO: Should the selected packages get precedence? Or should they be
--- traversed in the given order? (order makes a difference in selection,
--- e.g. when installing cabal-install, goto zlib has fewer options than
--- selecting it manually as early as possible.)
-interpretStatement (Goto selections) = do
-    pointer <- gets uiPointer
-    case explorePointer pointer of
-        Left e  -> return $ Error e
-        Right t -> setPointer' (selectPointer selections pointer t) >> return Success -- TODO: Progress
-    where
-      selectPointer :: Selections -> QPointer -> QPointer -> QPointer
-      selectPointer sel here done = head $ found <|> [done]
-        where
-          found = filterBetween (isSelected sel . toTree) here done
-
-interpretStatement Install = do ptr <- gets uiPointer
-                                case isDone ptr of
-                                  True -> modify (\x -> x{uiInstall = Just ptr}) >> return Success
-                                  False -> return $ Error "Need to be on a \"Done\"-Node"
-
-interpretStatement (Cut _) = return $ Error "Ooops.. not implemented yet."
-
- -- Need to make that more efficient, prune tree first. (firstchoice..)
-interpretStatement (Find sel) = do
-    ptr <- gets uiPointer
-    case findDown (isSelected sel.toTree) ptr of
-        (x:_) -> setPointer' x >> return Success
-        _     -> return $ Error "Nothing found"
-
-
-interpretStatement IndicateAuto = do
-    ptr <- gets uiPointer
-    case explorePointer ptr of
-      Left e  -> return $ Error e
-      Right t -> modify (\x -> x{uiAutoPointer = Just t}) >> return Success
-
-
-interpretStatement ShowPlan = (return . Progress . showAssignment . ptrToAssignment) =<< gets uiPointer
-
-interpretStatement (Prefer sel) = do
-    modifyPointer (\x -> preferSelections sel `liftToPtr` x)
-    return Success
-
-
-interpretStatement Back = do
-    history <- gets uiHistory
-    case history of
-        (_:reminder) -> do _ <- interpretStatements (Statements (ToTop : reverse reminder)) --TODO: simply discard the return values?
-                           modify (\x -> x{uiHistory = reminder})
-                           return Success
-        _            -> return $ Error "Nothing to go back to"
-
-interpretStatement ShowHistory = do history <- gets uiHistory
-                                    return $ Progress $ show history
-
-interpretStatement WhatWorks =
-    do ptr <- gets uiPointer
-       return                  $
-          Progress             $
-          show                 $
-          map showChild        $
-          filter (works ptr)   $
-          fromJust             $
-          children ptr
-    where
-      isRight :: Either a b -> Bool
-      isRight (Right _) = True
-      isRight _         = False
-      focus :: QPointer -> ChildType -> QPointer
-      focus ptr ch = fromJust $ focusChild ch ptr
-      works :: QPointer -> ChildType -> Bool
-      works ptr ch = isRight $ explorePointer $ focus ptr ch
-
-
-
-isDone :: QPointer -> Bool
-isDone (Pointer _ (Done _ )  ) = True
-isDone _                       = False
-
-
-isSelected :: Selections -> Tree a ->  Bool
-isSelected (Selections selections) tree  = or [tree `nodeMatches` selection | selection <- selections]
-  where
-    nodeMatches :: Tree a -> Selection ->  Bool
-    nodeMatches (PChoice qpn _ _)     (SelPChoice pname)        =  pname  `isSubOf` showQPN qpn
-    nodeMatches (FChoice qfn _ _ _ _) (SelFSChoice name flag)   = (name   `isSubOf` qfnName)
-                                                               && (flag   `isSubOf` qfnFlag)
-      where (qfnName, qfnFlag) = unQFN qfn
-    nodeMatches (SChoice qsn _ _ _ )  (SelFSChoice name stanza) = (name   `isSubOf` qsnName)
-                                                               && (stanza `isSubOf` qsnStanza)
-      where (qsnName, qsnStanza) = unQSN qsn
-    nodeMatches _                     _                         = False
-
-isSubOf :: String -> String -> Bool
-isSubOf x y = lower x `isInfixOf` lower y
-  where
-    lower :: String -> String
-    lower = map toLower -- I think cabal is case-insensitive too
-
--- data OpenGoal = OpenGoal (FlaggedDep QPN) QGoalReasonChain
-
---data FlaggedDep qpn =
-    --Flagged (FN qpn) FInfo (TrueFlaggedDeps qpn) (FalseFlaggedDeps qpn)
-  -- | Stanza  (SN qpn)       (TrueFlaggedDeps qpn)
-  -- | Simple (Dep qpn)
-  --deriving (Eq, Show)
-
---data Dep qpn = Dep qpn (CI qpn)
-
-preferSelections :: Selections -> Tree a -> Tree a
-preferSelections sel = trav go
-  where
-    go (GoalChoiceF xs) = GoalChoiceF (toLeft (depMatchesAny sel) xs)
-    go x                = x
-
-    depMatchesAny :: Selections -> OpenGoal -> Bool
-    depMatchesAny (Selections selections) (OpenGoal fd _) = any (depMatches fd) selections
-
-    depMatches :: FlaggedDep QPN -> Selection -> Bool
-    depMatches (Simple (Dep qpn _)) (SelPChoice name)       = name `isSubOf` showQPN qpn
-    depMatches (Flagged qfn _ _ _)  (SelFSChoice name flag) = (name `isSubOf` qfnName) && (flag `isSubOf` qfnFlag)
-      where (qfnName, qfnFlag) = unQFN qfn
-    depMatches (Stanza qsn _)       (SelFSChoice name flag) = (name `isSubOf` qsnName) && (flag `isSubOf` qsnFlag)
-      where (qsnName, qsnFlag) = unQSN qsn
-    depMatches _                    _                       = False
+executeUICommand (ShowResult s) = do
+    lift $ outputStrLn s
+    return Continue
+executeUICommand (DoInstall) = return InstallNow
 
 
 displayChoices :: UIState -> String
