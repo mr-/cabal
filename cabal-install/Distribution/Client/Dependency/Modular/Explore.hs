@@ -98,7 +98,7 @@ backjumpInfo c m = m <|> case c of -- important to produce 'm' before matching o
 -- But: It needs the q[pfs]n where the trail is pointing to. Maybe it's
 -- good the way it is.
 ptrToAssignment :: Pointer a -> Assignment
-ptrToAssignment ptr =
+ptrToAssignment ptr = -- TODO: intermediateAssignment (focusRoot ptr) ptr
  mkAssignment (toTree $ focusRoot ptr) (A M.empty M.empty M.empty, oneWayTrail)
   where
     oneWayTrail = wrongToOne $ pathToTrail $ toPath ptr -- the trail to the Done-Node
