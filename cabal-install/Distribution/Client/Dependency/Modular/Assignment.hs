@@ -4,7 +4,7 @@ import Control.Applicative
 import Control.Monad
 import Data.Array as A
 import Data.List as L
-import Data.Map as M hiding (map)
+import Data.Map as M hiding (map, null)
 import Data.Maybe
 import Data.Graph
 import Prelude hiding (pi)
@@ -36,10 +36,14 @@ data Assignment = A PAssignment FAssignment SAssignment
   deriving (Show, Eq)
 
 showAssignment :: Assignment -> String
-showAssignment (A pa fa sa) = unlines
-   ["Packages: " ++ showMap showQPN showI pa,
-    "Flags: "    ++ showMap showQFN show fa,
-    "Stanzas: "  ++ showMap showQSN show sa]
+showAssignment (A pa fa sa) = unlines $
+      [ "Packages: " ++ packages                      ]
+   ++ [ "Flags: "    ++ flags    | (not.null) flags   ]
+   ++ [ "Stanzas: "  ++ stanzas  | (not.null) stanzas ]
+ where
+  packages = showMap showQPN showI pa
+  flags    = showMap showQFN show  fa
+  stanzas  = showMap showQSN show  sa
 
 showMap :: (Ord a ) => (a -> String) -> (b -> String) ->  Map a b -> String
 showMap showA showB rdm =  unlines $ map showKey (M.keys rdm)
