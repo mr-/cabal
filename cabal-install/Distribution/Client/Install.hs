@@ -175,13 +175,22 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
     preInstallPlan <- makeInstallPlan verbosity args installContext
     case preInstallPlan of
       Just progress ->
-          processInstallPlan verbosity args installContext =<< foldProgress logMsg die return progress
+          processInstallPlan verbosity args installContext =<< foldProgress logMsg die' return progress
       _             -> return ()
   where
     args :: InstallArgs
     args = (packageDBs, repos, comp, platform, conf, useSandbox, mSandboxPkgInfo,
             globalFlags, configFlags, configExFlags, installFlags,
             haddockFlags)
+    die' message = die (message ++ if isUseSandbox useSandbox
+                                   then installFailedInSandbox else [])
+    -- TODO: use a better error message, remove duplication.
+    installFailedInSandbox =
+      "Note: when using a sandbox, all packages are required to have \
+      \consistent dependencies. \
+      \Try reinstalling/unregistering the offending packages or \
+      \recreating the sandbox."
+
     logMsg message rest = debugNoWrap verbosity message >> rest
 
 

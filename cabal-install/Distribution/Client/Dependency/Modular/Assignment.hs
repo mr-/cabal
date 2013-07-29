@@ -37,9 +37,9 @@ data Assignment = A PAssignment FAssignment SAssignment
 
 showAssignment :: Assignment -> String
 showAssignment (A pa fa sa) = unlines $
-      [ "Packages: " ++ packages                      ]
-   ++ [ "Flags: "    ++ flags    | (not.null) flags   ]
-   ++ [ "Stanzas: "  ++ stanzas  | (not.null) stanzas ]
+      [ "Packages: " ++ packages | (not.null) packages ]
+   ++ [ "Flags: "    ++ flags    | (not.null) flags    ]
+   ++ [ "Stanzas: "  ++ stanzas  | (not.null) stanzas  ]
  where
   packages = showMap showQPN showI pa
   flags    = showMap showQFN show  fa

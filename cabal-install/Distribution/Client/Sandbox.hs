@@ -541,7 +541,7 @@ reinstallAddSourceDeps verbosity configFlags' configExFlags
         installContext   <- makeInstallContext verbosity args Nothing
         maybeInstallPlan <- makeInstallPlan verbosity args installContext
         when (isJust maybeInstallPlan) $ do
-          installPlan    <- foldProgress logMsg die return (fromJust maybeInstallPlan)
+          installPlan    <- foldProgress logMsg die' return (fromJust maybeInstallPlan)
           processInstallPlan verbosity args installContext installPlan
           writeIORef retVal ReinstalledSomeDeps
 
@@ -549,6 +549,14 @@ reinstallAddSourceDeps verbosity configFlags' configExFlags
 
     where
       logMsg message rest = debugNoWrap verbosity message >> rest
+
+      die' message = die (message ++ installFailedInSandbox)
+    -- TODO: use a better error message, remove duplication.
+      installFailedInSandbox =
+        "Note: when using a sandbox, all packages are required to have \
+        \consistent dependencies. \
+        \Try reinstalling/unregistering the offending packages or \
+        \recreating the sandbox."
 
       topHandler' = topHandlerWith $ \_ -> do
         warn verbosity "Couldn't reinstall some add-source dependencies."
