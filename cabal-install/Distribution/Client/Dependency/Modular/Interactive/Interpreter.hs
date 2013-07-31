@@ -27,8 +27,6 @@ import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), 
 import Distribution.Client.Dependency.Types                      (QPointer)
 
 
-
-
 interpretStatement :: Statement -> AppState [UICommand]
 interpretStatement ToTop = modifyPointer focusRoot >> return [ShowChoices]
 
@@ -82,7 +80,7 @@ interpretStatement (Goto selections) = do
           let newPointer = selectPointer selections pointer t
               res        = intermediateAssignment pointer newPointer
           setPointer' newPointer
-          return [ShowResult $ showAssignment res, ShowChoices] -- TODO: Progress
+          return [ShowResult $ showAssignment res, ShowChoices]
     where
       selectPointer :: Selections -> QPointer -> QPointer -> QPointer
       selectPointer sel here done = head $ found <|> [done]
@@ -229,5 +227,3 @@ modifyPointer f = do ptr <- gets uiPointer
 
 generateChoices :: QPointer -> [(Int, ChildType)]
 generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)
-
-
