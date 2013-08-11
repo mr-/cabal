@@ -50,7 +50,7 @@ interpretStatement Auto = do
   pointer <- gets uiPointer
   case explorePointer pointer of
     Left e  -> return [Error e]
-    Right t -> setPointer' t >> return [ShowChoices] -- TODO: Progress?
+    Right t -> setPointer' t >> return [ShowResult "Created a valid installplan. \nType install to install, or showPlan to review" ]
 
 
 interpretStatement (BookSet name) = addBookmark name >> return [ShowResult (name ++ " set")]
@@ -201,19 +201,16 @@ preferSelections sel = trav go
     depMatches _                    _                       = False
 
 interpretStatements :: Statements -> AppState [UICommand]
-interpretStatements (Statements [])     = error "Internal Error in interpretExpression"
-interpretStatements (Statements [cmd])  = do
-      addHistory cmd
-      interpretStatement cmd
-
+interpretStatements (Statements [])     = return []
 interpretStatements (Statements (c:md)) = do
-      addHistory c
       result <- interpretStatement c
       case result of
         [Error _ ] -> return result -- return the result and stop processing commands.
-        _          -> do list   <- interpretStatements (Statements md)
+        _          -> do addHistory c
+                         list   <- interpretStatements (Statements md)
                          return $ result ++ list
 
+-- TODO: Back does not revert indicateAuto, and prefer..
 addHistory :: Statement -> AppState ()
 addHistory Back      = return ()
 addHistory statement = modify (\uiState -> uiState {uiHistory = statement:uiHistory uiState})
