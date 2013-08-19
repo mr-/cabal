@@ -83,8 +83,8 @@ interpretStatement (Goto selections) = do
           return [ShowResult $ showAssignment res, ShowChoices]
     where
       selectPointer :: Selections -> QPointer -> QPointer -> QPointer
-      selectPointer sel here done = head $ found <|> [done]
-        where
+      selectPointer sel here done = last $ [done] <|> found
+       where
           found = filterBetween (isSelected sel . toTree) here done
 
 interpretStatement Install = do ptr <- gets uiPointer
