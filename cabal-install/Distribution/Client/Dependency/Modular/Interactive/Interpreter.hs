@@ -1,6 +1,5 @@
 module Distribution.Client.Dependency.Modular.Interactive.Interpreter where
 
-import Control.Applicative                                       ((<|>))
 import Control.Monad.State                                       (gets, modify)
 import Data.Char                                                 (toLower)
 import Data.List                                                 (isInfixOf)
@@ -78,12 +77,12 @@ interpretStatement (Goto selections) = do
         Left e  -> return [Error e]
         Right t -> do
           let newPointer = selectPointer selections pointer t
-              res        = intermediateAssignment pointer newPointer
+              assignment = intermediateAssignment pointer newPointer
           setPointer' newPointer
-          return [ShowResult $ showAssignment res, ShowChoices]
+          return [ShowResult $ showAssignment assignment, ShowChoices]
     where
       selectPointer :: Selections -> QPointer -> QPointer -> QPointer
-      selectPointer sel here done = last $ [done] <|> found
+      selectPointer sel here done = last $ done:found
        where
           found = filterBetween (isSelected sel . toTree) here done
 
