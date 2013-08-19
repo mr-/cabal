@@ -98,6 +98,7 @@ import Distribution.Simple.Hpc ( enableCoverage )
 import Distribution.Simple.Program
     ( Program(..), ProgramLocation(..), ConfiguredProgram(..)
     , ProgramConfiguration, defaultProgramConfiguration
+    , ProgramSearchPathEntry(..), getProgramSearchPath, setProgramSearchPath
     , configureAllKnownPrograms, knownPrograms, lookupKnownProgram
     , userSpecifyArgss, userSpecifyPaths
     , requireProgram, requireProgramVersion
@@ -295,12 +296,10 @@ configure (pkg_descr0, pbi) cfg
 
         createDirectoryIfMissingVerbose (lessVerbose verbosity) True distPref
 
-        let programsConfig = userSpecifyArgss (configProgramArgs cfg)
-                           . userSpecifyPaths (configProgramPaths cfg)
-                           $ configPrograms cfg
-            userInstall = fromFlag (configUserInstall cfg)
-            packageDbs  = interpretPackageDbFlags userInstall
-                            (configPackageDBs cfg)
+        let programsConfig = mkProgramsConfig cfg (configPrograms cfg)
+            userInstall    = fromFlag (configUserInstall cfg)
+            packageDbs     = interpretPackageDbFlags userInstall
+                             (configPackageDBs cfg)
 
         -- detect compiler
         (comp, compPlatform, programsConfig') <- configCompiler
@@ -588,6 +587,16 @@ configure (pkg_descr0, pbi) cfg
                       , executables = modifyExecutable  `map`
                                       executables pkg_descr}
 
+mkProgramsConfig :: ConfigFlags -> ProgramConfiguration -> ProgramConfiguration
+mkProgramsConfig cfg initialProgramsConfig = programsConfig
+  where
+    programsConfig = userSpecifyArgss (configProgramArgs cfg)
+                   . userSpecifyPaths (configProgramPaths cfg)
+                   . setProgramSearchPath searchpath
+                   $ initialProgramsConfig
+    searchpath     = getProgramSearchPath (initialProgramsConfig)
+                  ++ map ProgramSearchPathDir (configProgramPathExtra cfg)
+
 -- -----------------------------------------------------------------------------
 -- Configuring package dependencies
 
@@ -851,9 +860,7 @@ configCompilerAux cfg = configCompiler (flagToMaybe $ configHcFlavor cfg)
                                        programsConfig
                                        (fromFlag (configVerbosity cfg))
   where
-    programsConfig = userSpecifyArgss (configProgramArgs cfg)
-                   . userSpecifyPaths (configProgramPaths cfg)
-                   $ defaultProgramConfiguration
+    programsConfig = mkProgramsConfig cfg defaultProgramConfiguration
 
 configCompiler :: Maybe CompilerFlavor -> Maybe FilePath -> Maybe FilePath
                -> ProgramConfiguration -> Verbosity
