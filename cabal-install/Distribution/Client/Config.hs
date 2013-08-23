@@ -100,10 +100,10 @@ import Network.URI
          ( URI(..), URIAuth(..) )
 import System.FilePath
          ( (<.>), (</>), takeDirectory )
-import System.Environment
-         ( getEnvironment )
 import System.IO.Error
          ( isDoesNotExistError )
+import Distribution.Compat.Environment
+         ( getEnvironment )
 import Distribution.Compat.Exception
          ( catchIO )
 

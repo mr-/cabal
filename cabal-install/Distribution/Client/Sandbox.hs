@@ -69,7 +69,7 @@ import Distribution.PackageDescription.Configuration
 import Distribution.PackageDescription.Parse  ( readPackageDescription )
 import Distribution.Simple.Compiler           ( Compiler(..), PackageDB(..)
                                               , PackageDBStack )
-import Distribution.Simple.Configure          ( configCompilerAux
+import Distribution.Simple.Configure          ( configCompilerAuxEx
                                               , interpretPackageDbFlags
                                               , getPackageDBContents )
 import Distribution.Simple.PreProcess         ( knownSuffixHandlers )
@@ -86,8 +86,8 @@ import Distribution.Package                   ( Package(..) )
 import Distribution.System                    ( Platform )
 import Distribution.Text                      ( display )
 import Distribution.Verbosity                 ( Verbosity, lessVerbose )
-import Distribution.Compat.Env                ( lookupEnv, setEnv )
-import Distribution.Compat.FilePerms          ( setFileHidden )
+import Distribution.Client.Compat.Environment ( lookupEnv, setEnv )
+import Distribution.Client.Compat.FilePerms   ( setFileHidden )
 import qualified Distribution.Client.Sandbox.Index as Index
 import qualified Distribution.Simple.PackageIndex  as InstalledPackageIndex
 import qualified Distribution.Simple.Register      as Register
@@ -294,7 +294,7 @@ sandboxInit verbosity sandboxFlags globalFlags = do
 
   -- Determine which compiler to use (using the value from ~/.cabal/config).
   userConfig <- loadConfig verbosity (globalConfigFile globalFlags) NoFlag
-  (comp, platform, _) <- configCompilerAux (savedConfigureFlags userConfig)
+  (comp, platform, _) <- configCompilerAuxEx (savedConfigureFlags userConfig)
 
   -- Create the package environment file.
   pkgEnvFile <- getSandboxConfigFilePath globalFlags
@@ -353,7 +353,7 @@ doAddSource verbosity buildTreeRefs sandboxDir pkgEnv refType = do
 
   -- If we're running 'sandbox add-source' for the first time for this compiler,
   -- we need to create an initial timestamp record.
-  (comp, platform, _) <- configCompilerAux . savedConfigureFlags $ savedConfig
+  (comp, platform, _) <- configCompilerAuxEx . savedConfigureFlags $ savedConfig
   maybeAddCompilerTimestampRecord verbosity sandboxDir indexFile
     (compilerId comp) platform
 
@@ -716,6 +716,6 @@ configPackageDB' cfg =
 configCompilerAux' :: ConfigFlags
                    -> IO (Compiler, Platform, ProgramConfiguration)
 configCompilerAux' configFlags =
-  configCompilerAux configFlags
+  configCompilerAuxEx configFlags
     --FIXME: make configCompilerAux use a sensible verbosity
     { configVerbosity = fmap lessVerbose (configVerbosity configFlags) }
