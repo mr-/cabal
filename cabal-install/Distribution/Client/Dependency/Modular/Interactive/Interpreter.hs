@@ -31,7 +31,7 @@ interpretStatement ToTop = modifyPointer focusRoot >> return [ShowChoices]
 
 interpretStatement Up = do
   ptr <- gets uiPointer
-  setPointer' (fromMaybe ptr (focusUp ptr))
+  setPointer (fromMaybe ptr (focusUp ptr))
   return [ShowChoices]
 
 interpretStatement (Go n) = do
@@ -40,7 +40,7 @@ interpretStatement (Go n) = do
       focused = lookup n choices >>= flip focusChild treePointer
   case focused of
     Nothing -> return [Error "No such child"]
-    Just subPointer -> do setPointer' subPointer
+    Just subPointer -> do setPointer subPointer
                           return [ShowChoices]
 
 interpretStatement Empty = interpretStatement (Go 1)
@@ -49,7 +49,7 @@ interpretStatement Auto = do
   pointer <- gets uiPointer
   case explorePointer pointer of
     Left e  -> return [Error e]
-    Right t -> setPointer' t >> return [ShowResult "Created a valid installplan. \nType install to install, or showPlan to review" ]
+    Right t -> setPointer t >> return [ShowResult "Created a valid installplan. \nType install to install, or showPlan to review" ]
 
 
 interpretStatement (BookSet name) = addBookmark name >> return [ShowResult (name ++ " set")]
@@ -64,7 +64,7 @@ interpretStatement (BookJump name) = do
     bookmarks <- gets uiBookmarks
     case lookup name bookmarks of
         Nothing -> return [Error "No such bookmark."]
-        Just a  -> setPointer' a >> return [ShowResult "Jumped"] -- Actual progress!
+        Just a  -> setPointer a >> return [ShowResult "Jumped"] -- Actual progress!
 
 
 -- TODO: Should the selected packages get precedence? Or should they be
@@ -78,7 +78,7 @@ interpretStatement (Goto selections) = do
         Right t -> do
           let newPointer = selectPointer selections pointer t
               assignment = intermediateAssignment pointer newPointer
-          setPointer' newPointer
+          setPointer newPointer
           return [ShowResult $ showAssignment assignment, ShowChoices]
     where
       selectPointer :: Selections -> QPointer -> QPointer -> QPointer
@@ -97,7 +97,7 @@ interpretStatement (Cut _) = return [Error "Ooops.. not implemented yet."]
 interpretStatement (Find sel) = do
     ptr <- gets uiPointer
     case findDown (isSelected sel.toTree) ptr of
-        (x:_) -> setPointer' x >> return [ShowChoices]
+        (x:_) -> setPointer x >> return [ShowChoices]
         _     -> return [Error "Nothing found"]
 
 
@@ -214,8 +214,8 @@ addHistory :: Statement -> AppState ()
 addHistory Back      = return ()
 addHistory statement = modify (\uiState -> uiState {uiHistory = statement:uiHistory uiState})
 
-setPointer' :: QPointer -> AppState ()
-setPointer' ptr = modifyPointer (const ptr)
+setPointer :: QPointer -> AppState ()
+setPointer ptr = modifyPointer (const ptr)
 
 modifyPointer :: (QPointer -> QPointer) -> AppState ()
 modifyPointer f = do ptr <- gets uiPointer

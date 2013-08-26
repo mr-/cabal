@@ -185,11 +185,11 @@ goalReasonChainsToVars :: Ord qpn => [GoalReasonChain qpn] -> ConflictSet qpn
 goalReasonChainsToVars = S.unions . L.map goalReasonChainToVars
 
 showGoalReason :: QGoalReasonChain -> String
-showGoalReason (PDependency piqpn :_) = showPI piqpn
+showGoalReason (PDependency piqpn :_)    = showPI piqpn
 showGoalReason (FDependency fnqpn b : _) = showQFN fnqpn  ++ " Bool: " ++ show b
-showGoalReason (SDependency snqpn :_) =  showQSN snqpn
-showGoalReason (UserGoal:_) = "UserGoal"
-showGoalReason [] = error "Empty QGoalReasonChain - this should never happen, I think"
+showGoalReason (SDependency snqpn :_)    =  showQSN snqpn
+showGoalReason (UserGoal:_)              = "UserGoal"
+showGoalReason []                        = error "Empty QGoalReasonChain - this should never happen, I think"
 
 -- | Closes a goal, i.e., removes all the extraneous information that we
 -- need only during the build phase.
