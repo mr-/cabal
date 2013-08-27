@@ -2,7 +2,8 @@ module Distribution.Client.Dependency.Modular.Interactive.Interpreter where
 
 import Control.Monad.State                                       (gets, modify)
 import Data.Char                                                 (toLower)
-import Data.List                                                 (isInfixOf)
+import Data.Function                                             (on)
+import Data.List                                                 (isInfixOf, nubBy)
 import Data.Maybe                                                (fromJust, fromMaybe)
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
@@ -19,7 +20,7 @@ import Distribution.Client.Dependency.Modular.PSQ                (toLeft)
 import Distribution.Client.Dependency.Modular.Solver             (explorePointer)
 import Distribution.Client.Dependency.Modular.Tree               (ChildType (..), Tree (..),
                                                                   TreeF (..), showChild, trav,
-                                                                  showNodeFromTree)
+                                                                  treeToNode)
 import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), children,
                                                                   filterBetween, filterDown,
                                                                   focusChild, focusRoot, focusUp,
@@ -147,17 +148,23 @@ interpretStatement WhatWorks =
       works :: QPointer -> ChildType -> Bool
       works ptr ch = isRight $ explorePointer $ focus ptr ch
 
-interpretStatement Reason = do
+interpretStatement (Reason _) = do
     ptr <- gets uiPointer
     let failNodes   = filterDown allChildrenFail ptr
-        failReasons = map (showNodeFromTree.toTree) failNodes
-    return [ShowResult $ head failReasons]
+        uniqueNodes = nubBy ((==) `on` (treeToNode.toTree)) failNodes
+    case uniqueNodes of
+      []      -> return [ShowResult "Nothing found, sorry"]
+      node:_  -> do
+        let progress = showAssignment $ intermediateAssignment ptr node
+            message  = "This node does not admit a solution"
+        setPointer node
+        return [ShowResult progress, ShowResult message, ShowChoices]
 
 
 allChildrenFail :: QPointer -> Bool
 allChildrenFail ptr = case children ptr of
   Nothing -> False
-  Just l  -> and $ map (\x -> (isFail.fromJust) (focusChild x ptr)) l
+  Just l  -> all (\x -> (isFail.fromJust) (focusChild x ptr)) l
 
 isDone :: QPointer -> Bool
 isDone (Pointer _ (Done _ )  ) = True

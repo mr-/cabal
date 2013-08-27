@@ -22,6 +22,8 @@ data Tree a =
   | Fail        (ConflictSet QPN) FailReason
 -}
 
+
+
 data Path a =
     Top
   | PChoicePoint (Path a) (PSQContext I        (Tree a)) QPN a

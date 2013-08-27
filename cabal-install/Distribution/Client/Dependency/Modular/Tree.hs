@@ -26,6 +26,21 @@ data Tree a =
   -- special case of triviality we actually consider is if there are no new
   -- dependencies introduced by this node.
 
+data NodeType a = NTP QPN a
+                | NTF QFN a Bool Bool
+                | NTS QSN a Bool
+                | NTGoal
+                | NTDone RevDepMap
+                | NTFail (ConflictSet QPN) FailReason   deriving (Eq, Show)
+
+
+treeToNode :: Tree a -> NodeType a
+treeToNode (PChoice     qpn a       _) = NTP qpn a
+treeToNode (FChoice     qfn a b1 b2 _) = NTF qfn a b1 b2
+treeToNode (SChoice     qsn a b1    _) = NTS qsn a b1
+treeToNode (GoalChoice              _) = NTGoal
+treeToNode (Done        rdm          ) = NTDone rdm
+treeToNode (Fail        cnfset fr    ) = NTFail cnfset fr
 
 
 -- This does not really belong here, it is too specific to the interactive
@@ -40,7 +55,6 @@ showNodeFromTree (GoalChoice _)               = "Missing dependencies"
 showNodeFromTree (Done _rdm)                  = ""
 showNodeFromTree (Fail cfs fr)                = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
   where showConflictSet s = show $ map showVar (toList s)
-
 
 
 instance Functor Tree where

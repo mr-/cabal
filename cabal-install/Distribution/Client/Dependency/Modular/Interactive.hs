@@ -54,6 +54,7 @@ runInteractive platform compId solver resolverParams = do
     putStrLn "showPlan        shows what is going to be installed/used"
     putStrLn "whatWorks       lists the choices that lead to a valid installplan"
     putStrLn "back            goes back to the last command"
+    putStrLn "reason n        gives you the first n reasons (muses) why there is no solution"
 
     let (sc, depResOpts) = resolveDependenciesConfigs platform compId solver resolverParams
         searchTree       = modularResolverTree sc depResOpts

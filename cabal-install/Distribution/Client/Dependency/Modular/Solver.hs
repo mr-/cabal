@@ -78,6 +78,6 @@ explorePointer treePointer = runTreePtrLog $ findDoneBelow treePointer
 findDoneBelow :: Pointer a -> Log Message (Pointer a)
 findDoneBelow treePointer = (explorePhase . spaceReductionPhase . toTree) treePointer
   where
-    spaceReductionPhase = id --P.firstGoal                               -- Commit to the first choice (saves space)
+    spaceReductionPhase = P.firstGoal                               -- Commit to the first choice (saves space)
     explorePhase        = exploreTreePtrLog treePointer . backjump
 

@@ -32,7 +32,7 @@ data Statement  =  BookSet    String
                  | Empty
                  | Back
                  | ShowHistory
-                 | Reason
+                 | Reason     Int
                  deriving (Show)
 
 data Selections =  Selections [Selection]
@@ -163,7 +163,8 @@ upStmt =
 reasonStmt :: Parser Statement
 reasonStmt =
     do  reserved "reason"
-        return Reason
+        var <- lexeme integer
+        return $ Reason (fromInteger var)
 
 backStmt :: Parser Statement
 backStmt =
