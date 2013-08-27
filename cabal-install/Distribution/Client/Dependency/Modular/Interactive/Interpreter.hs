@@ -18,9 +18,10 @@ import Distribution.Client.Dependency.Modular.Package            (QPN, showQPN)
 import Distribution.Client.Dependency.Modular.PSQ                (toLeft)
 import Distribution.Client.Dependency.Modular.Solver             (explorePointer)
 import Distribution.Client.Dependency.Modular.Tree               (ChildType (..), Tree (..),
-                                                                  TreeF (..), showChild, trav)
+                                                                  TreeF (..), showChild, trav,
+                                                                  showNodeFromTree)
 import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), children,
-                                                                  filterBetween, findDown,
+                                                                  filterBetween, filterDown,
                                                                   focusChild, focusRoot, focusUp,
                                                                   liftToPtr, toTree)
 import Distribution.Client.Dependency.Types                      (QPointer)
@@ -96,7 +97,7 @@ interpretStatement (Cut _) = return [Error "Ooops.. not implemented yet."]
  -- Need to make that more efficient, prune tree first. (firstchoice..)
 interpretStatement (Find sel) = do
     ptr <- gets uiPointer
-    case findDown (isSelected sel.toTree) ptr of
+    case filterDown (isSelected sel.toTree) ptr of
         (x:_) -> setPointer x >> return [ShowChoices]
         _     -> return [Error "Nothing found"]
 
@@ -146,11 +147,26 @@ interpretStatement WhatWorks =
       works :: QPointer -> ChildType -> Bool
       works ptr ch = isRight $ explorePointer $ focus ptr ch
 
+interpretStatement Reason = do
+    ptr <- gets uiPointer
+    let failNodes   = filterDown allChildrenFail ptr
+        failReasons = map (showNodeFromTree.toTree) failNodes
+    return [ShowResult $ head failReasons]
 
+
+allChildrenFail :: QPointer -> Bool
+allChildrenFail ptr = case children ptr of
+  Nothing -> False
+  Just l  -> and $ map (\x -> (isFail.fromJust) (focusChild x ptr)) l
 
 isDone :: QPointer -> Bool
 isDone (Pointer _ (Done _ )  ) = True
 isDone _                       = False
+
+isFail :: QPointer -> Bool
+isFail (Pointer _ (Fail _  _) )  = True
+isFail _                         = False
+
 
 
 isSelected :: Selections -> Tree a ->  Bool

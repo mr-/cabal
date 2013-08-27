@@ -116,11 +116,11 @@ isRoot :: Pointer a -> Bool
 isRoot (Pointer Top _ ) = True
 isRoot _                = False
 
-findDown :: (Pointer a -> Bool) -> Pointer a -> [Pointer a]
-findDown pre ptr | isLeaf ptr = [ptr | pre ptr]
-findDown pre ptr              = [ptr | pre ptr] ++ rest
+filterDown :: (Pointer a -> Bool) -> Pointer a -> [Pointer a]
+filterDown pre ptr | isLeaf ptr = [ptr | pre ptr]
+filterDown pre ptr              = [ptr | pre ptr] ++ rest
   where
-    rest = concat [ findDown pre (fromJust $ focusChild c ptr) | c <- ch ptr]
+    rest = concat [ filterDown pre (fromJust $ focusChild c ptr) | c <- ch ptr]
     ch p = fromJust $ children p
 
 toTop :: Pointer a -> [Pointer a]

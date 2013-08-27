@@ -187,7 +187,7 @@ goalReasonChainsToVars = S.unions . L.map goalReasonChainToVars
 showGoalReason :: QGoalReasonChain -> String
 showGoalReason (PDependency piqpn :_)    = showPI piqpn
 showGoalReason (FDependency fnqpn b : _) = showQFN fnqpn  ++ " Bool: " ++ show b
-showGoalReason (SDependency snqpn :_)    =  showQSN snqpn
+showGoalReason (SDependency snqpn :_)    = showQSN snqpn
 showGoalReason (UserGoal:_)              = "UserGoal"
 showGoalReason []                        = error "Empty QGoalReasonChain - this should never happen, I think"
 
