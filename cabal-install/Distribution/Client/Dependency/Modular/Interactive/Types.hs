@@ -5,11 +5,11 @@ import Distribution.Client.Dependency.Modular.Interactive.Parser (Statement)
 import Distribution.Client.Dependency.Types                      (QPointer)
 import System.Console.Haskeline                                  (InputT)
 
-data UIState = UIState {uiPointer     :: QPointer,
-                        uiBookmarks   :: [(String, QPointer)],
-                        uiInstall     :: Maybe QPointer,
-                        uiAutoPointer :: Maybe QPointer,
-                        uiHistory     :: [Statement]}
+data UIState = UIState {uiPointer         :: QPointer,
+                        uiBookmarks       :: [(String, QPointer)],
+                        uiInstall         :: Maybe QPointer,
+                        uiAutoPointer     :: Maybe QPointer,
+                        uiHistory         :: [(Statement, QPointer)]}
 
 -- Better uiBreakPoints :: [(String, QPointer -> Bool)]
 -- features: cut

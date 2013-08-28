@@ -1,5 +1,6 @@
 module Distribution.Client.Dependency.Modular.Interactive.Interpreter where
 
+import Control.Monad                                             (when)
 import Control.Monad.State                                       (gets, modify)
 import Data.Char                                                 (toLower)
 import Data.Function                                             (on)
@@ -122,13 +123,14 @@ interpretStatement (Prefer sel) = do
 interpretStatement Back = do
     history <- gets uiHistory
     case history of
-        (_:reminder) -> do _ <- interpretStatements (Statements (ToTop : reverse reminder)) --TODO: simply discard the return values?
-                           modify (\x -> x{uiHistory = reminder})
-                           return [ShowChoices]
-        _            -> return [Error "Nothing to go back to"]
+        ((s,oldPtr):reminder) -> do when (s == IndicateAuto) (modify (\x -> x{uiAutoPointer = Nothing}))
+                                    setPointer oldPtr
+                                    modify (\x -> x{uiHistory = reminder})
+                                    return [ShowChoices]
+        _                     -> return [Error "Nothing to go back to"]
 
 interpretStatement ShowHistory = do history <- gets uiHistory
-                                    return [ShowResult $ show history]
+                                    return [ShowResult $ show $ map fst history]
 
 interpretStatement WhatWorks =
     do ptr <- gets uiPointer
@@ -159,20 +161,20 @@ interpretStatement (Reason _) = do
             message  = "This node does not admit a solution"
         setPointer node
         return [ShowResult progress, ShowResult message, ShowChoices]
+    where
+      allChildrenFail :: QPointer -> Bool
+      allChildrenFail ptr = case children ptr of
+        Nothing -> False
+        Just l  -> all (\x -> (isFail.fromJust) (focusChild x ptr)) l
 
+      isFail :: QPointer -> Bool
+      isFail (Pointer _ (Fail _  _) )  = True
+      isFail _                         = False
 
-allChildrenFail :: QPointer -> Bool
-allChildrenFail ptr = case children ptr of
-  Nothing -> False
-  Just l  -> all (\x -> (isFail.fromJust) (focusChild x ptr)) l
 
 isDone :: QPointer -> Bool
 isDone (Pointer _ (Done _ )  ) = True
 isDone _                       = False
-
-isFail :: QPointer -> Bool
-isFail (Pointer _ (Fail _  _) )  = True
-isFail _                         = False
 
 
 
@@ -225,17 +227,19 @@ preferSelections sel = trav go
 interpretStatements :: Statements -> AppState [UICommand]
 interpretStatements (Statements [])     = return []
 interpretStatements (Statements (c:md)) = do
+      ptr <- gets uiPointer
       result <- interpretStatement c
       case result of
         [Error _ ] -> return result -- return the result and stop processing commands.
-        _          -> do addHistory c
+        _          -> do addHistory c ptr
                          list   <- interpretStatements (Statements md)
                          return $ result ++ list
 
 -- TODO: Back does not revert indicateAuto, and prefer..
-addHistory :: Statement -> AppState ()
-addHistory Back      = return ()
-addHistory statement = modify (\uiState -> uiState {uiHistory = statement:uiHistory uiState})
+addHistory :: Statement -> QPointer -> AppState ()
+addHistory Back      _   = return ()
+addHistory statement ptr =
+    modify (\uiState -> uiState {uiHistory = (statement,ptr):uiHistory uiState})
 
 setPointer :: QPointer -> AppState ()
 setPointer ptr = modifyPointer (const ptr)

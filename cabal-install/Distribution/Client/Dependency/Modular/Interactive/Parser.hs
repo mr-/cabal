@@ -33,14 +33,14 @@ data Statement  =  BookSet    String
                  | Back
                  | ShowHistory
                  | Reason     Int
-                 deriving (Show)
+                 deriving (Show, Eq)
 
 data Selections =  Selections [Selection]
-                         deriving (Show)
+                         deriving (Show, Eq)
 
 data Selection  =  SelPChoice String
                  | SelFSChoice String String
-                 deriving (Show)
+                 deriving (Show, Eq)
 
 commandList = sort
            [ "bset"
