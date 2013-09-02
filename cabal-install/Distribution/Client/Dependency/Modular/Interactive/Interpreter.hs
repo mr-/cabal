@@ -150,6 +150,12 @@ interpretStatement WhatWorks =
       works :: QPointer -> ChildType -> Bool
       works ptr ch = isRight $ explorePointer $ focus ptr ch
 
+-- TODO: Avoid repetition. It doesn't make sense to go S -> A -> B and S ->
+-- B -> A..
+-- Maybe that's better than firstChoice anyway. Then we get the solution
+-- in the normal solver.
+-- But what is IT?
+
 interpretStatement (Reason _) = do
     ptr <- gets uiPointer
     let failNodes   = filterDown allChildrenFail ptr
