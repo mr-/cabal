@@ -30,7 +30,6 @@ data Statement  =  BookSet    String
                  | ShowPlan
                  | WhatWorks
                  | Empty
-                 | Activate
                  | Back
                  | ShowHistory
                  | Reason     Int
@@ -61,7 +60,6 @@ commandList = sort
            , "back"
            , "showHistory"
            , "reason"
-           , "activate"
            ]
 
 languageDef =
@@ -109,7 +107,6 @@ statement' =   try bsetStmt
            <|> try backStmt
            <|> try showHistoryStmt
            <|> try reasonStmt
-           <|> try activateStmt
            <|> try emptyStmt
 
 
@@ -162,11 +159,6 @@ upStmt :: Parser Statement
 upStmt =
     do  reserved "up"
         return Up
-
-activateStmt :: Parser Statement
-activateStmt =
-    do  reserved "activate"
-        return Activate
 
 reasonStmt :: Parser Statement
 reasonStmt =
