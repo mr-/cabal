@@ -135,6 +135,7 @@ displayChoices :: UIState -> String
 displayChoices uiState = prettyShow $ map (uncurry makeEntry) $ generateChoices treePointer
   where
     treePointer = uiPointer uiState
+
     makeEntry :: Int -> ChildType -> String
     makeEntry n child = comment n child ++ " " ++ showChild child
 

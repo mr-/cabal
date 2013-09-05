@@ -154,7 +154,7 @@ focusUp (Pointer (GChoicePoint path context)            t) = Just $ Pointer path
   where newTree = GoalChoice  newPSQ
         newPSQ  = P.joinContext t context
 
-focusU (Pointer (FailPoint path c f)                    t) = Just $ Pointer path newTree
+focusUp (Pointer (FailPoint path c f)                   t) = Just $ Pointer path newTree
   where newTree = Fail c f (Just t)
 
 
@@ -174,6 +174,7 @@ focusChild (CTS key)  (Pointer oldPath (SChoice q a b     psq)) = Pointer newPat
 focusChild (CTOG key) (Pointer oldPath (GoalChoice        psq)) = Pointer newPath <$> P.lookup key psq
   where newPath = GChoicePoint oldPath newContext
         newContext = P.makeContextAt key psq
+
 focusChild CTFail     (Pointer oldPath (Fail c f     (Just t))) = Just $ Pointer newPath t
   where newPath = FailPoint oldPath c f
 

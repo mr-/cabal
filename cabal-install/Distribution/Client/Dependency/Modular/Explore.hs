@@ -119,8 +119,11 @@ ptrToAssignment' ptr =
         go (SChoiceF qsn _ _   ts) (A pa fa sa, CTS k : xs) = r (A pa fa (M.insert qsn k sa), xs)
           where r = fromJust $ P.lookup k ts
 
-        go (GoalChoiceF        ts) (a, CTOG k : xs)         = v (a, xs )
-          where v = fromJust $ P.lookup k ts
+        go (GoalChoiceF        ts) (a, CTOG k : xs)         = r (a, xs)
+          where r = fromJust $ P.lookup k ts
+
+        go (FailF _ _          ts) (a, CTFail : xs)         = r (a, xs)
+          where r = fromJust ts
 
         go _                       _                         = error "Internal error in donePtrToLog"
                                                  -- This catches cases like (GoalChoiceF...) (a (CTP k)..)
@@ -148,8 +151,11 @@ intermediateAssignment root ptr =
         go (SChoiceF qsn _ _   ts) (A pa fa sa, CTS k : xs) = r (A pa fa (M.insert qsn k sa), xs)
           where r = fromJust $ P.lookup k ts
 
-        go (GoalChoiceF        ts) (a, CTOG k : xs)         = v (a, xs )
-          where v = fromJust $ P.lookup k ts
+        go (GoalChoiceF        ts) (a, CTOG k : xs)         = r (a, xs)
+          where r = fromJust $ P.lookup k ts
+
+        go (FailF _ _         ts)  (a, CTFail : xs)         = r (a, xs)
+          where r = fromJust ts
 
         go _                       _                         = error "Internal error in donePtrToLog"
 
