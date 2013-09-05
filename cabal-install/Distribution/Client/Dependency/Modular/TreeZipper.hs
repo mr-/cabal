@@ -178,6 +178,8 @@ focusChild (CTOG key) (Pointer oldPath (GoalChoice        psq)) = Pointer newPat
 focusChild CTFail     (Pointer oldPath (Fail c f     (Just t))) = Just $ Pointer newPath t
   where newPath = FailPoint oldPath c f
 
+focusChild CTFail     (Pointer _        (Fail _ _     Nothing)) = Nothing -- This is sort of bad
+
 focusChild _          _                                         = Nothing
 
 

@@ -5,7 +5,7 @@ import Control.Monad.State                                       (gets, modify)
 import Data.Char                                                 (toLower)
 import Data.Function                                             (on)
 import Data.List                                                 (isInfixOf, nubBy)
-import Data.Maybe                                                (fromJust, fromMaybe)
+import Data.Maybe                                                (fromJust, fromMaybe, isNothing)
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
                                                                   OpenGoal (..))
@@ -170,8 +170,9 @@ interpretStatement (Reason _) = do
     where
       allChildrenFail :: QPointer -> Bool
       allChildrenFail ptr = case children ptr of
-        Nothing -> False
-        Just l  -> all (\x -> (isFail.fromJust) (focusChild x ptr)) l
+        Nothing        -> False
+        Just children  -> all (\child -> isNothing (focusChild child ptr) || (isFail.fromJust) (focusChild child ptr)) children
+          --this should be nicer..
 
 isDone :: QPointer -> Bool
 isDone (Pointer _ (Done _ )  ) = True
