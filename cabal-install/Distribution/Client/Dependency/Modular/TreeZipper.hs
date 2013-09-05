@@ -121,15 +121,16 @@ isRoot (Pointer Top _ ) = True
 isRoot _                = False
 
 
--- need to BFS that.. cleverly, so as not to search foo -> bar -> baz
--- foo -> baz -> bar..
-filterDown :: (Pointer a -> Bool) -> Pointer a -> [Pointer a]
+ilterDown :: (Pointer a -> Bool) -> Pointer a -> [Pointer a]
 filterDown pre ptr | isLeaf ptr = [ptr | pre ptr]
 filterDown pre ptr              = [ptr | pre ptr] ++ rest
   where
     rest = concat [ maybe [] (filterDown pre) (focusChild c ptr) | c <- ch ptr]
     ch p = fromJust $ children p
 
+-- TODO
+-- Can we be cleverer here? So as not to search foo -> bar -> baz
+-- foo -> baz -> bar.. That could _actually_ solve the MUS-part.
 filterDownBFS :: (Pointer a -> Bool) -> Pointer a -> [Pointer a]
 filterDownBFS pre ptr = filter pre (bfs' [ptr])
  where
