@@ -25,7 +25,7 @@ import Distribution.Client.Dependency.Modular.Tree               (ChildType (..)
 import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), children,
                                                                   filterBetween, filterDown,
                                                                   focusChild, focusRoot, focusUp,
-                                                                  liftToPtr, toTree)
+                                                                  liftToPtr, toTree, filterDownBFS)
 import Distribution.Client.Dependency.Types                      (QPointer)
 
 
@@ -158,7 +158,7 @@ interpretStatement WhatWorks =
 
 interpretStatement (Reason _) = do
     ptr <- gets uiPointer
-    let failNodes   = filterDown allChildrenFail ptr
+    let failNodes   = filterDownBFS (\x -> allChildrenFail x && (not.isFail) x) ptr
         uniqueNodes = nubBy ((==) `on` (treeToNode.toTree)) failNodes
     case uniqueNodes of
       []      -> return [ShowResult "Nothing found, sorry"]
