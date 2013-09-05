@@ -171,7 +171,7 @@ interpretStatement (Reason _) = do
       allChildrenFail :: QPointer -> Bool
       allChildrenFail ptr = case children ptr of
         Nothing        -> False
-        Just children  -> all (\child -> isNothing (focusChild child ptr) || (isFail.fromJust) (focusChild child ptr)) children
+        Just chen  -> all (\ch -> isNothing (focusChild ch ptr) || (isFail.fromJust) (focusChild ch ptr)) chen
           --this should be nicer..
 
 isDone :: QPointer -> Bool
