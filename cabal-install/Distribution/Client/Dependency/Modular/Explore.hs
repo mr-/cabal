@@ -30,8 +30,8 @@ import Distribution.Client.Dependency.Modular.TreeZipper
 backjump :: Tree a -> Tree (Maybe (ConflictSet QPN))
 backjump = snd . cata go
   where
-    go (FailF c fr) = (Just c, Fail c fr)
-    go (DoneF rdm ) = (Nothing, Done rdm)
+    go (FailF c fr x) = (Just c, Fail c fr (snd <$> x))
+    go (DoneF rdm) = (Nothing, Done rdm)
     go (PChoiceF qpn _     ts) = (c, PChoice qpn c     (P.fromList ts'))
       where
         ~(c, ts') = combine (P qpn) (P.toList ts) S.empty
@@ -162,7 +162,7 @@ explorePtrLog tree pointer = (fromJust . flip walk pointer . wrongToOne) <$> wor
   worker :: Tree (Maybe (ConflictSet QPN)) -> WrongWayTrail -> Log Message WrongWayTrail
   worker = cata go
     where
-      go (FailF c fr)          _                          = failWith (Failure c fr)
+      go (FailF c fr _)          _                          = failWith (Failure c fr)
       go (DoneF _)               treePtr                  = succeedWith Success treePtr
       go (PChoiceF qpn c     ts) treePtr                  =
         backjumpInfo c $

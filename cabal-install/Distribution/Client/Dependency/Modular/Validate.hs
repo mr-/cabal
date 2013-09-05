@@ -96,7 +96,7 @@ validate = cata go
           Just rb -> -- flag has already been assigned; collapse choice to the correct branch
                      case P.lookup rb ts of
                        Just t  -> goF qfn gr rb t
-                       Nothing -> return $ Fail (toConflictSet (Goal (F qfn) gr)) (MalformedFlagChoice qfn)
+                       Nothing -> return $ Fail (toConflictSet (Goal (F qfn) gr)) (MalformedFlagChoice qfn) Nothing
           Nothing -> -- flag choice is new, follow both branches
                      FChoice qfn gr b m <$> sequence (P.mapWithKey (goF qfn gr) ts)
     go (SChoiceF qsn (gr, _sc) b   ts) =
@@ -107,14 +107,15 @@ validate = cata go
           Just rb -> -- stanza choice has already been made; collapse choice to the correct branch
                      case P.lookup rb ts of
                        Just t  -> goS qsn gr rb t
-                       Nothing -> return $ Fail (toConflictSet (Goal (S qsn) gr)) (MalformedStanzaChoice qsn)
+                       Nothing -> return $ Fail (toConflictSet (Goal (S qsn) gr)) (MalformedStanzaChoice qsn) Nothing
           Nothing -> -- stanza choice is new, follow both branches
                      SChoice qsn gr b <$> sequence (P.mapWithKey (goS qsn gr) ts)
 
     -- We don't need to do anything for goal choices or failure nodes.
     go (GoalChoiceF              ts) = GoalChoice <$> sequence ts
     go (DoneF    rdm               ) = pure (Done rdm)
-    go (FailF    c fr              ) = pure (Fail c fr)
+    go (FailF    c fr       Nothing) = pure (Fail c fr Nothing)
+    go (FailF    c fr      (Just x)) = x >>= \m -> pure (Fail c fr (Just m))
 
     -- What to do for package nodes ...
     goP :: QPN -> QGoalReasonChain -> Scope -> I -> Validate (Tree QGoalReasonChain) -> Validate (Tree QGoalReasonChain)
@@ -133,11 +134,12 @@ validate = cata go
       -- In case we continue, we save the scoped dependencies
       let nsvd = M.insert qpn qdeps svd
       case mfr of
-        Just fr -> -- The index marks this as an invalid choice. We can stop.
-                   return (Fail (toConflictSet goal) fr)
+        Just fr -> -- The index marks this as an invalid choice. We can stop. (Package is disabled globally, e.g. broken)
+                   return (Fail (toConflictSet goal) fr Nothing) -- what's the correct nppa here? TODO
         _       -> case mnppa of
                      Left (c, d) -> -- We have an inconsistency. We can stop.
-                                    return (Fail c (Conflicting d))
+                                    do newTree <- local (\s -> s{ pa = PA ppa pfa psa, saved = nsvd }) r
+                                       return (Fail c (Conflicting d) (Just newTree))
                      Right nppa  -> -- We have an updated partial assignment for the recursive validation.
                                     local (\ s -> s { pa = PA nppa pfa psa, saved = nsvd }) r
 
@@ -160,7 +162,7 @@ validate = cata go
       let newactives = extractNewDeps (F qfn) gr b npfa psa qdeps
       -- As in the package case, we try to extend the partial assignment.
       case extend (F qfn) ppa newactives of
-        Left (c, d) -> return (Fail c (Conflicting d)) -- inconsistency found
+        Left (c, d) -> return (Fail c (Conflicting d) Nothing) -- inconsistency found
         Right nppa  -> local (\ s -> s { pa = PA nppa npfa psa }) r
 
     -- What to do for stanza nodes (similar to flag nodes) ...
@@ -182,7 +184,7 @@ validate = cata go
       let newactives = extractNewDeps (S qsn) gr b pfa npsa qdeps
       -- As in the package case, we try to extend the partial assignment.
       case extend (S qsn) ppa newactives of
-        Left (c, d) -> return (Fail c (Conflicting d)) -- inconsistency found
+        Left (c, d) -> return (Fail c (Conflicting d) Nothing) -- inconsistency found
         Right nppa  -> local (\ s -> s { pa = PA nppa pfa npsa }) r
 
 -- | We try to extract as many concrete dependencies from the given flagged

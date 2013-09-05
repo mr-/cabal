@@ -20,7 +20,7 @@ data Tree a =
   | SChoice     QSN a Bool      (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial
   | GoalChoice                  (PSQ OpenGoal (Tree a)) -- PSQ should never be empty
   | Done        RevDepMap
-  | Fail        (ConflictSet QPN) FailReason
+  | Fail        (ConflictSet QPN) FailReason (Maybe (Tree a))
   deriving (Eq, Show)
   -- Above, a choice is called trivial if it clearly does not matter. The
   -- special case of triviality we actually consider is if there are no new
@@ -31,8 +31,8 @@ data NodeType a = NTP QPN a
                 | NTS QSN a Bool
                 | NTGoal
                 | NTDone RevDepMap
-                | NTFail (ConflictSet QPN) FailReason   deriving (Eq, Show)
-
+                | NTFail (ConflictSet QPN) FailReason deriving (Eq, Show)
+-- TODO: NTFail wants the tree?
 
 treeToNode :: Tree a -> NodeType a
 treeToNode (PChoice     qpn a       _) = NTP qpn a
@@ -40,7 +40,7 @@ treeToNode (FChoice     qfn a b1 b2 _) = NTF qfn a b1 b2
 treeToNode (SChoice     qsn a b1    _) = NTS qsn a b1
 treeToNode (GoalChoice              _) = NTGoal
 treeToNode (Done        rdm          ) = NTDone rdm
-treeToNode (Fail        cnfset fr    ) = NTFail cnfset fr
+treeToNode (Fail        cnfset fr   _) = NTFail cnfset fr
 
 
 -- This does not really belong here, it is too specific to the interactive
@@ -48,12 +48,15 @@ treeToNode (Fail        cnfset fr    ) = NTFail cnfset fr
 showNodeFromTree :: Tree QGoalReasonChain -> String
 showNodeFromTree (PChoice qpn (UserGoal:_) _) = "Version of " ++ showQPN qpn
 showNodeFromTree (PChoice qpn a _)            = showQPN qpn ++ " (needed by " ++ showGoalReason a ++ ")"
-showNodeFromTree (FChoice qfn _ b1 b2 _)      = "Flag: " ++ showQFN qfn ++ "\t Bools: " ++ show (b1, b2) -- what do the bools mean?
+showNodeFromTree (FChoice qfn _ b1 b2 _)      = "Flag: " ++ showQFN qfn ++ "\t " ++ trivial ++ " " ++ manual
+    where manual  = if b2 then "manual" else "automatic"
+          trivial = if b1 then "trivial (no deps introduced by this)" else "not trivial (will introduce deps)"
 showNodeFromTree (SChoice qsn _ b _)          = "Stanza: " ++ showQSN qsn -- The "reason" is obvious here
-                                                    ++ "\n\t Bool: " ++ show b -- But what do the bools mean?
+                                                    ++ "\n\t " ++ trivial
+  where trivial = if b then "trivial (no deps introduced by this)" else "not trivial (will introduce deps)"
 showNodeFromTree (GoalChoice _)               = "Missing dependencies"
-showNodeFromTree (Done _rdm)                  = ""
-showNodeFromTree (Fail cfs fr)                = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
+showNodeFromTree (Done _rdm)                  = "Done"
+showNodeFromTree (Fail cfs fr _)              = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
   where showConflictSet s = show $ map showVar (toList s)
 
 
@@ -63,14 +66,15 @@ instance Functor Tree where
   fmap  f (SChoice qsn i b   xs) = SChoice qsn (f i) b   (fmap (fmap f) xs)
   fmap  f (GoalChoice        xs) = GoalChoice            (fmap (fmap f) xs)
   fmap _f (Done    rdm         ) = Done    rdm
-  fmap _f (Fail    cs fr       ) = Fail    cs fr
+  fmap  f (Fail    cs fr     t ) = Fail    cs fr         (fmap (fmap f) t)
 
 
 
 data ChildType = CTP I
                | CTF Bool
                | CTS Bool
-               | CTOG OpenGoal    deriving (Show, Eq)
+               | CTOG OpenGoal
+               | CTFail deriving (Show, Eq)
 
 
 showChild :: ChildType -> String
@@ -78,7 +82,7 @@ showChild (CTP (I ver _))        = showVer ver
 showChild (CTF bool)             = show bool
 showChild (CTS bool)             = show bool
 showChild (CTOG opengoal)        = showOpenGoal opengoal
-
+showChild (CTFail)               = "Failing Node"
 
 isInstalled :: ChildType -> Bool
 isInstalled (CTP (I _ (Inst _))) = True
@@ -119,7 +123,7 @@ data TreeF a b =
   | SChoiceF    QSN a Bool      (PSQ Bool     b)
   | GoalChoiceF                 (PSQ OpenGoal b)
   | DoneF       RevDepMap
-  | FailF       (ConflictSet QPN) FailReason
+  | FailF       (ConflictSet QPN) FailReason (Maybe b)
 
 out :: Tree a -> TreeF a (Tree a)
 out (PChoice    p i     ts) = PChoiceF    p i     ts
@@ -127,7 +131,7 @@ out (FChoice    p i b m ts) = FChoiceF    p i b m ts
 out (SChoice    p i b   ts) = SChoiceF    p i b   ts
 out (GoalChoice         ts) = GoalChoiceF         ts
 out (Done       x         ) = DoneF       x
-out (Fail       c x       ) = FailF       c x
+out (Fail       c x     ts) = FailF       c x     ts
 
 inn :: TreeF a (Tree a) -> Tree a
 inn (PChoiceF    p i     ts) = PChoice    p i     ts
@@ -135,7 +139,7 @@ inn (FChoiceF    p i b m ts) = FChoice    p i b m ts
 inn (SChoiceF    p i b   ts) = SChoice    p i b   ts
 inn (GoalChoiceF         ts) = GoalChoice         ts
 inn (DoneF       x         ) = Done       x
-inn (FailF       c x       ) = Fail       c x
+inn (FailF       c x     ts) = Fail       c x     ts
 
 instance Functor (TreeF a) where
   fmap f (PChoiceF    p i     ts) = PChoiceF    p i     (fmap f ts)
@@ -143,7 +147,7 @@ instance Functor (TreeF a) where
   fmap f (SChoiceF    p i b   ts) = SChoiceF    p i b   (fmap f ts)
   fmap f (GoalChoiceF         ts) = GoalChoiceF         (fmap f ts)
   fmap _ (DoneF       x         ) = DoneF       x
-  fmap _ (FailF       c x       ) = FailF       c x
+  fmap f (FailF       c x     ts) = FailF       c x     (fmap f ts)
 
 instance Foldable (TreeF a) where
   foldr op e (PChoiceF    _ _     ts) = foldr op e ts
@@ -151,7 +155,7 @@ instance Foldable (TreeF a) where
   foldr op e (SChoiceF    _ _ _   ts) = foldr op e ts
   foldr op e (GoalChoiceF         ts) = foldr op e ts
   foldr _  e (DoneF       _         ) = e
-  foldr _  e (FailF       _ _       ) = e
+  foldr op e (FailF       _ _     ts) = foldr op e ts
 
 instance Traversable (TreeF a) where
   traverse f (PChoiceF    p i     ts) = PChoiceF    <$> pure p <*> pure i <*>                       traverse f ts
@@ -159,12 +163,12 @@ instance Traversable (TreeF a) where
   traverse f (SChoiceF    p i b   ts) = SChoiceF    <$> pure p <*> pure i <*> pure b <*>            traverse f ts
   traverse f (GoalChoiceF         ts) = GoalChoiceF <$>                                             traverse f ts
   traverse _ (DoneF       x         ) = DoneF       <$> pure x
-  traverse _ (FailF       c x       ) = FailF       <$> pure c <*> pure x
+  traverse f (FailF       c x     ts) = FailF       <$> pure c <*> pure x <*>                       traverse f ts
 
 -- | Determines whether a tree is active, i.e., isn't a failure node.
 active :: Tree a -> Bool
-active (Fail _ _) = False
-active _          = True
+active (Fail _ _ _) = False
+active _            = True
 
 -- | Determines how many active choices are available in a node. Note that we
 -- count goal choices as having one choice, always.
@@ -174,7 +178,7 @@ choices (FChoice    _ _ _ _ ts) = P.length (P.filter active ts)
 choices (SChoice    _ _ _   ts) = P.length (P.filter active ts)
 choices (GoalChoice         _ ) = 1
 choices (Done       _         ) = 1
-choices (Fail       _ _       ) = 0
+choices (Fail       _ _     _ ) = 0
 
 -- | Variant of 'choices' that only approximates the number of choices,
 -- using 'llength'.
@@ -184,7 +188,7 @@ lchoices (FChoice    _ _ _ _ ts) = P.llength (P.filter active ts)
 lchoices (SChoice    _ _ _   ts) = P.llength (P.filter active ts)
 lchoices (GoalChoice         _ ) = 1
 lchoices (Done       _         ) = 1
-lchoices (Fail       _ _       ) = 0
+lchoices (Fail       _ _     _ ) = 0
 
 -- | Catamorphism on trees.
 cata :: (TreeF a b -> b) -> Tree a -> b

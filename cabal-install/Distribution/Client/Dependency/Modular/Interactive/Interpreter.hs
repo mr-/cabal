@@ -173,14 +173,19 @@ interpretStatement (Reason _) = do
         Nothing -> False
         Just l  -> all (\x -> (isFail.fromJust) (focusChild x ptr)) l
 
-      isFail :: QPointer -> Bool
-      isFail (Pointer _ (Fail _  _) )  = True
-      isFail _                         = False
-
+interpretStatement Activate = do
+    ptr <- gets uiPointer
+    case ptr of
+      (Pointer _ (Fail _ _ _)) -> return [Error "Can only activate Fail nodes."]
+      (Pointer _ (Fail _ _ x)) -> return [Error "not implemented yet."]
 
 isDone :: QPointer -> Bool
 isDone (Pointer _ (Done _ )  ) = True
 isDone _                       = False
+
+isFail :: QPointer -> Bool
+isFail (Pointer _ (Fail _  _ _) )  = True
+isFail _                           = False
 
 
 

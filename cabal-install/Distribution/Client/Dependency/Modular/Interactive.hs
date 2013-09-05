@@ -158,8 +158,8 @@ displayChoices uiState = prettyShow $ map (uncurry makeEntry) $ generateChoices 
 
     isFail :: ChildType -> Bool
     isFail child = case focusChild child treePointer of
-          (Just (Pointer _ (Fail _ _))) -> True
-          _                             -> False
+          (Just (Pointer _ (Fail _ _ _))) -> True
+          _                               -> False
 
     prettyShow :: [String] -> String
     prettyShow l = unlines $ map concat $ splitEvery nrOfCols paddedList

@@ -19,7 +19,7 @@ data Tree a =
   | SChoice     QSN a Bool      (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial
   | GoalChoice                  (PSQ OpenGoal (Tree a)) -- PSQ should never be empty
   | Done        RevDepMap
-  | Fail        (ConflictSet QPN) FailReason
+  | Fail        (ConflictSet QPN) FailReason (Maybe (Tree a))
 -}
 
 
@@ -30,7 +30,7 @@ data Path a =
   | FChoicePoint (Path a) (PSQContext Bool     (Tree a)) QFN a Bool Bool
   | SChoicePoint (Path a) (PSQContext Bool     (Tree a)) QSN a Bool
   | GChoicePoint (Path a) (PSQContext OpenGoal (Tree a))
-
+  | FailPoint    (Path a)                                (ConflictSet QPN) FailReason
 
 data Pointer a = Pointer { toPath :: Path a, toTree :: Tree a }
 
@@ -67,6 +67,7 @@ pathToChild (PChoicePoint _ context _ _     ) = Just $ CTP  (P.contextKey contex
 pathToChild (FChoicePoint _ context _ _ _ _ ) = Just $ CTF  (P.contextKey context)
 pathToChild (SChoicePoint _ context _ _ _   ) = Just $ CTS  (P.contextKey context)
 pathToChild (GChoicePoint _ context         ) = Just $ CTOG (P.contextKey context)
+pathToChild (FailPoint    _ _ _             ) = Just   CTFail
 
 innerPath :: Path a -> Maybe (Path a)
 innerPath Top = Nothing
@@ -74,6 +75,7 @@ innerPath (PChoicePoint path _ _ _     ) = Just path
 innerPath (FChoicePoint path _ _ _ _ _ ) = Just path
 innerPath (SChoicePoint path _ _ _ _   ) = Just path
 innerPath (GChoicePoint path _         ) = Just path
+innerPath (FailPoint    path _ _       ) = Just path
 
 walk :: OneWayTrail -> Pointer a -> Maybe (Pointer a)
 walk []     treePointer = Just treePointer
@@ -134,9 +136,9 @@ toTop = toTop'
 
 
 focusUp :: Pointer a -> Maybe (Pointer a)
-focusUp (Pointer Top _) = Nothing
+focusUp (Pointer Top _)                                    = Nothing
 
-focusUp (Pointer (PChoicePoint path context q a ) t) = Just $ Pointer path newTree
+focusUp (Pointer (PChoicePoint path context q a )       t) = Just $ Pointer path newTree
   where newTree = PChoice q a newPSQ
         newPSQ  = P.joinContext t context
 
@@ -144,33 +146,40 @@ focusUp (Pointer (FChoicePoint path context q a b1 b2 ) t) = Just $ Pointer path
   where newTree = FChoice q a b1 b2 newPSQ
         newPSQ  = P.joinContext t context
 
-focusUp (Pointer (SChoicePoint path context q a b ) t) = Just $ Pointer path newTree
+focusUp (Pointer (SChoicePoint path context q a b )     t) = Just $ Pointer path newTree
   where newTree = SChoice q a b newPSQ
         newPSQ  = P.joinContext t context
 
-focusUp (Pointer (GChoicePoint path context) t) = Just $ Pointer path newTree
+focusUp (Pointer (GChoicePoint path context)            t) = Just $ Pointer path newTree
   where newTree = GoalChoice  newPSQ
         newPSQ  = P.joinContext t context
 
+focusU (Pointer (FailPoint path c f)                    t) = Just $ Pointer path newTree
+  where newTree = Fail c f (Just t)
+
 
 focusChild :: ChildType -> Pointer a -> Maybe (Pointer a)
-focusChild (CTP key)  (Pointer oldPath (PChoice q a psq))        = Pointer newPath <$> P.lookup key psq
+focusChild (CTP key)  (Pointer oldPath (PChoice q a       psq)) = Pointer newPath <$> P.lookup key psq
   where newPath = PChoicePoint oldPath newContext q a
         newContext = P.makeContextAt key psq
 
-focusChild (CTF key)  (Pointer oldPath (FChoice q a b1 b2 psq))  = Pointer newPath <$> P.lookup key psq
+focusChild (CTF key)  (Pointer oldPath (FChoice q a b1 b2 psq)) = Pointer newPath <$> P.lookup key psq
   where newPath = FChoicePoint oldPath newContext q a b1 b2
         newContext = P.makeContextAt key psq
 
-focusChild (CTS key)  (Pointer oldPath (SChoice q a b psq))      = Pointer newPath <$> P.lookup key psq
+focusChild (CTS key)  (Pointer oldPath (SChoice q a b     psq)) = Pointer newPath <$> P.lookup key psq
   where newPath = SChoicePoint oldPath newContext q a b
         newContext = P.makeContextAt key psq
 
-focusChild (CTOG key) (Pointer oldPath (GoalChoice psq))         = Pointer newPath <$> P.lookup key psq
+focusChild (CTOG key) (Pointer oldPath (GoalChoice        psq)) = Pointer newPath <$> P.lookup key psq
   where newPath = GChoicePoint oldPath newContext
         newContext = P.makeContextAt key psq
+focusChild CTFail     (Pointer oldPath (Fail c f     (Just t))) = Just $ Pointer newPath t
+  where newPath = FailPoint oldPath c f
 
-focusChild _ _ = Nothing
+focusChild _          _                                         = Nothing
+
+
 
 
 focusRoot :: Pointer a -> Pointer a
@@ -184,57 +193,6 @@ children (Pointer _ (PChoice _ _     c)) = Just $ map CTP  $ P.keys c
 children (Pointer _ (FChoice _ _ _ _ c)) = Just $ map CTF  $ P.keys c
 children (Pointer _ (SChoice _ _ _   c)) = Just $ map CTS  $ P.keys c
 children (Pointer _ (GoalChoice      c)) = Just $ map CTOG $ P.keys c
+children (Pointer _ (Fail       _ _  _)) = Just $ [CTFail]
 children _                               = Nothing
 
-{-
-
-{ -#LANGUAGE TypeFamilies, GADTs, DataKinds, PolyKinds, ExistentialQuantification# - }
-
-data X = S | I
-
-type family LeafType (x :: X ) :: *
-type instance LeafType S = String
-type instance LeafType I = Int
-
-type family NodeType (x :: X) (a :: *) :: *
-type instance NodeType S a = [Tree S a]
-type instance NodeType I a = [(Int,Tree I a)]
-
-data Tree s a where
- Node :: a -> NodeType s a -> Tree s a
- Leaf :: LeafType s -> Tree s a
-
-data SomeTree a = forall s . SomeTree (Tree s a)
-
-
-data NodeType a =
-    PChoice     QPN a
-  | FChoice     QFN a Bool Bool
-  | SChoice     QSN a Bool
-
-
-data LeafType =
-    GoalChoice
-  | Done        RevDepMap
-  | Fail        (ConflictSet QPN) FailReason
-  deriving (Eq, Show)
-
-
-data ContainerType a =          -- This should be constrained..
-    PSQ I a
-  | PSQ Bool a
-  | PSQ OpenGoal a
-
-
-data Treee a = LeafType | Node (NodeType a) (ContainerType (Treee a))
-
-data Path a = Top | Point (Path a) (ContainerType a) (NodeType a) (ContainerType a)
-type Forest a = [Tree a]
-
-data Tree a = Item a | Node a (Forest a)
-
-data Path a = Top | Point (Path a) (Forest a) a (Forest a)
-
-
-data Pointer a = Pointer {tree :: Tree a, context :: Path a}
--}

@@ -71,13 +71,13 @@ preferLatestOrdering (I v1 _) (I v2 _) = compare v1 v2
 processPackageConstraintP :: ConflictSet QPN -> I -> PackageConstraint -> Tree a -> Tree a
 processPackageConstraintP c (I v _) (PackageConstraintVersion _ vr) r
   | checkVR vr v  = r
-  | otherwise     = Fail c (GlobalConstraintVersion vr)
+  | otherwise     = Fail c (GlobalConstraintVersion vr) Nothing
 processPackageConstraintP c i       (PackageConstraintInstalled _)  r
   | instI i       = r
-  | otherwise     = Fail c GlobalConstraintInstalled
+  | otherwise     = Fail c GlobalConstraintInstalled Nothing
 processPackageConstraintP c i       (PackageConstraintSource    _)  r
   | not (instI i) = r
-  | otherwise     = Fail c GlobalConstraintSource
+  | otherwise     = Fail c GlobalConstraintSource Nothing
 processPackageConstraintP _ _       _                               r = r
 
 -- | Helper function that tries to enforce a single package constraint on a
@@ -89,7 +89,7 @@ processPackageConstraintF f c b' (PackageConstraintFlags _ fa) r =
   case L.lookup f fa of
     Nothing            -> r
     Just b | b == b'   -> r
-           | otherwise -> Fail c GlobalConstraintFlag
+           | otherwise -> Fail c GlobalConstraintFlag Nothing
 processPackageConstraintF _ _ _  _                             r = r
 
 -- | Helper function that tries to enforce a single package constraint on a
@@ -98,7 +98,7 @@ processPackageConstraintF _ _ _  _                             r = r
 -- with an appropriate failure node.
 processPackageConstraintS :: OptionalStanza -> ConflictSet QPN -> Bool -> PackageConstraint -> Tree a -> Tree a
 processPackageConstraintS s c b' (PackageConstraintStanzas _ ss) r =
-  if not b' && s `elem` ss then Fail c GlobalConstraintFlag
+  if not b' && s `elem` ss then Fail c GlobalConstraintFlag Nothing
                            else r
 processPackageConstraintS _ _ _  _                             r = r
 
@@ -139,9 +139,9 @@ enforceManualFlags = trav go
       let c = toConflictSet (Goal (F qfn) gr)
       in  case span isDisabled (P.toList ts) of
             (_ , [])     -> P.fromList []
-            (xs, y : ys) -> P.fromList (xs ++ y : L.map (\ (b, _) -> (b, Fail c ManualFlag)) ys)
+            (xs, y : ys) -> P.fromList (xs ++ y : L.map (\ (b, _) -> (b, Fail c ManualFlag Nothing)) ys)
       where
-        isDisabled (_, Fail _ _) = True
+        isDisabled (_, Fail _ _ _) = True
         isDisabled _             = False
     go x                                                   = x
 
@@ -170,7 +170,7 @@ requireInstalled p = trav go
       | otherwise = PChoiceF v i                         cs
       where
         installed (I _ (Inst _)) x = x
-        installed _              _ = Fail (toConflictSet (Goal (P v) gr)) CannotInstall
+        installed _              _ = Fail (toConflictSet (Goal (P v) gr)) CannotInstall Nothing
     go x          = x
 
 -- | Avoid reinstalls.
@@ -198,7 +198,7 @@ avoidReinstalls p = trav go
           in  P.mapWithKey (notReinstall installed) cs
 
         notReinstall vs (I v InRepo) _
-          | v `elem` vs                = Fail (toConflictSet (Goal (P qpn) gr)) CannotReinstall
+          | v `elem` vs                = Fail (toConflictSet (Goal (P qpn) gr)) CannotReinstall Nothing
         notReinstall _  _            x = x
     go x          = x
 
