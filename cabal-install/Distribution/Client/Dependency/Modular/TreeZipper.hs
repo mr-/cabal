@@ -5,12 +5,12 @@ import Control.Monad                                     hiding (mapM)
 import Distribution.Client.Dependency.Modular.Dependency
 import Distribution.Client.Dependency.Modular.Flag
 import Distribution.Client.Dependency.Modular.Package
-import Distribution.Client.Dependency.Modular.PSQ        as P hiding (map)
+import Distribution.Client.Dependency.Modular.PSQ        as P hiding (map, filter)
 import Distribution.Client.Dependency.Modular.Tree
 import Prelude                                           hiding (foldr, mapM)
 
 import Data.List                                         (isPrefixOf)
-import Data.Maybe                                        (fromJust, fromMaybe, isNothing)
+import Data.Maybe                                        (fromJust, fromMaybe, isNothing, catMaybes)
 
 {-
 data Tree a =
@@ -120,20 +120,28 @@ isRoot :: Pointer a -> Bool
 isRoot (Pointer Top _ ) = True
 isRoot _                = False
 
+
 filterDown :: (Pointer a -> Bool) -> Pointer a -> [Pointer a]
 filterDown pre ptr | isLeaf ptr = [ptr | pre ptr]
 filterDown pre ptr              = [ptr | pre ptr] ++ rest
   where
-    rest = concat [ filterDown pre (fromJust $ focusChild c ptr) | c <- ch ptr]
+    rest = concat [ maybe [] (filterDown pre) (focusChild c ptr) | c <- ch ptr]
     ch p = fromJust $ children p
 
-toTop :: Pointer a -> [Pointer a]
-toTop = toTop'
-  where
-    toTop' :: Pointer a -> [Pointer a]
-    toTop' pointer | isRoot pointer = []
-    toTop' pointer = pointer : (toTop $ fromJust $ focusUp pointer)
-
+-- TODO
+-- Can we be cleverer here? So as not to search foo -> bar -> baz
+-- foo -> baz -> bar.. That could _actually_ solve the MUS-part.
+filterDownBFS :: (Pointer a -> Bool) -> Pointer a -> [Pointer a]
+filterDownBFS pre ptr = filter pre (bfs' [ptr])
+ where
+    bfs' :: [Pointer a] -> [Pointer a]
+    bfs' [] = []
+    bfs' l  = l ++ bfs'  (concatMap childPointers l)
+      where
+        childPointers :: Pointer a -> [Pointer a]
+        childPointers pr = case children pr of
+                     Nothing   -> []
+                     Just chen -> catMaybes [ focusChild ch pr | ch <- chen]
 
 focusUp :: Pointer a -> Maybe (Pointer a)
 focusUp (Pointer Top _)                                    = Nothing

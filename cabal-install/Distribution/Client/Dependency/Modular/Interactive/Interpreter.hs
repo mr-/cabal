@@ -5,7 +5,7 @@ import Control.Monad.State                                       (gets, modify)
 import Data.Char                                                 (toLower)
 import Data.Function                                             (on)
 import Data.List                                                 (isInfixOf, nubBy)
-import Data.Maybe                                                (fromJust, fromMaybe)
+import Data.Maybe                                                (fromJust, fromMaybe, catMaybes)
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
                                                                   OpenGoal (..))
@@ -25,7 +25,7 @@ import Distribution.Client.Dependency.Modular.Tree               (ChildType (..)
 import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), children,
                                                                   filterBetween, filterDown,
                                                                   focusChild, focusRoot, focusUp,
-                                                                  liftToPtr, toTree)
+                                                                  liftToPtr, toTree, filterDownBFS)
 import Distribution.Client.Dependency.Types                      (QPointer)
 
 
@@ -158,7 +158,7 @@ interpretStatement WhatWorks =
 
 interpretStatement (Reason _) = do
     ptr <- gets uiPointer
-    let failNodes   = filterDown allChildrenFail ptr
+    let failNodes   = filterDownBFS (\x -> allChildrenFail x && (not.isFail) x) ptr
         uniqueNodes = nubBy ((==) `on` (treeToNode.toTree)) failNodes
     case uniqueNodes of
       []      -> return [ShowResult "Nothing found, sorry"]
@@ -171,8 +171,7 @@ interpretStatement (Reason _) = do
       allChildrenFail :: QPointer -> Bool
       allChildrenFail ptr = case children ptr of
         Nothing        -> False
-        Just chen  -> all (maybe True isFail) $ map (\ch -> focusChild ch ptr) chen
-          --this should be nicer..
+        Just chen  -> all isFail $ catMaybes $ [focusChild ch ptr | ch <- chen]
 
 isDone :: QPointer -> Bool
 isDone (Pointer _ (Done _ )  ) = True
