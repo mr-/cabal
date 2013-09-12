@@ -33,6 +33,7 @@ data Statement  =  BookSet    String
                  | Back
                  | ShowHistory
                  | Reason     Int
+                 | Help
                  deriving (Show, Eq)
 
 data Selections =  Selections [Selection]
@@ -60,6 +61,7 @@ commandList = sort
            , "back"
            , "showHistory"
            , "reason"
+           , "help"
            ]
 
 languageDef =
@@ -107,6 +109,7 @@ statement' =   try bsetStmt
            <|> try backStmt
            <|> try showHistoryStmt
            <|> try reasonStmt
+           <|> try helpStmt
            <|> try emptyStmt
 
 
@@ -159,6 +162,11 @@ upStmt :: Parser Statement
 upStmt =
     do  reserved "up"
         return Up
+
+helpStmt :: Parser Statement
+helpStmt =
+    do  reserved "help"
+        return Help
 
 reasonStmt :: Parser Statement
 reasonStmt =

@@ -28,37 +28,18 @@ import System.Console.Haskeline                                       (completeW
 import System.Console.Haskeline.Completion                            (Completion (..),
                                                                        CompletionFunc)
 
-
-
-
 runInteractive :: Platform
                -> CompilerId
                -> Solver
                -> DepResolverParams
                -> IO (Maybe QPointer)
 runInteractive platform compId solver resolverParams = do
-    putStrLn "Welcome to cabali!"
-    putStrLn "This interface accepts simple commands separated by ';'. E.g. go 1 ; auto"
-    putStrLn "go n            chooses n - alternatively \"n\" does the same. Just Enter, picks the first choice"
-    putStrLn "up              goes up one step"
-    putStrLn "top             goes all the way to the top"
-    putStrLn "auto            starts the automatic solver"
-    putStrLn "goto aeson      runs the parser until it sets aeson's version"
-    putStrLn "goto aeson:test runs the parser until it sets the flag test for aeson"
-    putStrLn "prefer aeson    sorts the choices so that aeson comes first if it is available (Same arguments as goto)"
-    putStrLn "bset name       sets a bookmark called name"
-    putStrLn "blist           lists all bookmarks"
-    putStrLn "bjump name      jumps to the bookmark name"
-    putStrLn "indicateAuto    indicates the choices the solver would have made with a little (*)"
-    putStrLn "install         Once the interface says 'Done', you can type 'install' to install the package"
-    putStrLn "showPlan        shows what is going to be installed/used"
-    putStrLn "whatWorks       lists the choices that lead to a valid installplan"
-    putStrLn "back            goes back to the last command"
-    putStrLn "reason n        gives you the first n reasons (muses) why there is no solution"
-
     let (sc, depResOpts) = resolveDependenciesConfigs platform compId solver resolverParams
         searchTree       = modularResolverTree sc depResOpts
         initialState     = UIState (fromTree searchTree) [] Nothing Nothing []
+
+    putStrLn "\n\tWelcome to cabali!"
+    putStrLn "\tType \"help\" for help.\n"
 
     runLoop initialState
       where
