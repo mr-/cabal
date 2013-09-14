@@ -155,6 +155,9 @@ interpretStatement WhatWorks =
 -- Maybe that's better than firstChoice anyway. Then we get the solution
 -- in the normal solver.
 -- But what is IT?
+--
+-- Need to have QGoalReasonChain to include all reasons in order to
+-- consider only the relevant dependencies.
 
 interpretStatement (Reason _) = do
     ptr <- gets uiPointer
