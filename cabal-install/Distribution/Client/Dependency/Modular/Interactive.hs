@@ -13,8 +13,8 @@ import Distribution.Client.Dependency.Modular.Interactive.Parser      (Statement
 import Distribution.Client.Dependency.Modular.Interactive.Types       (Action (..), AppState,
                                                                        UICommand (..), UIState (..))
 import Distribution.Client.Dependency.Modular.Tree                    (ChildType (..), Tree (..),
-                                                                       isInstalled, showChild,
-                                                                       showNodeFromTree)
+                                                                       isInstalled, showChild)
+import Distribution.Client.Dependency.Modular.Message                 (showNodeFromTree)
 import Distribution.Client.Dependency.Modular.TreeZipper              (Pointer (..), focusChild,
                                                                        fromTree, pointsBelow,
                                                                        toTree)

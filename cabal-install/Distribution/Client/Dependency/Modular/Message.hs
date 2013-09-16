@@ -96,3 +96,22 @@ showFR c Backjump                       = " (backjumping, conflict set: " ++ sho
 showFR _ (MalformedFlagChoice qfn)      = " (INTERNAL ERROR: MALFORMED FLAG CHOICE: " ++ showQFN qfn ++ ")"
 showFR _ (MalformedStanzaChoice qsn)    = " (INTERNAL ERROR: MALFORMED STANZA CHOICE: " ++ showQSN qsn ++ ")"
 showFR _ EmptyGoalChoice                = " (INTERNAL ERROR: EMPTY GOAL CHOICE)"
+
+
+
+
+
+showNodeFromTree :: Tree QGoalReasonChain -> String
+showNodeFromTree (PChoice qpn (UserGoal:_) _) = "Version of " ++ showQPN qpn
+showNodeFromTree (PChoice qpn a _)            = showQPN qpn ++ " (needed by " ++ showGoalReason a ++ ")"
+showNodeFromTree (FChoice qfn _ b1 b2 _)      = "Flag: " ++ showQFN qfn ++ "\t " ++ trivial ++ " " ++ manual
+    where manual  = if b2 then "manual" else "automatic"
+          trivial = if b1 then "trivial (no deps introduced by this)" else "not trivial (will introduce deps)"
+showNodeFromTree (SChoice qsn _ b _)          = "Stanza: " ++ showQSN qsn -- The "reason" is obvious here
+                                                    ++ "\n\t " ++ trivial
+  where trivial = if b then "trivial (no deps introduced by this)" else "not trivial (will introduce deps)"
+showNodeFromTree (GoalChoice _)               = "Missing dependencies"
+showNodeFromTree (Done _rdm)                  = "Done"
+showNodeFromTree (Fail cfs fr _)              = "FailReason: " ++ showFR cfs fr
+
+

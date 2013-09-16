@@ -43,22 +43,6 @@ treeToNode (Done        rdm          ) = NTDone rdm
 treeToNode (Fail        cnfset fr   _) = NTFail cnfset fr
 
 
--- This does not really belong here, it is too specific to the interactive
--- solver
-showNodeFromTree :: Tree QGoalReasonChain -> String
-showNodeFromTree (PChoice qpn (UserGoal:_) _) = "Version of " ++ showQPN qpn
-showNodeFromTree (PChoice qpn a _)            = showQPN qpn ++ " (needed by " ++ showGoalReason a ++ ")"
-showNodeFromTree (FChoice qfn _ b1 b2 _)      = "Flag: " ++ showQFN qfn ++ "\t " ++ trivial ++ " " ++ manual
-    where manual  = if b2 then "manual" else "automatic"
-          trivial = if b1 then "trivial (no deps introduced by this)" else "not trivial (will introduce deps)"
-showNodeFromTree (SChoice qsn _ b _)          = "Stanza: " ++ showQSN qsn -- The "reason" is obvious here
-                                                    ++ "\n\t " ++ trivial
-  where trivial = if b then "trivial (no deps introduced by this)" else "not trivial (will introduce deps)"
-showNodeFromTree (GoalChoice _)               = "Missing dependencies"
-showNodeFromTree (Done _rdm)                  = "Done"
-showNodeFromTree (Fail cfs fr _)              = "FailReason: " ++ showFailReason fr ++ "\nConflictSet: " ++ showConflictSet cfs
-  where showConflictSet s = show $ map showVar (toList s)
-
 
 instance Functor Tree where
   fmap  f (PChoice qpn i     xs) = PChoice qpn (f i)     (fmap (fmap f) xs)
@@ -105,15 +89,6 @@ data FailReason = InconsistentInitialConstraints
                 | EmptyGoalChoice
                 | Backjump
   deriving (Eq, Show)
-
-
-showFailReason :: FailReason -> String
-showFailReason (Conflicting depQPN)         = "Conflicting: "             ++ show (map showDep depQPN)
-showFailReason (MalformedFlagChoice qfn)    = "MalformedFlagChoice: "     ++ showQFN qfn
-showFailReason (MalformedStanzaChoice qsn)  = "MalformedStanzaChoice: "   ++ showQSN qsn
-showFailReason (BuildFailureNotInIndex pn)  = "BuildFailureNotInIndex: "  ++ unPN pn
-showFailReason (GlobalConstraintVersion vr) = "GlobalConstraintVersion: " ++ showVR vr
-showFailReason x = show x
 
 
 -- | Functor for the tree type.

@@ -27,7 +27,7 @@ import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), 
                                                                   focusChild, focusRoot, focusUp,
                                                                   liftToPtr, toTree, filterDownBFS)
 import Distribution.Client.Dependency.Types                      (QPointer)
-
+import Distribution.Client.Dependency.Modular.Thinner
 
 interpretStatement :: Statement -> AppState [UICommand]
 interpretStatement ToTop = modifyPointer focusRoot >> return [ShowChoices]
