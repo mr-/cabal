@@ -41,7 +41,7 @@ showCS = intercalate ", " . L.map showVar . S.toList
 -- is for convenience. Otherwise, it is a list of version ranges paired with
 -- the goals / variables that introduced them.
 data CI qpn = Fixed I (Goal qpn) | Constrained [VROrigin qpn]
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 instance Functor CI where
   fmap f (Fixed i g)       = Fixed i (fmap f g)
@@ -98,7 +98,7 @@ data FlaggedDep qpn =
     Flagged (FN qpn) FInfo (TrueFlaggedDeps qpn) (FalseFlaggedDeps qpn)
   | Stanza  (SN qpn)       (TrueFlaggedDeps qpn)
   | Simple (Dep qpn)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 instance Functor FlaggedDep where
   fmap f (Flagged x y tt ff) = Flagged (fmap f x) y
@@ -112,7 +112,7 @@ type FalseFlaggedDeps qpn = FlaggedDeps qpn
 -- | A dependency (constraint) associates a package name with a
 -- constrained instance.
 data Dep qpn = Dep qpn (CI qpn)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 showDep :: Dep QPN -> String
 showDep (Dep qpn (Fixed i (Goal v _))          ) =
@@ -136,7 +136,7 @@ type RevDepMap = Map QPN [QPN]
 -- | Goals are solver variables paired with information about
 -- why they have been introduced.
 data Goal qpn = Goal (Var qpn) (GoalReasonChain qpn)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 instance Functor Goal where
   fmap f (Goal v grs) = Goal (fmap f v) (fmap (fmap f) grs)
@@ -150,7 +150,7 @@ instance ResetGoal Goal where
 -- | For open goals as they occur during the build phase, we need to store
 -- additional information about flags.
 data OpenGoal = OpenGoal (FlaggedDep QPN) QGoalReasonChain
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 -- | Reasons why a goal can be added to a goal set.
 data GoalReason qpn =
@@ -158,7 +158,7 @@ data GoalReason qpn =
   | PDependency (PI qpn)
   | FDependency (FN qpn) Bool
   | SDependency (SN qpn)
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 instance Functor GoalReason where
   fmap _ UserGoal           = UserGoal

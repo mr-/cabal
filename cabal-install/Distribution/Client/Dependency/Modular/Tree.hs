@@ -58,7 +58,7 @@ data ChildType = CTP I
                | CTF Bool
                | CTS Bool
                | CTOG OpenGoal
-               | CTFail deriving (Show, Eq)
+               | CTFail deriving (Show, Eq, Ord)
 
 
 showChild :: ChildType -> String

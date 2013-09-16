@@ -27,7 +27,7 @@ import System.Console.Haskeline                                       (completeW
                                                                        runInputT, setComplete)
 import System.Console.Haskeline.Completion                            (Completion (..),
                                                                        CompletionFunc)
-
+import Distribution.Client.Dependency.Modular.Thinner
 runInteractive :: Platform
                -> CompilerId
                -> Solver

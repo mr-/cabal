@@ -119,7 +119,7 @@ data VersionRange
   | UnionVersionRanges     VersionRange VersionRange
   | IntersectVersionRanges VersionRange VersionRange
   | VersionRangeParens     VersionRange -- just '(exp)' parentheses syntax
-  deriving (Show,Read,Eq,Typeable,Data)
+  deriving (Show,Read,Eq,Typeable,Data,Ord)
 
 #if __GLASGOW_HASKELL__ < 707
 -- starting with ghc-7.7/base-4.7 this instance is provided in "Data.Data"
