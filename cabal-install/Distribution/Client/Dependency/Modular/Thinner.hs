@@ -17,9 +17,12 @@ import qualified Distribution.Client.Dependency.Modular.PSQ as P
 --  | Done        RevDepMap
 --  | Fail        (ConflictSet QPN) FailReason (Maybe (Tree a))
 --  deriving (Eq, Show)
+--
 type SetPath = S.Set (Var QPN, ChildType)
 data Bucket = B {allV :: S.Set SetPath } deriving (Eq, Ord)
+
 --data Bucket = B {allV :: S.Set (S.Set ChildType)} deriving (Eq, Ord)
+--
 --for now ignore flags and stanzas?
 thinner :: Tree a -> SetPath -> State Bucket (Tree a)
 thinner (PChoice    a b     st) toHere = do
