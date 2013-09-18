@@ -13,6 +13,32 @@ import Distribution.Client.Dependency.Modular.Package
 import Distribution.Client.Dependency.Modular.PSQ as P hiding (map, toList)
 import Distribution.Client.Dependency.Modular.Version
 
+data FailTree a    = FailTree { failTree  :: (Tree a)
+                              , failQPN   :: QPN
+                              , failI     :: I }
+                                deriving (Eq, Show)
+
+data FailTreeF a b = FailTreeF b QPN I deriving (Eq, Show)
+
+innFailTree :: FailTreeF a (Tree a) -> FailTree a
+innFailTree (FailTreeF t q i) = FailTree t q i
+
+outFailTree :: FailTree a -> FailTreeF a (Tree a)
+outFailTree (FailTree  t q i) = FailTreeF t q i
+
+
+instance Functor (FailTree) where
+  fmap f (FailTree t q i) = FailTree (f <$> t) q i
+
+instance Functor (FailTreeF a) where
+  fmap f (FailTreeF t q i) = FailTreeF (f t) q i
+
+instance Foldable (FailTreeF a) where
+  foldr op b (FailTreeF a _ _) =  op a b
+
+instance Traversable (FailTreeF a) where
+  traverse f (FailTreeF a qpn i) =  FailTreeF <$> (f a) <*> pure qpn <*> pure i
+
 -- | Type of the search tree. Inlining the choice nodes for now.
 data Tree a =
     PChoice     QPN a           (PSQ I        (Tree a))
@@ -20,7 +46,7 @@ data Tree a =
   | SChoice     QSN a Bool      (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial
   | GoalChoice                  (PSQ OpenGoal (Tree a)) -- PSQ should never be empty
   | Done        RevDepMap
-  | Fail        (ConflictSet QPN) FailReason (Maybe (Tree a))
+  | Fail        (ConflictSet QPN) FailReason  (Maybe (FailTree a))
   deriving (Eq, Show)
   -- Above, a choice is called trivial if it clearly does not matter. The
   -- special case of triviality we actually consider is if there are no new
@@ -31,7 +57,7 @@ data NodeType a = NTP QPN a
                 | NTS QSN a Bool
                 | NTGoal
                 | NTDone RevDepMap
-                | NTFail (ConflictSet QPN) FailReason deriving (Eq, Show)
+                | NTFail (ConflictSet QPN) FailReason deriving (Eq, Show, Ord)
 -- TODO: NTFail wants the tree?
 
 treeToNode :: Tree a -> NodeType a
@@ -50,7 +76,7 @@ instance Functor Tree where
   fmap  f (SChoice qsn i b   xs) = SChoice qsn (f i) b   (fmap (fmap f) xs)
   fmap  f (GoalChoice        xs) = GoalChoice            (fmap (fmap f) xs)
   fmap _f (Done    rdm         ) = Done    rdm
-  fmap  f (Fail    cs fr     t ) = Fail    cs fr         (fmap (fmap f) t)
+  fmap  f (Fail    cs fr     ft) = Fail    cs fr         (fmap (fmap f) ft)
 
 
 
@@ -58,15 +84,17 @@ data ChildType = CTP I
                | CTF Bool
                | CTS Bool
                | CTOG OpenGoal
-               | CTFail deriving (Show, Eq, Ord)
+               | CTFail (Maybe (QPN, I))
+                deriving (Show, Eq, Ord)
 
 
 showChild :: ChildType -> String
-showChild (CTP (I ver _))        = showVer ver
-showChild (CTF bool)             = show bool
-showChild (CTS bool)             = show bool
-showChild (CTOG opengoal)        = showOpenGoal opengoal
-showChild (CTFail)               = "Failing Node"
+showChild (CTP (I ver _))          = showVer ver
+showChild (CTF bool)               = show bool
+showChild (CTS bool)               = show bool
+showChild (CTOG opengoal)          = showOpenGoal opengoal
+showChild (CTFail Nothing)         = "Failing Node"
+showChild (CTFail (Just (qpn, i))) = "Failing Node: Introduced by " ++ showQPN qpn ++ "-" ++ showI i
 
 isInstalled :: ChildType -> Bool
 isInstalled (CTP (I _ (Inst _))) = True
@@ -88,7 +116,7 @@ data FailReason = InconsistentInitialConstraints
                 | MalformedStanzaChoice QSN
                 | EmptyGoalChoice
                 | Backjump
-  deriving (Eq, Show)
+  deriving (Eq, Show, Ord)
 
 
 -- | Functor for the tree type.
@@ -98,7 +126,7 @@ data TreeF a b =
   | SChoiceF    QSN a Bool      (PSQ Bool     b)
   | GoalChoiceF                 (PSQ OpenGoal b)
   | DoneF       RevDepMap
-  | FailF       (ConflictSet QPN) FailReason (Maybe b)
+  | FailF       (ConflictSet QPN) FailReason (Maybe (FailTreeF a b))
 
 out :: Tree a -> TreeF a (Tree a)
 out (PChoice    p i     ts) = PChoiceF    p i     ts
@@ -106,7 +134,7 @@ out (FChoice    p i b m ts) = FChoiceF    p i b m ts
 out (SChoice    p i b   ts) = SChoiceF    p i b   ts
 out (GoalChoice         ts) = GoalChoiceF         ts
 out (Done       x         ) = DoneF       x
-out (Fail       c x     ts) = FailF       c x     ts
+out (Fail       c x     ts) = FailF       c x     (outFailTree <$> ts)
 
 inn :: TreeF a (Tree a) -> Tree a
 inn (PChoiceF    p i     ts) = PChoice    p i     ts
@@ -114,7 +142,7 @@ inn (FChoiceF    p i b m ts) = FChoice    p i b m ts
 inn (SChoiceF    p i b   ts) = SChoice    p i b   ts
 inn (GoalChoiceF         ts) = GoalChoice         ts
 inn (DoneF       x         ) = Done       x
-inn (FailF       c x     ts) = Fail       c x     ts
+inn (FailF       c x     ts) = Fail       c x     (innFailTree <$> ts)
 
 instance Functor (TreeF a) where
   fmap f (PChoiceF    p i     ts) = PChoiceF    p i     (fmap f ts)
@@ -122,23 +150,25 @@ instance Functor (TreeF a) where
   fmap f (SChoiceF    p i b   ts) = SChoiceF    p i b   (fmap f ts)
   fmap f (GoalChoiceF         ts) = GoalChoiceF         (fmap f ts)
   fmap _ (DoneF       x         ) = DoneF       x
-  fmap f (FailF       c x     ts) = FailF       c x     (fmap f ts)
+  fmap f (FailF       c x     ts) = FailF       c x     (fmap (fmap f) ts)
 
 instance Foldable (TreeF a) where
-  foldr op e (PChoiceF    _ _     ts) = foldr op e ts
-  foldr op e (FChoiceF    _ _ _ _ ts) = foldr op e ts
-  foldr op e (SChoiceF    _ _ _   ts) = foldr op e ts
-  foldr op e (GoalChoiceF         ts) = foldr op e ts
-  foldr _  e (DoneF       _         ) = e
-  foldr op e (FailF       _ _     ts) = foldr op e ts
+  foldr op e (PChoiceF    _ _            ts) = foldr op e ts
+  foldr op e (FChoiceF    _ _ _ _        ts) = foldr op e ts
+  foldr op e (SChoiceF    _ _ _          ts) = foldr op e ts
+  foldr op e (GoalChoiceF                ts) = foldr op e ts
+  foldr _  e (DoneF       _                ) = e
+  foldr _  e (FailF       _ _       Nothing) = e
+  foldr op e (FailF       _ _     (Just ts)) = foldr op e ts
 
 instance Traversable (TreeF a) where
-  traverse f (PChoiceF    p i     ts) = PChoiceF    <$> pure p <*> pure i <*>                       traverse f ts
-  traverse f (FChoiceF    p i b m ts) = FChoiceF    <$> pure p <*> pure i <*> pure b <*> pure m <*> traverse f ts
-  traverse f (SChoiceF    p i b   ts) = SChoiceF    <$> pure p <*> pure i <*> pure b <*>            traverse f ts
-  traverse f (GoalChoiceF         ts) = GoalChoiceF <$>                                             traverse f ts
-  traverse _ (DoneF       x         ) = DoneF       <$> pure x
-  traverse f (FailF       c x     ts) = FailF       <$> pure c <*> pure x <*>                       traverse f ts
+  traverse f (PChoiceF    p i        ts) = PChoiceF    <$> pure p <*> pure i <*>                       traverse f ts
+  traverse f (FChoiceF    p i b m    ts) = FChoiceF    <$> pure p <*> pure i <*> pure b <*> pure m <*> traverse f ts
+  traverse f (SChoiceF    p i b      ts) = SChoiceF    <$> pure p <*> pure i <*> pure b <*>            traverse f ts
+  traverse f (GoalChoiceF            ts) = GoalChoiceF <$>                                             traverse f ts
+  traverse _ (DoneF       x            ) = DoneF       <$> pure x
+  traverse _ (FailF       c x   Nothing) = FailF       <$> pure c <*> pure x <*> pure Nothing
+  traverse f (FailF       c x (Just ts)) = FailF       <$> pure c <*> pure x <*>        ( Just  <$>        ( traverse f ts ))
 
 -- | Determines whether a tree is active, i.e., isn't a failure node.
 active :: Tree a -> Bool

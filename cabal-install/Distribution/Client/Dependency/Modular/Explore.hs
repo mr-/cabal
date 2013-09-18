@@ -30,7 +30,10 @@ import Distribution.Client.Dependency.Modular.TreeZipper
 backjump :: Tree a -> Tree (Maybe (ConflictSet QPN))
 backjump = snd . cata go
   where
-    go (FailF c fr x) = (Just c, Fail c fr (snd <$> x))
+    go (FailF c fr Nothing)  = (Just c, Fail c fr Nothing) --TODO check!
+    go (FailF c fr (Just (FailTreeF (_,t) qpn i ))) = (Just c, Fail c fr (Just (FailTree t qpn i )))
+--    go (FailF c fr mft) =  (fmap (fmap snd) mft)
+
     go (DoneF rdm) = (Nothing, Done rdm)
     go (PChoiceF qpn _     ts) = (c, PChoice qpn c     (P.fromList ts'))
       where
@@ -97,7 +100,7 @@ backjumpInfo c m = m <|> case c of -- important to produce 'm' before matching o
 -- TODO: Check if that's ok..
 ptrToAssignment :: Pointer a -> Assignment
 ptrToAssignment ptr = intermediateAssignment (focusRoot ptr) ptr
-
+{-
 ptrToAssignment' :: Pointer a -> Assignment
 ptrToAssignment' ptr =
  mkAssignment (toTree $ focusRoot ptr) (A M.empty M.empty M.empty, oneWayTrail)
@@ -122,14 +125,14 @@ ptrToAssignment' ptr =
         go (GoalChoiceF        ts) (a, CTOG k : xs)         = r (a, xs)
           where r = fromJust $ P.lookup k ts
 
-        go (FailF _ _          ts) (a, CTFail : xs)         = r (a, xs)
-          where r = fromJust ts
+        go (FailF _ _          (Just (FailTreeF  r _ _))) (a, CTFail : xs)         = r (a, xs)
+        go (FailF _ _ Nothing) _ = error "Internal error in ptrToAssignment': got FailF Nothing!"
 
-        go _                       _                         = error "Internal error in donePtrToLog"
+        go _                       _                         = error "Internal error in dptrToAssignment'"
                                                  -- This catches cases like (GoalChoiceF...) (a (CTP k)..)
                                                  -- where childtype and nodetype don't match
                                                  -- ugly? Maybe. Could have been easy with dependent types.
-
+-}
 intermediateAssignment :: Pointer a -> Pointer a -> Assignment
 intermediateAssignment root ptr =
  mkAssignment (toTree root) (A M.empty M.empty M.empty, oneWayTrail)
@@ -154,10 +157,11 @@ intermediateAssignment root ptr =
         go (GoalChoiceF        ts) (a, CTOG k : xs)         = r (a, xs)
           where r = fromJust $ P.lookup k ts
 
-        go (FailF _ _         ts)  (a, CTFail : xs)         = r (a, xs)
-          where r = fromJust ts
+        go (FailF _ _          (Just (FailTreeF  r _ _))) (a, (CTFail _) : xs)         = r (a, xs)
+        go (FailF _ _ Nothing) _ = error "Internal error in intermediateAssignment': got FailF Nothing!"
 
-        go _                       _                         = error "Internal error in donePtrToLog"
+
+        go _                       _                         = error "Internal error in intermediatAssignment"
 
 -- | Version of 'explore' that returns a 'Log'.
 -- | Does it really save space? Or is Haskell clever enough to know that

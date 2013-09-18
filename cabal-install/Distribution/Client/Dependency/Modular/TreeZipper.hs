@@ -19,7 +19,7 @@ data Tree a =
   | SChoice     QSN a Bool      (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial
   | GoalChoice                  (PSQ OpenGoal (Tree a)) -- PSQ should never be empty
   | Done        RevDepMap
-  | Fail        (ConflictSet QPN) FailReason (Maybe (Tree a))
+  | Fail        (ConflictSet QPN) FailReason  (Maybe (FailTree a))
 -}
 
 
@@ -30,7 +30,7 @@ data Path a =
   | FChoicePoint (Path a) (PSQContext Bool     (Tree a)) QFN a Bool Bool
   | SChoicePoint (Path a) (PSQContext Bool     (Tree a)) QSN a Bool
   | GChoicePoint (Path a) (PSQContext OpenGoal (Tree a))
-  | FailPoint    (Path a)                                (ConflictSet QPN) FailReason
+  | FailPoint    (Path a) (ConflictSet QPN) FailReason (Maybe (FailTree a))
 
 data Pointer a = Pointer { toPath :: Path a, toTree :: Tree a }
 
@@ -67,7 +67,9 @@ pathToChild (PChoicePoint _ context _ _     ) = Just $ CTP  (P.contextKey contex
 pathToChild (FChoicePoint _ context _ _ _ _ ) = Just $ CTF  (P.contextKey context)
 pathToChild (SChoicePoint _ context _ _ _   ) = Just $ CTS  (P.contextKey context)
 pathToChild (GChoicePoint _ context         ) = Just $ CTOG (P.contextKey context)
-pathToChild (FailPoint    _ _ _             ) = Just   CTFail
+pathToChild (FailPoint    _ _ _      Nothing) = Just $ CTFail Nothing
+pathToChild (FailPoint    _ _ _    (Just ft)) = Just $ CTFail $ Just ((failQPN ft), (failI ft))
+
 
 innerPath :: Path a -> Maybe (Path a)
 innerPath Top = Nothing
@@ -75,7 +77,7 @@ innerPath (PChoicePoint path _ _ _     ) = Just path
 innerPath (FChoicePoint path _ _ _ _ _ ) = Just path
 innerPath (SChoicePoint path _ _ _ _   ) = Just path
 innerPath (GChoicePoint path _         ) = Just path
-innerPath (FailPoint    path _ _       ) = Just path
+innerPath (FailPoint    path _ _ _     ) = Just path
 
 walk :: OneWayTrail -> Pointer a -> Maybe (Pointer a)
 walk []     treePointer = Just treePointer
@@ -162,8 +164,14 @@ focusUp (Pointer (GChoicePoint path context)            t) = Just $ Pointer path
   where newTree = GoalChoice  newPSQ
         newPSQ  = P.joinContext t context
 
-focusUp (Pointer (FailPoint path c f)                   t) = Just $ Pointer path newTree
-  where newTree = Fail c f (Just t)
+--focusUp (Pointer (FailPoint path c f mft)          t) = Just $ Pointer path newTree
+--  where newTree = Fail c f (fmap (fmap $ const t) mft)
+
+focusUp (Pointer (FailPoint path c f (Just (FailTree _ p i)))          t) = Just $ Pointer path newTree
+  where newTree = Fail c f ((Just (FailTree t p i)))
+
+focusUp (Pointer (FailPoint path c f Nothing)          _) = Just $ Pointer path newTree
+  where newTree = Fail c f Nothing
 
 
 focusChild :: ChildType -> Pointer a -> Maybe (Pointer a)
@@ -183,12 +191,12 @@ focusChild (CTOG key) (Pointer oldPath (GoalChoice        psq)) = Pointer newPat
   where newPath = GChoicePoint oldPath newContext
         newContext = P.makeContextAt key psq
 
-focusChild CTFail     (Pointer oldPath (Fail c f     (Just t))) = Just $ Pointer newPath t
-  where newPath = FailPoint oldPath c f
+focusChild (CTFail _ )(Pointer oldPath (Fail c f     ft@(Just(FailTree t _ _)))) =  Just $ Pointer newPath t
+  where newPath = FailPoint oldPath c f ft
 
-focusChild CTFail     (Pointer _        (Fail _ _     Nothing)) = Nothing -- This is sort of bad
+focusChild (CTFail _ )   (Pointer _        (Fail _ _     Nothing)) = Nothing -- This is sort of bad
 
-focusChild _          _                                         = Nothing
+focusChild _            _                             = Nothing
 
 
 
@@ -200,10 +208,11 @@ isLeaf :: Pointer a -> Bool
 isLeaf = isNothing.children
 
 children :: Pointer a -> Maybe [ChildType]
-children (Pointer _ (PChoice _ _     c)) = Just $ map CTP  $ P.keys c
-children (Pointer _ (FChoice _ _ _ _ c)) = Just $ map CTF  $ P.keys c
-children (Pointer _ (SChoice _ _ _   c)) = Just $ map CTS  $ P.keys c
-children (Pointer _ (GoalChoice      c)) = Just $ map CTOG $ P.keys c
-children (Pointer _ (Fail       _ _  _)) = Just $ [CTFail]
-children _                               = Nothing
+children (Pointer _ (PChoice _ _     c))        = Just $ map CTP  $ P.keys c
+children (Pointer _ (FChoice _ _ _ _ c))        = Just $ map CTF  $ P.keys c
+children (Pointer _ (SChoice _ _ _   c))        = Just $ map CTS  $ P.keys c
+children (Pointer _ (GoalChoice      c))        = Just $ map CTOG $ P.keys c
+children (Pointer _ (Fail       _ _ (Just ft))) = Just $ [CTFail  $ Just (failQPN ft, failI ft)]
+children (Pointer _ (Fail       _ _ Nothing  )) = Just $ [CTFail    Nothing]
+children _                                      = Nothing
 

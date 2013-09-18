@@ -112,7 +112,7 @@ executeUICommand (DoInstall) = return InstallNow
 
 
 displayChoices :: UIState -> String
-displayChoices uiState = prettyShow $ map (uncurry makeEntry) $ generateChoices treePointer
+displayChoices uiState = take 500 $ prettyShow $ map (uncurry makeEntry) $ generateChoices treePointer
   where
     treePointer = uiPointer uiState
 
