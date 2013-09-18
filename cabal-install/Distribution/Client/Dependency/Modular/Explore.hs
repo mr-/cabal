@@ -100,6 +100,9 @@ backjumpInfo c m = m <|> case c of -- important to produce 'm' before matching o
 -- TODO: Check if that's ok..
 ptrToAssignment :: Pointer a -> Assignment
 ptrToAssignment ptr = intermediateAssignment (focusRoot ptr) ptr
+
+
+
 {-
 ptrToAssignment' :: Pointer a -> Assignment
 ptrToAssignment' ptr =
@@ -133,9 +136,10 @@ ptrToAssignment' ptr =
                                                  -- where childtype and nodetype don't match
                                                  -- ugly? Maybe. Could have been easy with dependent types.
 -}
+
 intermediateAssignment :: Pointer a -> Pointer a -> Assignment
 intermediateAssignment root ptr =
- mkAssignment (toTree root) (A M.empty M.empty M.empty, oneWayTrail)
+ mkAssignment (toTree root) (A M.empty M.empty M.empty M.empty, oneWayTrail)
   where
     oneWayTrail = wrongToOne $ intermediateTrail root ptr -- the trail to the Done-Node
 
@@ -145,23 +149,25 @@ intermediateAssignment root ptr =
         go :: TreeF t ((Assignment, [ChildType]) -> Assignment) -> (Assignment, [ChildType]) -> Assignment
         go _              (a, [])                           = a
 
-        go (PChoiceF qpn _     ts) (A pa fa sa, CTP k : xs) = r (A (M.insert qpn k pa) fa sa, xs)
+        go (PChoiceF qpn _     ts) (A pa fa sa ipa, CTP k : xs) = r (A (M.insert qpn k pa) fa sa ipa, xs)
           where r = fromJust $ P.lookup k ts
 
-        go (FChoiceF qfn _ _ _ ts) (A pa fa sa, CTF k : xs) = r (A pa (M.insert qfn k fa) sa, xs)
+        go (FChoiceF qfn _ _ _ ts) (A pa fa sa ipa, CTF k : xs) = r (A pa (M.insert qfn k fa) sa ipa, xs)
           where r = fromJust $ P.lookup k ts
 
-        go (SChoiceF qsn _ _   ts) (A pa fa sa, CTS k : xs) = r (A pa fa (M.insert qsn k sa), xs)
+        go (SChoiceF qsn _ _   ts) (A pa fa sa ipa, CTS k : xs) = r (A pa fa (M.insert qsn k sa) ipa, xs)
           where r = fromJust $ P.lookup k ts
 
-        go (GoalChoiceF        ts) (a, CTOG k : xs)         = r (a, xs)
+        go (GoalChoiceF        ts) (a, CTOG k : xs)             = r (a, xs)
           where r = fromJust $ P.lookup k ts
 
-        go (FailF _ _          (Just (FailTreeF  r _ _))) (a, (CTFail _) : xs)         = r (a, xs)
+        go (FailF _ _          (Just (FailTreeF  r qpn i))) (A pa fa sa ipa, (CTFail _) : xs)
+                                                                = r (A pa fa sa (M.insert qpn i ipa), xs)
         go (FailF _ _ Nothing) _ = error "Internal error in intermediateAssignment': got FailF Nothing!"
 
 
         go _                       _                         = error "Internal error in intermediatAssignment"
+
 
 -- | Version of 'explore' that returns a 'Log'.
 -- | Does it really save space? Or is Haskell clever enough to know that

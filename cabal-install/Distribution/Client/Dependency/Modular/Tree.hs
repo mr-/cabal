@@ -94,7 +94,7 @@ showChild (CTF bool)               = show bool
 showChild (CTS bool)               = show bool
 showChild (CTOG opengoal)          = showOpenGoal opengoal
 showChild (CTFail Nothing)         = "Failing Node"
-showChild (CTFail (Just (qpn, i))) = "Failing Node: Introduced by " ++ showQPN qpn ++ "-" ++ showI i
+showChild (CTFail (Just (qpn, i))) = "Failing Node: Introduced by the choice " ++ showQPN qpn ++ "-" ++ showI i
 
 isInstalled :: ChildType -> Bool
 isInstalled (CTP (I _ (Inst _))) = True
