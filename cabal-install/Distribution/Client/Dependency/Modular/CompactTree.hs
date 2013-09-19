@@ -79,7 +79,7 @@ bfs t = go (bfs' id t)
 bfs' :: (Path -> Path) -> CompactTree a-> [[(Path, IsDone)]]
 bfs' prefix CDone = [[(prefix [], True)]]
 bfs' prefix (CFail _ _) = [[(prefix [], False)]]
-bfs' prefix (CGoalChoice (PSQ cs)) = [] : zipConc ((\ (x, t) -> bfs' ((x :) . prefix) t) <$> cs)
+bfs' prefix (CGoalChoice (PSQ cs)) = [] : zipConc ((\(x, t) -> bfs' ((x :) . prefix) t) <$> cs)
 
 zipConc :: [[[(Path, IsDone)]]] -> [[(Path, IsDone)]]
 zipConc = foldr conc []

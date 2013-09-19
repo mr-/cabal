@@ -3,7 +3,7 @@ module Distribution.Client.Dependency.Modular.Interactive.Interpreter where
 import Control.Monad                                             (when)
 import Control.Monad.State                                       (gets, modify)
 import Data.Char                                                 (toLower)
-import Data.List                                                 (isInfixOf)
+import Data.List                                                 (isInfixOf, intersperse)
 import Data.Maybe                                                (fromJust, fromMaybe)
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
@@ -25,7 +25,7 @@ import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), 
                                                                   focusChild, focusRoot, focusUp,
                                                                   liftToPtr, toTree)
 import Distribution.Client.Dependency.Types                      (QPointer)
-import Distribution.Client.Dependency.Modular.CompactTree        (doBFS)
+import Distribution.Client.Dependency.Modular.CompactTree
 
 interpretStatement :: Statement -> AppState [UICommand]
 interpretStatement ToTop = modifyPointer focusRoot >> return [ShowChoices]
@@ -150,12 +150,17 @@ interpretStatement WhatWorks =
 
 interpretStatement (Reason) = do
     ptr <- gets uiPointer
+    let foo = (bfs' id . toCompact . toSimple. toTree) ptr :: [[(Path, IsDone)]]
+        bar = unlines $ map unwords $ map (intersperse " - ") $ map (map (\(path, isdone) -> (show (map showOpenGoal path)) ++ " " ++ bool isdone "Done" "Fail")) foo -- [[String]]
     case doBFS (toTree ptr) of
       Nothing               -> return [ShowResult "Uhoh.. got Nothing"]
       (Just (_, True))      -> return [ShowResult "Oh.. this seems to be solvable"]
-      (Just (path, False))  -> return [ShowResult (show $ map showOpenGoal path)]
-
+      (Just (path, False))  -> return [ShowResult (take 800 bar), ShowResult (show $ map showOpenGoal path)]
 interpretStatement Help = return [ShowResult helpText, ShowChoices]
+
+bool :: Bool -> a -> a -> a
+bool True x  _ = x
+bool False _ y = y
 
 isDone :: QPointer -> Bool
 isDone (Pointer _ (Done _ )  ) = True
