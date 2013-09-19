@@ -1,9 +1,9 @@
 module Distribution.Client.Dependency.Modular.Interactive.Interpreter where
 
 import Control.Monad                                             (when)
-import Control.Monad.State                                       (gets, modify)
+import Control.Monad.State --                                      (gets, modify)
 import Data.Char                                                 (toLower)
-import Data.List                                                 (isInfixOf, intersperse)
+import Data.List                                                 (isInfixOf)
 import Data.Maybe                                                (fromJust, fromMaybe)
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
@@ -13,7 +13,7 @@ import Distribution.Client.Dependency.Modular.Explore            (intermediateAs
 import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
 import Distribution.Client.Dependency.Modular.Interactive.Parser (Selection (..), Selections (..),
                                                                   Statement (..), Statements (..))
-import Distribution.Client.Dependency.Modular.Interactive.Types  (AppState, UICommand (..),
+import Distribution.Client.Dependency.Modular.Interactive.Types  (UICommand (..),
                                                                   UIState (..))
 import Distribution.Client.Dependency.Modular.Package            (QPN, showQPN)
 import Distribution.Client.Dependency.Modular.PSQ                (toLeft)
@@ -27,7 +27,9 @@ import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), 
 import Distribution.Client.Dependency.Types                      (QPointer)
 import Distribution.Client.Dependency.Modular.CompactTree
 
-interpretStatement :: Statement -> AppState [UICommand]
+type InterpreterState = State UIState
+
+interpretStatement :: Statement -> InterpreterState [UICommand]
 interpretStatement ToTop = modifyPointer focusRoot >> return [ShowChoices]
 
 interpretStatement Up = do
@@ -55,7 +57,7 @@ interpretStatement Auto = do
 
 interpretStatement (BookSet name) = addBookmark name >> return [ShowResult (name ++ " set")]
   where
-    addBookmark :: String -> AppState ()
+    addBookmark :: String -> InterpreterState ()
     addBookmark s = modify (\u -> u {uiBookmarks = (s, uiPointer u) : uiBookmarks u})
 
 interpretStatement BookList = do bookmarks <- gets uiBookmarks
@@ -150,12 +152,15 @@ interpretStatement WhatWorks =
 
 interpretStatement (Reason) = do
     ptr <- gets uiPointer
-    let foo = (bfs' id . toCompact . toSimple. toTree) ptr :: [[(Path, IsDone)]]
-        bar = unlines $ map unwords $ map (intersperse " - ") $ map (map (\(path, isdone) -> (show (map showOpenGoal path)) ++ " " ++ bool isdone "Done" "Fail")) foo -- [[String]]
+-- for Debugging
+--    let foo = (bfs' id . toCompact . toSimple. toTree) ptr :: [[(Path, IsDone)]]
+--        bar = unlines $ map unwords $ map (intersperse " - ") $ map (map (\(path, isdone) -> (show (map showOpenGoal path)) ++ " " ++ bool isdone "Done" "Fail")) foo -- [[String]]
     case doBFS (toTree ptr) of
-      Nothing               -> return [ShowResult "Uhoh.. got Nothing"]
-      (Just (_, True))      -> return [ShowResult "Oh.. this seems to be solvable"]
-      (Just (path, False))  -> return [ShowResult (take 800 bar), ShowResult (show $ map showOpenGoal path)]
+      Nothing               -> return [ShowResult "Uhoh.. got Nothing, call me!"]
+      (Just (_, True))      -> return [ShowResult "Found a solution - cannot find a reason."]
+      (Just (path, False))  -> return [ShowResult (show $ map showOpenGoal path)]
+
+
 interpretStatement Help = return [ShowResult helpText, ShowChoices]
 
 bool :: Bool -> a -> a -> a
@@ -218,7 +223,7 @@ preferSelections sel = trav go
       where (qsnName, qsnFlag) = unQSN qsn
     depMatches _                    _                       = False
 
-interpretStatements :: Statements -> AppState [UICommand]
+interpretStatements :: Statements -> InterpreterState [UICommand]
 interpretStatements (Statements [])     = return []
 interpretStatements (Statements (c:md)) = do
       ptr <- gets uiPointer
@@ -230,15 +235,15 @@ interpretStatements (Statements (c:md)) = do
                          return $ result ++ list
 
 -- TODO: Back does not revert indicateAuto, and prefer..
-addHistory :: Statement -> QPointer -> AppState ()
+addHistory :: Statement -> QPointer -> InterpreterState ()
 addHistory Back      _   = return ()
 addHistory statement ptr =
     modify (\uiState -> uiState {uiHistory = (statement,ptr):uiHistory uiState})
 
-setPointer :: QPointer -> AppState ()
+setPointer :: QPointer -> InterpreterState ()
 setPointer ptr = modifyPointer (const ptr)
 
-modifyPointer :: (QPointer -> QPointer) -> AppState ()
+modifyPointer :: (QPointer -> QPointer) -> InterpreterState ()
 modifyPointer f = do ptr <- gets uiPointer
                      modify (\uiState ->uiState{uiPointer = f ptr})
 

@@ -1,9 +1,7 @@
 module Distribution.Client.Dependency.Modular.Interactive.Types where
 
-import Control.Monad.State                                       (StateT)
 import Distribution.Client.Dependency.Modular.Interactive.Parser (Statement)
 import Distribution.Client.Dependency.Types                      (QPointer)
-import System.Console.Haskeline                                  (InputT)
 
 data UIState = UIState {uiPointer         :: QPointer,
                         uiBookmarks       :: [(String, QPointer)],
@@ -17,7 +15,6 @@ data UIState = UIState {uiPointer         :: QPointer,
 
 
 
-type AppState = StateT UIState (InputT IO)
 
 data Action = InstallNow | Abort | Continue | First deriving (Eq)
 

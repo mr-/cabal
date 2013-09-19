@@ -5,6 +5,7 @@ import Prelude hiding (pi)
 import Data.List as L
 import Data.Map as M
 import Data.Set as S
+import Data.Ord (comparing)
 
 import Distribution.Client.Dependency.Modular.Flag
 import Distribution.Client.Dependency.Modular.Package
@@ -150,7 +151,10 @@ instance ResetGoal Goal where
 -- | For open goals as they occur during the build phase, we need to store
 -- additional information about flags.
 data OpenGoal = OpenGoal (FlaggedDep QPN) QGoalReasonChain
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Show)
+
+instance Ord OpenGoal where
+    compare = comparing showOpenGoal
 
 -- | Reasons why a goal can be added to a goal set.
 data GoalReason qpn =
