@@ -1,7 +1,7 @@
 module Distribution.Client.Dependency.Modular.Interactive.Interpreter where
 
 import Control.Monad                                             (when)
-import Control.Monad.State --                                      (gets, modify)
+import Control.Monad.State                                       (State, gets, modify)
 import Data.Char                                                 (toLower)
 import Data.List                                                 (isInfixOf)
 import Data.Maybe                                                (fromJust, fromMaybe)

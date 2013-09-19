@@ -1,7 +1,8 @@
 module Distribution.Client.Dependency.Modular.Interactive where
 
 import Control.Applicative                                            ((<$>), (<*>))
-import Control.Monad.State         --                                   (evalStateT, get, gets, lift)
+import Control.Monad.State                                            (evalStateT, get, gets, lift,
+                                                                       State, StateT, runState, put)
 import Data.List                                                      (isPrefixOf)
 import Distribution.Client.Dependency                                 (DepResolverParams,
                                                                        resolveDependenciesConfigs)
