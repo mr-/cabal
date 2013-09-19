@@ -17,18 +17,27 @@ data SimpleTree a =
   | SDone
   deriving (Eq, Show)
 
+toSimple :: Tree a -> SimpleTree a
+toSimple (FChoice     _ _ _ _ t) = toSimple $ fromJust $ lookup False t
+toSimple (SChoice     _ _ _   t) = toSimple $ fromJust $ lookup False t
+toSimple (PChoice     q a     t) = SPChoice q a (toSimple <$> t)
+toSimple (GoalChoice          t) = SGoalChoice (toSimple <$> t)
+toSimple (Done        _        ) = SDone
+toSimple (Fail        c f     _) = SFail c f
+
+
 data CompactTree a =
     CGoalChoice  (PSQ OpenGoal (CompactTree a))
   | CFail        (ConflictSet QPN) FailReason
   | CDone
   deriving (Eq, Show)
 
-
 toCompact :: SimpleTree a -> CompactTree a
 toCompact (SGoalChoice ts)   = CGoalChoice (toCompact <$> ts)
 toCompact (SPChoice _  _ ts) = foldr1 mergeTree (toCompact <$> ts)
 toCompact (SFail c fr)       = CFail c fr
 toCompact SDone              = CDone
+
 
 mergeTree :: CompactTree a -> CompactTree a -> CompactTree a
 mergeTree CDone             _                  = CDone
@@ -47,14 +56,6 @@ mergePSQ (PSQ ((c, t) : cs)) (PSQ ((d, u) : ds)) = case compare c d of
   EQ -> cons c (mergeTree t u) $ mergePSQ (PSQ cs) (PSQ ds)
   GT -> cons d u $ mergePSQ (PSQ $ (c, t) : cs) (PSQ ds)
 
-
-toSimple :: Tree a -> SimpleTree a
-toSimple (FChoice     _ _ _ _ t) = toSimple $ fromJust $ lookup False t
-toSimple (SChoice     _ _ _   t) = toSimple $ fromJust $ lookup False t
-toSimple (PChoice     q a     t) = SPChoice q a (toSimple <$> t)
-toSimple (GoalChoice          t) = SGoalChoice (toSimple <$> t)
-toSimple (Done        _        ) = SDone
-toSimple (Fail        c f     _) = SFail c f
 
 
 type Path = [OpenGoal]
