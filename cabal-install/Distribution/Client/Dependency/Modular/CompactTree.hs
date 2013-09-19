@@ -5,10 +5,8 @@ import Distribution.Client.Dependency.Modular.Package
 import Distribution.Client.Dependency.Modular.Tree
 import Distribution.Client.Dependency.Modular.PSQ
 import Control.Applicative
-import Data.Function (on)
 import Data.Foldable
 import Data.Maybe
-import Data.List (nubBy)
 import Prelude hiding (foldr, mapM, lookup, foldr1)
 
 
@@ -53,15 +51,8 @@ mergeTree x                 (CFail _ _)        = x
 mergeTree (CGoalChoice psq) (CGoalChoice psq') = CGoalChoice $ mergePSQ psq psq'
 
 
--- uhoh... check what this does..
 mergePSQ :: PSQ OpenGoal (CompactTree a) -> PSQ OpenGoal (CompactTree a) -> PSQ OpenGoal (CompactTree a)
-mergePSQ (PSQ []) x = x
-mergePSQ x (PSQ []) = x
-mergePSQ l@(PSQ ((c, t) : cs)) r@(PSQ ((d, u) : ds)) = case compare c d of
-  LT -> cons c t $ mergePSQ (PSQ cs) r
-  EQ -> cons c (mergeTree t u) $ mergePSQ (PSQ cs) (PSQ ds)
-  GT -> cons d u $ mergePSQ l (PSQ ds)
-
+mergePSQ = unionWith mergeTree
 
 
 type Path = [OpenGoal]
