@@ -5,9 +5,15 @@ import Distribution.Client.Dependency.Modular.Package
 import Distribution.Client.Dependency.Modular.Tree
 import Distribution.Client.Dependency.Modular.PSQ
 import Control.Applicative
+import Data.Function (on)
 import Data.Foldable
 import Data.Maybe
+import Data.List (nubBy)
 import Prelude hiding (foldr, mapM, lookup, foldr1)
+
+
+doBFS :: Tree a -> Maybe (Path, IsDone)
+doBFS = bfs.toCompact.toSimple
 
 -- A normal tree without Stanza and Flag choices (for simplicity, for now)
 data SimpleTree a =
@@ -21,7 +27,7 @@ toSimple :: Tree a -> SimpleTree a
 toSimple (FChoice     _ _ _ _ t) = toSimple $ fromJust $ lookup False t
 toSimple (SChoice     _ _ _   t) = toSimple $ fromJust $ lookup False t
 toSimple (PChoice     q a     t) = SPChoice q a (toSimple <$> t)
-toSimple (GoalChoice          t) = SGoalChoice (toSimple <$> t)
+toSimple (GoalChoice          t) = SGoalChoice $ sortPSQ (toSimple <$> t)
 toSimple (Done        _        ) = SDone
 toSimple (Fail        c f     _) = SFail c f
 
@@ -51,10 +57,10 @@ mergeTree (CGoalChoice psq) (CGoalChoice psq') = CGoalChoice $ mergePSQ psq psq'
 mergePSQ :: PSQ OpenGoal (CompactTree a) -> PSQ OpenGoal (CompactTree a) -> PSQ OpenGoal (CompactTree a)
 mergePSQ (PSQ []) x = x
 mergePSQ x (PSQ []) = x
-mergePSQ (PSQ ((c, t) : cs)) (PSQ ((d, u) : ds)) = case compare c d of
-  LT -> cons c t $ mergePSQ (PSQ cs) (PSQ $ (d, u) : ds)
+mergePSQ l@(PSQ ((c, t) : cs)) r@(PSQ ((d, u) : ds)) = case compare c d of
+  LT -> cons c t $ mergePSQ (PSQ cs) r
   EQ -> cons c (mergeTree t u) $ mergePSQ (PSQ cs) (PSQ ds)
-  GT -> cons d u $ mergePSQ (PSQ $ (c, t) : cs) (PSQ ds)
+  GT -> cons d u $ mergePSQ l (PSQ ds)
 
 
 
@@ -73,7 +79,7 @@ bfs t = go (bfs' id t)
 bfs' :: (Path -> Path) -> CompactTree a-> [[(Path, IsDone)]]
 bfs' prefix CDone = [[(prefix [], True)]]
 bfs' prefix (CFail _ _) = [[(prefix [], False)]]
-bfs' prefix (CGoalChoice (PSQ cs)) = [] : zipConc (Prelude.map (\ (x, t) -> bfs' ((x :) . prefix) t) cs)
+bfs' prefix (CGoalChoice (PSQ cs)) = [] : zipConc ((\ (x, t) -> bfs' ((x :) . prefix) t) <$> cs)
 
 zipConc :: [[[(Path, IsDone)]]] -> [[(Path, IsDone)]]
 zipConc = foldr conc []
@@ -83,5 +89,4 @@ zipConc = foldr conc []
     conc [] xs = xs
     conc (x : xs) (y : ys) = (x ++ y) : conc xs ys
 
-doBFS :: Tree a -> Maybe (Path, IsDone)
-doBFS = bfs.toCompact.toSimple
+
