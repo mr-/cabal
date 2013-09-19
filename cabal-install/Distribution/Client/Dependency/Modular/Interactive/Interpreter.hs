@@ -3,11 +3,11 @@ module Distribution.Client.Dependency.Modular.Interactive.Interpreter where
 import Control.Monad                                             (when)
 import Control.Monad.State                                       (State, gets, modify)
 import Data.Char                                                 (toLower)
-import Data.List                                                 (isInfixOf)
+import Data.List                                                 (isInfixOf, intersperse)
 import Data.Maybe                                                (fromJust, fromMaybe)
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
-                                                                  OpenGoal (..), showOpenGoal)
+                                                                  OpenGoal (..))
 import Distribution.Client.Dependency.Modular.Explore            (intermediateAssignment,
                                                                   ptrToAssignment)
 import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
@@ -153,12 +153,12 @@ interpretStatement WhatWorks =
 interpretStatement (Reason) = do
     ptr <- gets uiPointer
 -- for Debugging
---    let foo = (bfs' id . toCompact . toSimple. toTree) ptr :: [[(Path, IsDone)]]
---        bar = unlines $ map unwords $ map (intersperse " - ") $ map (map (\(path, isdone) -> (show (map showOpenGoal path)) ++ " " ++ bool isdone "Done" "Fail")) foo -- [[String]]
+    let foo = (bfs' id . thinner . toCompact . toSimple. toTree) ptr :: [[(Path, IsDone)]]
+        bar = unlines $ map unwords $ map (intersperse " - ") $ map (map (\(path, isdone) -> (show (map showCOpenGoal path)) ++ " " ++ bool isdone "Done" "Fail")) foo -- [[String]]
     case doBFS (toTree ptr) of
       Nothing               -> return [ShowResult "Uhoh.. got Nothing, call me!"]
       (Just (_, True))      -> return [ShowResult "Found a solution - cannot find a reason."]
-      (Just (path, False))  -> return [ShowResult (show $ map showOpenGoal path)]
+      (Just (path, False))  -> return [ShowResult $ take 500 bar, ShowResult (show $ map showCOpenGoal path)]
 
 
 interpretStatement Help = return [ShowResult helpText, ShowChoices]
