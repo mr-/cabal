@@ -9,6 +9,7 @@ module Distribution.Client.Dependency.Modular.PSQ where
 
 import Control.Applicative
 import Data.Foldable
+import Data.Ord (comparing)
 import Data.Function
 import Data.List as S hiding (foldr, splitAt)
 import Data.Traversable
@@ -26,7 +27,8 @@ instance Foldable (PSQ k) where
 instance Traversable (PSQ k) where
   traverse f (PSQ xs) = PSQ <$> traverse (\ (k, v) -> (\ x -> (k, x)) <$> f v) xs
 
-
+sortPSQ :: Ord k => PSQ k v -> PSQ k v
+sortPSQ (PSQ xs) = PSQ $ S.sortBy (comparing fst) xs
 keys :: PSQ k v -> [k]
 keys (PSQ xs) = fmap fst xs
 

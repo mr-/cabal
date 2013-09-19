@@ -3,12 +3,11 @@ module Distribution.Client.Dependency.Modular.Interactive.Interpreter where
 import Control.Monad                                             (when)
 import Control.Monad.State                                       (gets, modify)
 import Data.Char                                                 (toLower)
-import Data.Function                                             (on)
-import Data.List                                                 (isInfixOf, nubBy)
-import Data.Maybe                                                (fromJust, fromMaybe, catMaybes)
+import Data.List                                                 (isInfixOf)
+import Data.Maybe                                                (fromJust, fromMaybe)
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
-                                                                  OpenGoal (..))
+                                                                  OpenGoal (..), showOpenGoal)
 import Distribution.Client.Dependency.Modular.Explore            (intermediateAssignment,
                                                                   ptrToAssignment)
 import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
@@ -20,13 +19,13 @@ import Distribution.Client.Dependency.Modular.Package            (QPN, showQPN)
 import Distribution.Client.Dependency.Modular.PSQ                (toLeft)
 import Distribution.Client.Dependency.Modular.Solver             (explorePointer)
 import Distribution.Client.Dependency.Modular.Tree               (ChildType (..), Tree (..),
-                                                                  TreeF (..), showChild, trav,
-                                                                  treeToNode)
+                                                                  TreeF (..), showChild, trav)
 import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), children,
                                                                   filterBetween, filterDown,
                                                                   focusChild, focusRoot, focusUp,
-                                                                  liftToPtr, toTree, filterDownBFS)
+                                                                  liftToPtr, toTree)
 import Distribution.Client.Dependency.Types                      (QPointer)
+import Distribution.Client.Dependency.Modular.CompactTree        (doBFS)
 
 interpretStatement :: Statement -> AppState [UICommand]
 interpretStatement ToTop = modifyPointer focusRoot >> return [ShowChoices]
@@ -149,31 +148,12 @@ interpretStatement WhatWorks =
       works :: QPointer -> ChildType -> Bool
       works ptr ch = isRight $ explorePointer $ focus ptr ch
 
--- TODO: Avoid repetition. It doesn't make sense to go S -> A -> B and S ->
--- B -> A..
--- Maybe that's better than firstChoice anyway. Then we get the solution
--- in the normal solver.
--- But what is IT?
---
--- Need to have QGoalReasonChain to include all reasons in order to
--- consider only the relevant dependencies.
-
-interpretStatement (Reason _) = do
+interpretStatement (Reason) = do
     ptr <- gets uiPointer
-    let failNodes   = filterDownBFS (\x -> allChildrenFail x && (not.isFail) x) ptr
-        uniqueNodes = nubBy ((==) `on` (treeToNode.toTree)) failNodes
-    case uniqueNodes of
-      []      -> return [ShowResult "Nothing found, sorry"]
-      node:_  -> do
-        let progress = showAssignment $ intermediateAssignment ptr node
-            message  = "This node does not admit a solution"
-        setPointer node
-        return [ShowResult progress, ShowResult message, ShowChoices]
-    where
-      allChildrenFail :: QPointer -> Bool
-      allChildrenFail ptr = case children ptr of
-        Nothing        -> False
-        Just chen  -> all isFail $ catMaybes $ [focusChild ch ptr | ch <- chen]
+    case doBFS (toTree ptr) of
+      Nothing               -> return [ShowResult "Uhoh.. got Nothing"]
+      (Just (_, True))      -> return [ShowResult "Oh.. this seems to be solvable"]
+      (Just (path, False))  -> return [ShowResult (show $ map showOpenGoal path)]
 
 interpretStatement Help = return [ShowResult helpText, ShowChoices]
 
