@@ -9,7 +9,7 @@ import Data.Foldable
 import Data.Maybe
 import Prelude hiding (foldr, mapM, lookup, foldr1)
 
-
+-- A normal tree without Stanza and Flag choices (for simplicity, for now)
 data SimpleTree a =
     SPChoice     QPN a             (PSQ I        (SimpleTree a))
   | SGoalChoice                    (PSQ OpenGoal (SimpleTree a))
@@ -46,6 +46,7 @@ mergePSQ (PSQ ((c, t) : cs)) (PSQ ((d, u) : ds)) = case compare c d of
   LT -> cons c t $ mergePSQ (PSQ cs) (PSQ $ (d, u) : ds)
   EQ -> cons c (mergeTree t u) $ mergePSQ (PSQ cs) (PSQ ds)
   GT -> cons d u $ mergePSQ (PSQ $ (c, t) : cs) (PSQ ds)
+
 
 toSimple :: Tree a -> SimpleTree a
 toSimple (FChoice     _ _ _ _ t) = toSimple $ fromJust $ lookup False t
