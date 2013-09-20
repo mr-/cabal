@@ -29,6 +29,7 @@ instance Traversable (PSQ k) where
 
 sortPSQ :: Ord k => PSQ k v -> PSQ k v
 sortPSQ (PSQ xs) = PSQ $ S.sortBy (comparing fst) xs
+
 keys :: PSQ k v -> [k]
 keys (PSQ xs) = fmap fst xs
 

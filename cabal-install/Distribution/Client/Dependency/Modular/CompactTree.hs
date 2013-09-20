@@ -6,16 +6,17 @@ import Distribution.Client.Dependency.Modular.Package
 import Distribution.Client.Dependency.Modular.Tree
 import Distribution.Client.Dependency.Modular.PSQ
 import Control.Applicative hiding (empty)
-import Control.Monad.State
+import Control.Monad.State.Lazy
 import Data.Foldable hiding (toList)
 import Data.Maybe
+import qualified Data.Map.Lazy as M
 import Data.Ord (comparing)
-import Data.Set hiding (foldr, toList)
+import qualified Data.Set as S hiding (foldr, toList)
 import Prelude hiding (foldr, mapM, lookup, foldr1)
 
 
 doBFS :: Tree a -> Maybe (Path, IsDone)
-doBFS = bfs.thinner.toCompact.toSimple
+doBFS = bfs . thinner . toCompact . toSimple
 
 -- A normal tree without Stanza and Flag choices (for simplicity, for now)
 data SimpleTree a =
@@ -57,32 +58,30 @@ instance Eq COpenGoal where
             _  -> False
 
 
-type UnorderedPath = Set COpenGoal
+
+type UnorderedPath = S.Set COpenGoal
+type ThinState = M.Map Int (S.Set UnorderedPath)
 
 thinner :: CompactTree -> CompactTree
-thinner tree = evalState (thinner' tree)  (TS empty empty)
+thinner tree = evalState (thinner' S.empty tree) M.empty
 
-data ThinState = TS { allPaths :: Set UnorderedPath
-                    , toHere   :: UnorderedPath     }
-
--- this should do BFS, or else it has to calculate the whole Tree
--- to to do the second element in the bfs..
-
-thinner' :: CompactTree -> State ThinState CompactTree
-thinner' (CGoalChoice psq) = do
-    stuff <- mapM (\(k,v) -> doSmth k v) (toList psq)
+thinner' :: UnorderedPath -> CompactTree -> State ThinState CompactTree
+thinner' path (CGoalChoice psq) = do
+    stuff <- mapM (\(k,v) -> processSubTree path k v) (toList psq)
     return $ CGoalChoice $ PSQ (catMaybes stuff)
-thinner' x = return x
+thinner' _ x = return x
 
-doSmth :: COpenGoal -> CompactTree -> State ThinState (Maybe (COpenGoal, CompactTree))
-doSmth goal tree = do
-  (TS paths path) <- get
-  let newPath   = insert goal path
-  case newPath `member` paths of
+processSubTree :: UnorderedPath -> COpenGoal -> CompactTree -> State ThinState (Maybe (COpenGoal, CompactTree))
+processSubTree path goal tree = do
+  paths <- get
+  let newPath   = S.insert goal path
+      level     = S.size newPath
+  case newPath `S.member` fromMaybe S.empty (M.lookup level paths) of
     True  -> return Nothing
     False -> do
-            put (TS (insert newPath paths) newPath)
-            newTree <- thinner' tree
+            let newPaths = M.insertWith S.union level (S.singleton newPath) paths
+            put newPaths
+            newTree <- thinner' newPath tree
             return (Just (goal, newTree))
 
 

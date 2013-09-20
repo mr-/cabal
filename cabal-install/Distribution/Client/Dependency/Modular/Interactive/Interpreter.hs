@@ -153,9 +153,10 @@ interpretStatement WhatWorks =
 interpretStatement (Reason) = do
     ptr <- gets uiPointer
 -- for Debugging
-    let foo = (bfs' id . thinner . toCompact . toSimple. toTree) ptr :: [[(Path, IsDone)]]
+    let mybfs = bfs . thinner . toCompact . toSimple
+        foo = (bfs' id . thinner . toCompact . toSimple . toTree) ptr :: [[(Path, IsDone)]]
         bar = unlines $ map unwords $ map (intersperse " - ") $ map (map (\(path, isdone) -> (show (map showCOpenGoal path)) ++ " " ++ bool isdone "Done" "Fail")) foo -- [[String]]
-    case doBFS (toTree ptr) of
+    case mybfs (toTree ptr) of
       Nothing               -> return [ShowResult "Uhoh.. got Nothing, call me!"]
       (Just (_, True))      -> return [ShowResult "Found a solution - cannot find a reason."]
       (Just (path, False))  -> return [ShowResult $ take 500 bar, ShowResult (show $ map showCOpenGoal path)]
