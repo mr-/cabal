@@ -50,7 +50,8 @@ interpretStatement (Go there) = do
     where
         select (Number n) choices  = lookup (fromInteger n) choices
         select (Version x) choices = snd <$> find (\(_,c) -> x == showChild c) choices
-        select (Package x) choices = snd <$> find (\(_,CTOG (OpenGoal (Simple (Dep qpn _)) _)) -> x == showQPN qpn) choices
+        select (Package x) choices = snd <$> find (\(_,c) -> x == showChild c) choices
+
 
 interpretStatement Empty = interpretStatement (Go (Number 1))
 
