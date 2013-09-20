@@ -1,9 +1,11 @@
 module Distribution.Client.Dependency.Modular.Interactive.Interpreter where
 
+import Control.Applicative                                       ((<$>))
 import Control.Monad                                             (when)
 import Control.Monad.State                                       (State, gets, modify)
+import Data.Function                                             (on)
 import Data.Char                                                 (toLower)
-import Data.List                                                 (isInfixOf, intersperse)
+import Data.List                                                 (intersperse, find)
 import Data.Maybe                                                (fromJust, fromMaybe)
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
@@ -12,7 +14,7 @@ import Distribution.Client.Dependency.Modular.Explore            (intermediateAs
                                                                   ptrToAssignment)
 import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
 import Distribution.Client.Dependency.Modular.Interactive.Parser (Selection (..), Selections (..),
-                                                                  Statement (..), Statements (..))
+                                                                  Statement (..), Statements (..), GoChoice (..))
 import Distribution.Client.Dependency.Modular.Interactive.Types  (UICommand (..),
                                                                   UIState (..))
 import Distribution.Client.Dependency.Modular.Package            (QPN, showQPN)
@@ -37,16 +39,20 @@ interpretStatement Up = do
   setPointer (fromMaybe ptr (focusUp ptr))
   return [ShowChoices]
 
-interpretStatement (Go n) = do
+interpretStatement (Go there) = do
   treePointer <- gets uiPointer
   let choices = generateChoices treePointer
-      focused = lookup n choices >>= flip focusChild treePointer
+      focused = select there choices >>= flip focusChild treePointer
   case focused of
-    Nothing -> return [Error "No such child"]
+    Nothing -> return [Error $ "No such child: " ++ show there]
     Just subPointer -> do setPointer subPointer
                           return [ShowChoices]
+    where
+        select (Number n) choices  = lookup (fromInteger n) choices
+        select (Version x) choices = snd <$> find (\(_,c) -> x == showChild c) choices
+        select (Package x) choices = snd <$> find (\(_,CTOG (OpenGoal (Simple (Dep qpn _)) _)) -> x == showQPN qpn) choices
 
-interpretStatement Empty = interpretStatement (Go 1)
+interpretStatement Empty = interpretStatement (Go (Number 1))
 
 interpretStatement Auto = do
   pointer <- gets uiPointer
@@ -177,35 +183,23 @@ isFail (Pointer _ (Fail _  _ _) )  = True
 isFail _                           = False
 
 
-
 isSelected :: Selections -> Tree a ->  Bool
 isSelected (Selections selections) tree  = or [tree `nodeMatches` selection | selection <- selections]
   where
     nodeMatches :: Tree a -> Selection ->  Bool
-    nodeMatches (PChoice qpn _ _)     (SelPChoice pname)        =  pname  `isSubOf` showQPN qpn
-    nodeMatches (FChoice qfn _ _ _ _) (SelFSChoice name flag)   = (name   `isSubOf` qfnName)
-                                                               && (flag   `isSubOf` qfnFlag)
+    nodeMatches (PChoice qpn _ _)     (SelPChoice pname)        =  pname  `matches` showQPN qpn
+    nodeMatches (FChoice qfn _ _ _ _) (SelFSChoice name flag)   = (name   `matches` qfnName)
+                                                               && (flag   `matches` qfnFlag)
       where (qfnName, qfnFlag) = unQFN qfn
-    nodeMatches (SChoice qsn _ _ _ )  (SelFSChoice name stanza) = (name   `isSubOf` qsnName)
-                                                               && (stanza `isSubOf` qsnStanza)
+    nodeMatches (SChoice qsn _ _ _ )  (SelFSChoice name stanza) = (name   `matches` qsnName)
+                                                               && (stanza `matches` qsnStanza)
       where (qsnName, qsnStanza) = unQSN qsn
     nodeMatches _                     _                         = False
 
-isSubOf :: String -> String -> Bool
-isSubOf x y = lower x `isInfixOf` lower y
-  where
-    lower :: String -> String
-    lower = map toLower -- I think cabal is case-insensitive too
 
--- data OpenGoal = OpenGoal (FlaggedDep QPN) QGoalReasonChain
+matches :: String -> String -> Bool
+matches = (==) `on` (map toLower)
 
---data FlaggedDep qpn =
-    --Flagged (FN qpn) FInfo (TrueFlaggedDeps qpn) (FalseFlaggedDeps qpn)
-  -- | Stanza  (SN qpn)       (TrueFlaggedDeps qpn)
-  -- | Simple (Dep qpn)
-  --deriving (Eq, Show)
-
---data Dep qpn = Dep qpn (CI qpn)
 
 preferSelections :: Selections -> Tree a -> Tree a
 preferSelections sel = trav go
@@ -217,10 +211,10 @@ preferSelections sel = trav go
     depMatchesAny (Selections selections) (OpenGoal fd _) = any (depMatches fd) selections
 
     depMatches :: FlaggedDep QPN -> Selection -> Bool
-    depMatches (Simple (Dep qpn _)) (SelPChoice name)       = name `isSubOf` showQPN qpn
-    depMatches (Flagged qfn _ _ _)  (SelFSChoice name flag) = (name `isSubOf` qfnName) && (flag `isSubOf` qfnFlag)
+    depMatches (Simple (Dep qpn _)) (SelPChoice name)       = name `matches` showQPN qpn
+    depMatches (Flagged qfn _ _ _)  (SelFSChoice name flag) = (name `matches` qfnName) && (flag `matches` qfnFlag)
       where (qfnName, qfnFlag) = unQFN qfn
-    depMatches (Stanza qsn _)       (SelFSChoice name flag) = (name `isSubOf` qsnName) && (flag `isSubOf` qsnFlag)
+    depMatches (Stanza qsn _)       (SelFSChoice name flag) = (name `matches` qsnName) && (flag `matches` qsnFlag)
       where (qsnName, qsnFlag) = unQSN qsn
     depMatches _                    _                       = False
 
