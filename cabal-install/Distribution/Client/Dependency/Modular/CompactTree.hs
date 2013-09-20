@@ -85,8 +85,6 @@ doSmth goal tree = do
             newTree <- thinner' tree
             return (Just (goal, newTree))
 
--- foldrM :: (a -> b -> m b) -> b -> t a -> m b
---Data.Foldable.foldr1 :: Foldable t => (a -> a -> a) -> t a -> a
 
 toCompact :: SimpleTree a -> CompactTree
 toCompact (SGoalChoice ts)   = CGoalChoice $ mapKeys COpenGoal (toCompact <$> ts)
