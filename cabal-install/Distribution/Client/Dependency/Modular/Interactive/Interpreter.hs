@@ -1,11 +1,12 @@
 module Distribution.Client.Dependency.Modular.Interactive.Interpreter where
 
+import Control.Applicative                                       ((<$>))
 import Control.Monad                                             (when)
-import Control.Monad.State                                       (gets, modify)
-import Data.Char                                                 (toLower)
+import Control.Monad.State                                       (State, gets, modify)
 import Data.Function                                             (on)
-import Data.List                                                 (isInfixOf, nubBy)
-import Data.Maybe                                                (fromJust, fromMaybe, catMaybes)
+import Data.Char                                                 (toLower)
+import Data.List                                                 (find)
+import Data.Maybe                                                (fromJust, fromMaybe)
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
                                                                   OpenGoal (..))
@@ -13,23 +14,24 @@ import Distribution.Client.Dependency.Modular.Explore            (intermediateAs
                                                                   ptrToAssignment)
 import Distribution.Client.Dependency.Modular.Flag               (unQFN, unQSN)
 import Distribution.Client.Dependency.Modular.Interactive.Parser (Selection (..), Selections (..),
-                                                                  Statement (..), Statements (..))
-import Distribution.Client.Dependency.Modular.Interactive.Types  (AppState, UICommand (..),
+                                                                  Statement (..), Statements (..), GoChoice (..))
+import Distribution.Client.Dependency.Modular.Interactive.Types  (UICommand (..),
                                                                   UIState (..))
 import Distribution.Client.Dependency.Modular.Package            (QPN, showQPN)
 import Distribution.Client.Dependency.Modular.PSQ                (toLeft)
 import Distribution.Client.Dependency.Modular.Solver             (explorePointer)
 import Distribution.Client.Dependency.Modular.Tree               (ChildType (..), Tree (..),
-                                                                  TreeF (..), showChild, trav,
-                                                                  treeToNode)
+                                                                  TreeF (..), showChild, trav)
 import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), children,
                                                                   filterBetween, filterDown,
                                                                   focusChild, focusRoot, focusUp,
-                                                                  liftToPtr, toTree, filterDownBFS)
+                                                                  liftToPtr, toTree)
 import Distribution.Client.Dependency.Types                      (QPointer)
+import Distribution.Client.Dependency.Modular.CompactTree
 
+type InterpreterState = State UIState
 
-interpretStatement :: Statement -> AppState [UICommand]
+interpretStatement :: Statement -> InterpreterState [UICommand]
 interpretStatement ToTop = modifyPointer focusRoot >> return [ShowChoices]
 
 interpretStatement Up = do
@@ -37,16 +39,20 @@ interpretStatement Up = do
   setPointer (fromMaybe ptr (focusUp ptr))
   return [ShowChoices]
 
-interpretStatement (Go n) = do
+interpretStatement (Go there) = do
   treePointer <- gets uiPointer
   let choices = generateChoices treePointer
-      focused = lookup n choices >>= flip focusChild treePointer
+      focused = select there choices >>= flip focusChild treePointer
   case focused of
-    Nothing -> return [Error "No such child"]
+    Nothing -> return [Error $ "No such child: " ++ show there]
     Just subPointer -> do setPointer subPointer
                           return [ShowChoices]
+    where
+        select (Number n) choices  = lookup (fromInteger n) choices
+        select (Version x) choices = snd <$> find (\(_,c) -> x == showChild c) choices
+        select (Package x) choices = snd <$> find (\(_,c) -> x == showChild c) choices
 
-interpretStatement Empty = interpretStatement (Go 1)
+interpretStatement Empty = interpretStatement (Go (Number 1))
 
 interpretStatement Auto = do
   pointer <- gets uiPointer
@@ -54,10 +60,9 @@ interpretStatement Auto = do
     Left e  -> return [Error e]
     Right t -> setPointer t >> return [ShowResult "Created a valid installplan. \nType install to install, or showPlan to review" ]
 
-
 interpretStatement (BookSet name) = addBookmark name >> return [ShowResult (name ++ " set")]
   where
-    addBookmark :: String -> AppState ()
+    addBookmark :: String -> InterpreterState ()
     addBookmark s = modify (\u -> u {uiBookmarks = (s, uiPointer u) : uiBookmarks u})
 
 interpretStatement BookList = do bookmarks <- gets uiBookmarks
@@ -150,28 +155,16 @@ interpretStatement WhatWorks =
       works :: QPointer -> ChildType -> Bool
       works ptr ch = isRight $ explorePointer $ focus ptr ch
 
--- TODO: Avoid repetition. It doesn't make sense to go S -> A -> B and S ->
--- B -> A..
--- Maybe that's better than firstChoice anyway. Then we get the solution
--- in the normal solver.
--- But what is IT?
-
-interpretStatement (Reason _) = do
+interpretStatement (Reason) = do
     ptr <- gets uiPointer
-    let failNodes   = filterDownBFS (\x -> allChildrenFail x && (not.isFail) x) ptr
-        uniqueNodes = nubBy ((==) `on` (treeToNode.toTree)) failNodes
-    case uniqueNodes of
-      []      -> return [ShowResult "Nothing found, sorry"]
-      node:_  -> do
-        let progress = showAssignment $ intermediateAssignment ptr node
-            message  = "This node does not admit a solution"
-        setPointer node
-        return [ShowResult progress, ShowResult message, ShowChoices]
-    where
-      allChildrenFail :: QPointer -> Bool
-      allChildrenFail ptr = case children ptr of
-        Nothing        -> False
-        Just chen  -> all isFail $ catMaybes $ [focusChild ch ptr | ch <- chen]
+    case doBFS (toTree ptr) of
+      Nothing               -> return [ShowResult "Uhoh.. got Nothing, call me!"]
+      (Just (_, True))      -> return [ShowResult "Found a solution - cannot find a reason."]
+      (Just (path, False))  -> return [ShowResult $ baz (toTree ptr),
+                                    --   ShowResult $ take 2000 $ showThinnedPaths (toTree ptr),
+                                    --   ShowResult $ take 100 $ showThinnedPathsBFS (toTree ptr),
+                                       ShowResult (show $ map showCOpenGoal path)]
+
 
 interpretStatement Help = return [ShowResult helpText, ShowChoices]
 
@@ -184,35 +177,23 @@ isFail (Pointer _ (Fail _  _ _) )  = True
 isFail _                           = False
 
 
-
 isSelected :: Selections -> Tree a ->  Bool
 isSelected (Selections selections) tree  = or [tree `nodeMatches` selection | selection <- selections]
   where
     nodeMatches :: Tree a -> Selection ->  Bool
-    nodeMatches (PChoice qpn _ _)     (SelPChoice pname)        =  pname  `isSubOf` showQPN qpn
-    nodeMatches (FChoice qfn _ _ _ _) (SelFSChoice name flag)   = (name   `isSubOf` qfnName)
-                                                               && (flag   `isSubOf` qfnFlag)
+    nodeMatches (PChoice qpn _ _)     (SelPChoice pname)        =  pname  `matches` showQPN qpn
+    nodeMatches (FChoice qfn _ _ _ _) (SelFSChoice name flag)   = (name   `matches` qfnName)
+                                                               && (flag   `matches` qfnFlag)
       where (qfnName, qfnFlag) = unQFN qfn
-    nodeMatches (SChoice qsn _ _ _ )  (SelFSChoice name stanza) = (name   `isSubOf` qsnName)
-                                                               && (stanza `isSubOf` qsnStanza)
+    nodeMatches (SChoice qsn _ _ _ )  (SelFSChoice name stanza) = (name   `matches` qsnName)
+                                                               && (stanza `matches` qsnStanza)
       where (qsnName, qsnStanza) = unQSN qsn
     nodeMatches _                     _                         = False
 
-isSubOf :: String -> String -> Bool
-isSubOf x y = lower x `isInfixOf` lower y
-  where
-    lower :: String -> String
-    lower = map toLower -- I think cabal is case-insensitive too
 
--- data OpenGoal = OpenGoal (FlaggedDep QPN) QGoalReasonChain
+matches :: String -> String -> Bool
+matches = (==) `on` (map toLower)
 
---data FlaggedDep qpn =
-    --Flagged (FN qpn) FInfo (TrueFlaggedDeps qpn) (FalseFlaggedDeps qpn)
-  -- | Stanza  (SN qpn)       (TrueFlaggedDeps qpn)
-  -- | Simple (Dep qpn)
-  --deriving (Eq, Show)
-
---data Dep qpn = Dep qpn (CI qpn)
 
 preferSelections :: Selections -> Tree a -> Tree a
 preferSelections sel = trav go
@@ -224,14 +205,14 @@ preferSelections sel = trav go
     depMatchesAny (Selections selections) (OpenGoal fd _) = any (depMatches fd) selections
 
     depMatches :: FlaggedDep QPN -> Selection -> Bool
-    depMatches (Simple (Dep qpn _)) (SelPChoice name)       = name `isSubOf` showQPN qpn
-    depMatches (Flagged qfn _ _ _)  (SelFSChoice name flag) = (name `isSubOf` qfnName) && (flag `isSubOf` qfnFlag)
+    depMatches (Simple (Dep qpn _)) (SelPChoice name)       = name `matches` showQPN qpn
+    depMatches (Flagged qfn _ _ _)  (SelFSChoice name flag) = (name `matches` qfnName) && (flag `matches` qfnFlag)
       where (qfnName, qfnFlag) = unQFN qfn
-    depMatches (Stanza qsn _)       (SelFSChoice name flag) = (name `isSubOf` qsnName) && (flag `isSubOf` qsnFlag)
+    depMatches (Stanza qsn _)       (SelFSChoice name flag) = (name `matches` qsnName) && (flag `matches` qsnFlag)
       where (qsnName, qsnFlag) = unQSN qsn
     depMatches _                    _                       = False
 
-interpretStatements :: Statements -> AppState [UICommand]
+interpretStatements :: Statements -> InterpreterState [UICommand]
 interpretStatements (Statements [])     = return []
 interpretStatements (Statements (c:md)) = do
       ptr <- gets uiPointer
@@ -243,15 +224,15 @@ interpretStatements (Statements (c:md)) = do
                          return $ result ++ list
 
 -- TODO: Back does not revert indicateAuto, and prefer..
-addHistory :: Statement -> QPointer -> AppState ()
+addHistory :: Statement -> QPointer -> InterpreterState ()
 addHistory Back      _   = return ()
 addHistory statement ptr =
     modify (\uiState -> uiState {uiHistory = (statement,ptr):uiHistory uiState})
 
-setPointer :: QPointer -> AppState ()
+setPointer :: QPointer -> InterpreterState ()
 setPointer ptr = modifyPointer (const ptr)
 
-modifyPointer :: (QPointer -> QPointer) -> AppState ()
+modifyPointer :: (QPointer -> QPointer) -> InterpreterState ()
 modifyPointer f = do ptr <- gets uiPointer
                      modify (\uiState ->uiState{uiPointer = f ptr})
 
@@ -267,8 +248,8 @@ helpText = unlines [
   "up              goes up one step",
   "top             goes all the way to the top",
   "auto            starts the automatic solver",
-  "goto aeson      runs the parser until it sets aeson's version",
-  "goto aeson:test runs the parser until it sets the flag test for aeson",
+  "goto aeson      runs the solver until it sets aeson's version",
+  "goto aeson:test runs the solver until it sets the flag test for aeson",
   "prefer aeson    sorts the choices so that aeson comes first if it is available (Same arguments as goto)",
   "bset name       sets a bookmark called name",
   "blist           lists all bookmarks",

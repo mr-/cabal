@@ -1,7 +1,8 @@
 module Distribution.Client.Dependency.Modular.Interactive where
 
 import Control.Applicative                                            ((<$>), (<*>))
-import Control.Monad.State                                            (evalStateT, get, gets, lift)
+import Control.Monad.State                                            (evalStateT, get, gets, lift,
+                                                                       State, StateT, runState, put)
 import Data.List                                                      (isPrefixOf)
 import Distribution.Client.Dependency                                 (DepResolverParams,
                                                                        resolveDependenciesConfigs)
@@ -10,23 +11,27 @@ import Distribution.Client.Dependency.Modular.Interactive.Interpreter (generateC
                                                                        interpretStatements)
 import Distribution.Client.Dependency.Modular.Interactive.Parser      (Statements (..), commandList,
                                                                        readStatements)
-import Distribution.Client.Dependency.Modular.Interactive.Types       (Action (..), AppState,
+import Distribution.Client.Dependency.Modular.Interactive.Types       (Action (..),
                                                                        UICommand (..), UIState (..))
 import Distribution.Client.Dependency.Modular.Tree                    (ChildType (..), Tree (..),
-                                                                       isInstalled, showChild,
-                                                                       showNodeFromTree)
+                                                                       isInstalled, showChild)
+import Distribution.Client.Dependency.Modular.Message                 (showNodeFromTree)
 import Distribution.Client.Dependency.Modular.TreeZipper              (Pointer (..), focusChild,
                                                                        fromTree, pointsBelow,
                                                                        toTree)
 import Distribution.Client.Dependency.Types                           (QPointer, Solver (..))
 import Distribution.Simple.Compiler                                   (CompilerId)
 import Distribution.System                                            (Platform)
-import System.Console.Haskeline                                       (completeWord,
+import System.Console.Haskeline                                       (completeWord, InputT,
                                                                        defaultSettings,
                                                                        getInputLine, outputStrLn,
                                                                        runInputT, setComplete)
 import System.Console.Haskeline.Completion                            (Completion (..),
                                                                        CompletionFunc)
+
+
+type AppState = StateT UIState (InputT IO)
+
 
 runInteractive :: Platform
                -> CompilerId
@@ -88,10 +93,22 @@ handleCommands = do
   where
     handleCommands' :: Statements -> AppState Action
     handleCommands' cmds = do
-      uiCommands <- interpretStatements cmds
+      uiCommands <- stripT (interpretStatements cmds)
       r <- mapM executeUICommand uiCommands
       return (if InstallNow `elem` r then InstallNow else Continue)
 
+
+-- probably more idiomatic, but depends on transformers.
+-- import Data.Functor.Identity   (runIdentity)
+-- stripT = mapStateT (return.runIdentity)
+-- stripT = state . runState -- somewhere in transformers..
+
+stripT :: State UIState a -> AppState a
+stripT act = do
+    uiState <- get
+    let (res, newState) = runState act uiState
+    put newState
+    return res
 
 executeUICommand :: UICommand -> AppState Action
 executeUICommand (Error s)      = do

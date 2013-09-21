@@ -9,6 +9,7 @@ module Distribution.Client.Dependency.Modular.PSQ where
 
 import Control.Applicative
 import Data.Foldable
+import Data.Ord (comparing)
 import Data.Function
 import Data.List as S hiding (foldr, splitAt)
 import Data.Traversable
@@ -26,6 +27,8 @@ instance Foldable (PSQ k) where
 instance Traversable (PSQ k) where
   traverse f (PSQ xs) = PSQ <$> traverse (\ (k, v) -> (\ x -> (k, x)) <$> f v) xs
 
+sortPSQ :: Ord k => PSQ k v -> PSQ k v
+sortPSQ (PSQ xs) = PSQ $ S.sortBy (comparing fst) xs
 
 keys :: PSQ k v -> [k]
 keys (PSQ xs) = fmap fst xs
@@ -117,6 +120,14 @@ toList (PSQ xs) = xs
 
 -- left in reverse order to make going left constant time?
 data PSQContext k v = PSQContext {contextLefts :: (PSQ k v), contextKey ::  k, contextRights ::  (PSQ k v)}
+
+unionWith :: Ord k => (v -> v -> v) -> PSQ k v  -> PSQ k v -> PSQ k v
+unionWith _ (PSQ []) x = x
+unionWith _ x (PSQ []) = x
+unionWith f l@(PSQ ((c, t) : cs)) r@(PSQ ((d, u) : ds)) = case compare c d of
+  LT -> cons c t $ unionWith f (PSQ cs) r
+  EQ -> cons c (f t u) $ unionWith f (PSQ cs) (PSQ ds)
+  GT -> cons d u $ unionWith f l (PSQ ds)
 
 joinPSQ :: PSQ k v -> PSQ k v -> PSQ k v
 joinPSQ (PSQ a) (PSQ b) = PSQ (a ++ b)

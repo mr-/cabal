@@ -1,7 +1,7 @@
 module Distribution.Client.Dependency.Modular.Interactive.Parser
-            (commandList, readStatements, Statements(..), Statement(..), Selections(..), Selection(..) ) where
+            (commandList, readStatements, Statements(..), Statement(..), Selections(..), Selection(..), GoChoice(..) ) where
 
-
+import           Control.Applicative                    ((<$>))
 import           Data.List                              (sort)
 import           Text.ParserCombinators.Parsec
 import           Text.ParserCombinators.Parsec.Language
@@ -22,7 +22,7 @@ data Statement  =  BookSet    String
                  | Goto       Selections
                  | Up
                  | ToTop
-                 | Go         Int
+                 | Go         GoChoice
                  | Cut        Int
                  | Install
                  | Find       Selections
@@ -32,7 +32,7 @@ data Statement  =  BookSet    String
                  | Empty
                  | Back
                  | ShowHistory
-                 | Reason     Int
+                 | Reason
                  | Help
                  deriving (Show, Eq)
 
@@ -42,6 +42,11 @@ data Selections =  Selections [Selection]
 data Selection  =  SelPChoice String
                  | SelFSChoice String String
                  deriving (Show, Eq)
+
+data GoChoice = Package String
+              | Version String
+              | Number  Integer
+              deriving (Show, Eq)
 
 commandList = sort
            [ "bset"
@@ -99,9 +104,7 @@ statement' =   try bsetStmt
            <|> try upStmt
            <|> try indicateAutoStmt
            <|> try topStmt
-           <|> try singleNumberStmt
            <|> try cutStmt
-           <|> try goStmt
            <|> try whatWorksStmt
            <|> try installStmt
            <|> try showPlanStmt
@@ -111,12 +114,14 @@ statement' =   try bsetStmt
            <|> try reasonStmt
            <|> try helpStmt
            <|> try emptyStmt
-
+           <|> try goStmt           -- Order is important here.
+           <|> try singleNumberStmt -- These need to come last,
+                                    -- in that order!
 
 singleNumberStmt :: Parser Statement
 singleNumberStmt =
-    do  var <- lexeme integer
-        return $ Go (fromInteger var)
+    do  var <- goParser
+        return $ Go var
 
 emptyStmt :: Parser Statement
 emptyStmt =
@@ -147,11 +152,11 @@ cutStmt =
         var <- lexeme integer
         return $ Cut (fromInteger var)
 
-goStmt :: Parser Statement
-goStmt =
-    do  reserved "go"
-        var <- lexeme integer
-        return $ Go (fromInteger var)
+-- goStmt :: Parser Statement
+-- goStmt =
+--     do  reserved "go"
+--         var <- lexeme integer
+--         return $ Go (fromInteger var)
 
 whatWorksStmt :: Parser Statement
 whatWorksStmt =
@@ -171,8 +176,7 @@ helpStmt =
 reasonStmt :: Parser Statement
 reasonStmt =
     do  reserved "reason"
-        var <- lexeme integer
-        return $ Reason (fromInteger var)
+        return Reason
 
 backStmt :: Parser Statement
 backStmt =
@@ -226,6 +230,11 @@ blistStmt =
     do  reserved "blist"
         return BookList
 
+goStmt :: Parser Statement
+goStmt =
+    do reserved "go"
+       foo <- goParser
+       return $ Go foo
 
 selectionsParser :: Parser Selections
 selectionsParser =
@@ -248,6 +257,35 @@ fsSelection =
         flag    <- identifier
         return $ SelFSChoice package flag
 
+-- data GoChoice = Package String
+--               | Version String
+--               | Number  Int
+--               deriving (Show, Eq)
+
+
+goParser :: Parser GoChoice
+goParser = try goPackage
+       <|> try goNumber
+       <|> try goVersion
+
+goVersion :: Parser GoChoice
+goVersion =
+  do version <- many1 (choice [string ".", show <$> integer])
+     return $ Version $ concat version
+
+goNumber :: Parser GoChoice
+goNumber =
+  do _  <- try $ optional (char '*')
+     nr <- integer
+     _  <- many (choice [char 'F', char 'I'])
+     eof
+     return $ Number nr
+
+goPackage :: Parser GoChoice
+goPackage =
+  do package <- many1 (choice [many1 letter, string "-"])
+     eof
+     return $ Package $ concat package
 
 readStatements :: String -> Either String Statements
 readStatements input = case parse statements "" input of

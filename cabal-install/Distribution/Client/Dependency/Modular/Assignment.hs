@@ -23,6 +23,9 @@ import Distribution.Client.Dependency.Modular.Version
 -- are associated with instances.
 type PAssignment    = Map QPN I
 
+-- | invalid packages selected interactively.
+type IPAssignment   = Map QPN I
+
 -- | A (partial) package preassignment. Qualified package names
 -- are associated with constrained instances. Constrained instances
 -- record constraints about the instances that can still be chosen,
@@ -32,23 +35,27 @@ type FAssignment    = Map QFN Bool
 type SAssignment    = Map QSN Bool
 
 -- | A (partial) assignment of variables.
-data Assignment = A PAssignment FAssignment SAssignment
+data Assignment = A PAssignment FAssignment SAssignment IPAssignment
   deriving (Show, Eq)
 
 showAssignment :: Assignment -> String
-showAssignment (A pa fa sa) = unlines $
+showAssignment (A pa fa sa ipa) = unlines $
       [ "Packages: " ++ packages | (not.null) packages ]
    ++ [ "Flags: "    ++ flags    | (not.null) flags    ]
    ++ [ "Stanzas: "  ++ stanzas  | (not.null) stanzas  ]
+   ++ [ "Invalid: "  ++ invalids | (not.null) invalids ]
  where
   packages = showMap showQPN showI pa
   flags    = showMap showQFN show  fa
   stanzas  = showMap showQSN show  sa
+  invalids = showMap showQPN showI ipa
 
-showMap :: (Ord a ) => (a -> String) -> (b -> String) ->  Map a b -> String
-showMap showA showB rdm =  unlines $ map showKey (M.keys rdm)
-  where showKey key   = showA key ++ ": " ++ showValue key
-        showValue key =  showB (fromJust $ M.lookup key rdm)
+
+
+showMap :: (Ord a) => (a -> String) -> (b -> String) -> Map a b -> String
+showMap showA showB rdm = unlines $ map showPair (M.assocs rdm)
+  where showPair (key, value) = showA key ++ "-" ++ showB value
+
 
 -- | A preassignment comprises knowledge about variables, but not
 -- necessarily fixed values.
@@ -88,8 +95,9 @@ extend var pa qa = foldM (\ a (Dep qpn ci) ->
 -- w.r.t. unqualification. There might be several different instances
 -- of one package version chosen by the solver, which will lead to
 -- clashes.
+-- TODO: Take care of invalid packages..
 toCPs :: Assignment -> RevDepMap -> [CP QPN]
-toCPs (A pa fa sa) rdm =
+toCPs (A pa fa sa ipa) rdm =
   let
     -- get hold of the graph
     g   :: Graph
@@ -138,7 +146,7 @@ toCPs (A pa fa sa) rdm =
 --
 -- This is preliminary, and geared towards output right now.
 finalize :: Index -> Assignment -> RevDepMap -> IO ()
-finalize idx (A pa fa _) rdm =
+finalize idx (A pa fa _ _) rdm =
   let
     -- get hold of the graph
     g  :: Graph

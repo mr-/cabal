@@ -30,7 +30,10 @@ import Distribution.Client.Dependency.Modular.TreeZipper
 backjump :: Tree a -> Tree (Maybe (ConflictSet QPN))
 backjump = snd . cata go
   where
-    go (FailF c fr x) = (Just c, Fail c fr (snd <$> x))
+    go (FailF c fr Nothing)  = (Just c, Fail c fr Nothing) --TODO check!
+    go (FailF c fr (Just (FailTreeF (_,t) qpn i ))) = (Just c, Fail c fr (Just (FailTree t qpn i )))
+--    go (FailF c fr mft) =  (fmap (fmap snd) mft)
+
     go (DoneF rdm) = (Nothing, Done rdm)
     go (PChoiceF qpn _     ts) = (c, PChoice qpn c     (P.fromList ts'))
       where
@@ -98,6 +101,9 @@ backjumpInfo c m = m <|> case c of -- important to produce 'm' before matching o
 ptrToAssignment :: Pointer a -> Assignment
 ptrToAssignment ptr = intermediateAssignment (focusRoot ptr) ptr
 
+
+
+{-
 ptrToAssignment' :: Pointer a -> Assignment
 ptrToAssignment' ptr =
  mkAssignment (toTree $ focusRoot ptr) (A M.empty M.empty M.empty, oneWayTrail)
@@ -122,17 +128,18 @@ ptrToAssignment' ptr =
         go (GoalChoiceF        ts) (a, CTOG k : xs)         = r (a, xs)
           where r = fromJust $ P.lookup k ts
 
-        go (FailF _ _          ts) (a, CTFail : xs)         = r (a, xs)
-          where r = fromJust ts
+        go (FailF _ _          (Just (FailTreeF  r _ _))) (a, CTFail : xs)         = r (a, xs)
+        go (FailF _ _ Nothing) _ = error "Internal error in ptrToAssignment': got FailF Nothing!"
 
-        go _                       _                         = error "Internal error in donePtrToLog"
+        go _                       _                         = error "Internal error in dptrToAssignment'"
                                                  -- This catches cases like (GoalChoiceF...) (a (CTP k)..)
                                                  -- where childtype and nodetype don't match
                                                  -- ugly? Maybe. Could have been easy with dependent types.
+-}
 
 intermediateAssignment :: Pointer a -> Pointer a -> Assignment
 intermediateAssignment root ptr =
- mkAssignment (toTree root) (A M.empty M.empty M.empty, oneWayTrail)
+ mkAssignment (toTree root) (A M.empty M.empty M.empty M.empty, oneWayTrail)
   where
     oneWayTrail = wrongToOne $ intermediateTrail root ptr -- the trail to the Done-Node
 
@@ -142,22 +149,25 @@ intermediateAssignment root ptr =
         go :: TreeF t ((Assignment, [ChildType]) -> Assignment) -> (Assignment, [ChildType]) -> Assignment
         go _              (a, [])                           = a
 
-        go (PChoiceF qpn _     ts) (A pa fa sa, CTP k : xs) = r (A (M.insert qpn k pa) fa sa, xs)
+        go (PChoiceF qpn _     ts) (A pa fa sa ipa, CTP k : xs) = r (A (M.insert qpn k pa) fa sa ipa, xs)
           where r = fromJust $ P.lookup k ts
 
-        go (FChoiceF qfn _ _ _ ts) (A pa fa sa, CTF k : xs) = r (A pa (M.insert qfn k fa) sa, xs)
+        go (FChoiceF qfn _ _ _ ts) (A pa fa sa ipa, CTF k : xs) = r (A pa (M.insert qfn k fa) sa ipa, xs)
           where r = fromJust $ P.lookup k ts
 
-        go (SChoiceF qsn _ _   ts) (A pa fa sa, CTS k : xs) = r (A pa fa (M.insert qsn k sa), xs)
+        go (SChoiceF qsn _ _   ts) (A pa fa sa ipa, CTS k : xs) = r (A pa fa (M.insert qsn k sa) ipa, xs)
           where r = fromJust $ P.lookup k ts
 
-        go (GoalChoiceF        ts) (a, CTOG k : xs)         = r (a, xs)
+        go (GoalChoiceF        ts) (a, CTOG k : xs)             = r (a, xs)
           where r = fromJust $ P.lookup k ts
 
-        go (FailF _ _         ts)  (a, CTFail : xs)         = r (a, xs)
-          where r = fromJust ts
+        go (FailF _ _          (Just (FailTreeF  r qpn i))) (A pa fa sa ipa, (CTFail _) : xs)
+                                                                = r (A pa fa sa (M.insert qpn i ipa), xs)
+        go (FailF _ _ Nothing) _ = error "Internal error in intermediateAssignment': got FailF Nothing!"
 
-        go _                       _                         = error "Internal error in donePtrToLog"
+
+        go _                       _                         = error "Internal error in intermediatAssignment"
+
 
 -- | Version of 'explore' that returns a 'Log'.
 -- | Does it really save space? Or is Haskell clever enough to know that

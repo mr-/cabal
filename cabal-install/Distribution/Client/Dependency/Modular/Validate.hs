@@ -114,8 +114,9 @@ validate = cata go
     -- We don't need to do anything for goal choices or failure nodes.
     go (GoalChoiceF              ts) = GoalChoice <$> sequence ts
     go (DoneF    rdm               ) = pure (Done rdm)
+
     go (FailF    c fr       Nothing) = pure (Fail c fr Nothing)
-    go (FailF    c fr      (Just x)) = x >>= \m -> pure (Fail c fr (Just m))
+    go (FailF    c fr      (Just (FailTreeF x qpn i))) = x >>= \m -> pure (Fail c fr (Just $ FailTree m qpn i))
 
     -- What to do for package nodes ...
     goP :: QPN -> QGoalReasonChain -> Scope -> I -> Validate (Tree QGoalReasonChain) -> Validate (Tree QGoalReasonChain)
@@ -139,7 +140,7 @@ validate = cata go
         _       -> case mnppa of
                      Left (c, d) -> -- We have an inconsistency. We can stop.
                                     do newTree <- local (\s -> s{ pa = PA ppa pfa psa, saved = nsvd }) r
-                                       return (Fail c (Conflicting d) (Just newTree))
+                                       return (Fail c (Conflicting d) (Just $ FailTree newTree qpn i))
                      Right nppa  -> -- We have an updated partial assignment for the recursive validation.
                                     local (\ s -> s { pa = PA nppa pfa psa, saved = nsvd }) r
 
