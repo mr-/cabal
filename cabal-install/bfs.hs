@@ -82,7 +82,7 @@ zipConc = foldr conc []
     conc (x : xs) (y : ys) = (x ++ y) : conc xs ys
 
 example :: CompactTree
-example = CGoalChoice [("A", CGoalChoice [("B", CGoalChoice [("C", CFail)])])
+example = CGoalChoice [("A", CGoalChoice [("B", CFail), ("B", CGoalChoice [("C", CFail)])])
                      ,("B", CGoalChoice [("A", CFail)] )
                      ,("C", CGoalChoice [("A", CGoalChoice [("B", CFail)])])
                      ]
