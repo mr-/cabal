@@ -1,4 +1,3 @@
- {-# LANGUAGE TupleSections #-}
 module Distribution.Client.Dependency.Modular.CompactTree  where
 
 import Distribution.Client.Dependency.Modular.Dependency
@@ -9,9 +8,8 @@ import Control.Applicative hiding (empty)
 import Control.Monad.State.Lazy
 import Data.Foldable hiding (toList)
 import Data.Maybe
-import qualified Data.Map.Lazy as M
 import Data.Ord (comparing)
-import qualified Data.Set as S hiding (foldr, toList)
+import qualified Data.Set as S hiding (foldr)
 import Prelude hiding (foldr, mapM, lookup, foldr1)
 
 
@@ -59,11 +57,36 @@ instance Eq COpenGoal where
 
 
 
+-- type UnorderedPath = S.Set COpenGoal
+-- type ThinState = M.Map Int (S.Set UnorderedPath)
+--
+-- thinner :: CompactTree -> CompactTree
+-- thinner tree = evalState (thinner' S.empty tree) M.empty
+--
+-- thinner' :: UnorderedPath -> CompactTree -> State ThinState CompactTree
+-- thinner' path (CGoalChoice psq) = do
+--     stuff <- mapM (\(k,v) -> processSubTree path k v) (toList psq)
+--     return $ CGoalChoice $ PSQ (catMaybes stuff)
+-- thinner' _    x                 = return x
+--
+-- processSubTree :: UnorderedPath -> COpenGoal -> CompactTree -> State ThinState (Maybe (COpenGoal, CompactTree))
+-- processSubTree path goal tree = do
+--   paths <- get
+--   let newPath   = S.insert goal path
+--       level     = S.size newPath
+--   case newPath `S.member` fromMaybe S.empty (M.lookup level paths) of
+--     True  -> return Nothing
+--     False -> do
+--             put $  M.insertWith S.union level (S.singleton newPath) paths
+--             newTree <- thinner' newPath tree
+--             return (Just (goal, newTree))
+
+
 type UnorderedPath = S.Set COpenGoal
-type ThinState = M.Map Int (S.Set UnorderedPath)
+type ThinState = [(S.Set UnorderedPath)]
 
 thinner :: CompactTree -> CompactTree
-thinner tree = evalState (thinner' S.empty tree) M.empty
+thinner tree = evalState (thinner' S.empty tree) []
 
 thinner' :: UnorderedPath -> CompactTree -> State ThinState CompactTree
 thinner' path (CGoalChoice psq) = do
@@ -75,14 +98,34 @@ processSubTree :: UnorderedPath -> COpenGoal -> CompactTree -> State ThinState (
 processSubTree path goal tree = do
   paths <- get
   let newPath   = S.insert goal path
-      level     = S.size newPath
-  case newPath `S.member` fromMaybe S.empty (M.lookup level paths) of
+  case checkPathExists newPath paths of
     True  -> return Nothing
     False -> do
-            let newPaths = M.insertWith S.union level (S.singleton newPath) paths
-            put newPaths
-            newTree <- thinner' newPath tree
-            return (Just (goal, newTree))
+            put $ addPath newPath paths
+            newCompactTree <- thinner' newPath tree
+            return (Just (goal, newCompactTree))
+
+checkPathExists :: (Ord a) => S.Set a -> [S.Set (S.Set a)] -> Bool
+checkPathExists path paths = S.member path level
+    where level = fromMaybe S.empty $ saveGet (S.size path) paths
+
+saveGet :: Int -> [a] -> Maybe a
+saveGet i l = go i l
+    where
+        go 0 (x:_)  = Just x
+        go n (_:xs) = go (n-1) xs
+        go _ []     = Nothing
+
+addPath :: (Ord a) => S.Set a -> [S.Set (S.Set a)] -> [S.Set (S.Set a)]
+addPath path paths = go (S.size path) paths
+    where
+        go 0 (p:aths) = S.insert path p : aths
+        go n (p:aths) = p : go (n-1) aths
+        go 0 []       = [S.singleton path]
+        go n []       = S.empty : go (n-1) []
+
+
+
 
 
 toCompact :: SimpleTree a -> CompactTree
@@ -97,11 +140,8 @@ mergeTree CDone             _                  = CDone
 mergeTree _                 CDone              = CDone
 mergeTree (CFail _ _)       x                  = x
 mergeTree x                 (CFail _ _)        = x
-mergeTree (CGoalChoice psq) (CGoalChoice psq') = CGoalChoice $ mergePSQ psq psq'
+mergeTree (CGoalChoice psq) (CGoalChoice psq') = CGoalChoice $ unionWith mergeTree psq psq'
 
-
-mergePSQ :: PSQ COpenGoal CompactTree -> PSQ COpenGoal CompactTree -> PSQ COpenGoal CompactTree
-mergePSQ = unionWith mergeTree
 
 
 type Path = [COpenGoal]
@@ -111,22 +151,22 @@ bfs :: CompactTree -> Maybe (Path, IsDone)
 bfs t = go (bfs' id t)
   where
     go :: [[(Path, IsDone)]] -> Maybe (Path, IsDone)
-    go [] = Nothing
-    go ([] : xs) = go xs
+    go []            = Nothing
+    go ([] : xs)     = go xs
     go ((x : _) : _) = Just x
 
 -- finds the first Fail or Done node in the compacted tree
 bfs' :: (Path -> Path) -> CompactTree -> [[(Path, IsDone)]]
-bfs' prefix CDone = [[(prefix [], True)]]
-bfs' prefix (CFail _ _) = [[(prefix [], False)]]
+bfs' prefix CDone                  = [[(prefix [], True)]]
+bfs' prefix (CFail _ _)            = [[(prefix [], False)]]
 bfs' prefix (CGoalChoice (PSQ cs)) = [] : zipConc ((\(x, t) -> bfs' ((x :) . prefix) t) <$> cs)
 
 zipConc :: [[[(Path, IsDone)]]] -> [[(Path, IsDone)]]
 zipConc = foldr conc []
   where
     conc :: [[(Path, IsDone)]] -> [[(Path, IsDone)]] -> [[(Path, IsDone)]]
-    conc xs [] = xs
-    conc [] xs = xs
+    conc xs []             = xs
+    conc [] xs             = xs
     conc (x : xs) (y : ys) = (x ++ y) : conc xs ys
 
 

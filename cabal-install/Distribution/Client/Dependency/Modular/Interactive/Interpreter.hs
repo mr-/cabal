@@ -52,7 +52,6 @@ interpretStatement (Go there) = do
         select (Version x) choices = snd <$> find (\(_,c) -> x == showChild c) choices
         select (Package x) choices = snd <$> find (\(_,c) -> x == showChild c) choices
 
-
 interpretStatement Empty = interpretStatement (Go (Number 1))
 
 interpretStatement Auto = do
@@ -60,7 +59,6 @@ interpretStatement Auto = do
   case explorePointer pointer of
     Left e  -> return [Error e]
     Right t -> setPointer t >> return [ShowResult "Created a valid installplan. \nType install to install, or showPlan to review" ]
-
 
 interpretStatement (BookSet name) = addBookmark name >> return [ShowResult (name ++ " set")]
   where
@@ -160,13 +158,15 @@ interpretStatement WhatWorks =
 interpretStatement (Reason) = do
     ptr <- gets uiPointer
 -- for Debugging
-    let mybfs = bfs . thinner . toCompact . toSimple
+    let mybfs = bfs .thinner. toCompact . toSimple
         foo = (bfs' id . thinner . toCompact . toSimple . toTree) ptr :: [[(Path, IsDone)]]
-        bar = unlines $ map unwords $ map (intersperse " - ") $ map (map (\(path, isdone) -> (show (map showCOpenGoal path)) ++ " " ++ bool isdone "Done" "Fail")) foo -- [[String]]
-    case mybfs (toTree ptr) of
-      Nothing               -> return [ShowResult "Uhoh.. got Nothing, call me!"]
-      (Just (_, True))      -> return [ShowResult "Found a solution - cannot find a reason."]
-      (Just (path, False))  -> return [ShowResult $ take 500 bar, ShowResult (show $ map showCOpenGoal path)]
+        bar = unlines $ map unwords $ map (intersperse " - ") $
+              map (map (\(path, isdone) -> (show (map showCOpenGoal path)) ++ " " ++ bool isdone "Done" "Fail")) foo -- [[String]]
+    return [ShowResult $ take 500 bar]
+--     case mybfs (toTree ptr) of
+--       Nothing               -> return [ShowResult "Uhoh.. got Nothing, call me!"]
+--       (Just (_, True))      -> return [ShowResult "Found a solution - cannot find a reason."]
+--       (Just (path, False))  -> return [ShowResult $ take 500 bar, ShowResult (show $ map showCOpenGoal path)]
 
 
 interpretStatement Help = return [ShowResult helpText, ShowChoices]
