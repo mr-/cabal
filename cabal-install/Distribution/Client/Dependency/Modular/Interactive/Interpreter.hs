@@ -5,7 +5,7 @@ import Control.Monad                                             (when)
 import Control.Monad.State                                       (State, gets, modify)
 import Data.Function                                             (on)
 import Data.Char                                                 (toLower)
-import Data.List                                                 (intersperse, find)
+import Data.List                                                 (find)
 import Data.Maybe                                                (fromJust, fromMaybe)
 import Distribution.Client.Dependency.Modular.Assignment         (showAssignment)
 import Distribution.Client.Dependency.Modular.Dependency         (Dep (..), FlaggedDep (..),
@@ -157,23 +157,13 @@ interpretStatement WhatWorks =
 
 interpretStatement (Reason) = do
     ptr <- gets uiPointer
--- for Debugging
-    let mybfs = bfs .thinner. toCompact . toSimple
-        foo = (bfs' id . thinner . toCompact . toSimple . toTree) ptr :: [[(Path, IsDone)]]
-        bar = unlines $ map unwords $ map (intersperse " - ") $
-              map (map (\(path, isdone) -> (show (map showCOpenGoal path)) ++ " " ++ bool isdone "Done" "Fail")) foo -- [[String]]
-    return [ShowResult $ take 500 bar]
---     case mybfs (toTree ptr) of
---       Nothing               -> return [ShowResult "Uhoh.. got Nothing, call me!"]
---       (Just (_, True))      -> return [ShowResult "Found a solution - cannot find a reason."]
---       (Just (path, False))  -> return [ShowResult $ take 500 bar, ShowResult (show $ map showCOpenGoal path)]
+    case doBFS (toTree ptr) of
+      Nothing               -> return [ShowResult "Uhoh.. got Nothing, call me!"]
+      (Just (_, True))      -> return [ShowResult "Found a solution - cannot find a reason."]
+      (Just (path, False))  -> return [ShowResult $ take 800 $ showPaths (toTree ptr), ShowResult (show $ map showCOpenGoal path)]
 
 
 interpretStatement Help = return [ShowResult helpText, ShowChoices]
-
-bool :: Bool -> a -> a -> a
-bool True x  _ = x
-bool False _ y = y
 
 isDone :: QPointer -> Bool
 isDone (Pointer _ (Done _ )  ) = True
