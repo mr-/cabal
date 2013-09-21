@@ -7,7 +7,7 @@ import qualified Distribution.Client.Dependency.Modular.PSQ as P
 import Control.Applicative hiding (empty)
 import Data.Foldable hiding (toList)
 import Data.Maybe
-import Data.List (intersperse)
+import qualified Data.List as L
 import Data.Ord (comparing)
 import qualified Data.Set as S hiding (foldr)
 import Prelude hiding (foldr, mapM, lookup, foldr1)
@@ -28,10 +28,12 @@ toSimple :: Tree a -> SimpleTree a
 toSimple (FChoice     _ _ _ _ t) = toSimple $ fromJust $ P.lookup False t
 toSimple (SChoice     _ _ _   t) = toSimple $ fromJust $ P.lookup False t
 toSimple (PChoice     q a     t) = SPChoice q a (toSimple <$> t)
-toSimple (GoalChoice          t) = SGoalChoice $ P.sortPSQ (toSimple <$> t)
+toSimple (GoalChoice          t) = SGoalChoice $ removeDuplicates $ P.sortPSQ (toSimple <$> t)
 toSimple (Done        _        ) = SDone
 toSimple (Fail        c f     _) = SFail c f
 
+removeDuplicates :: (Ord a) => P.PSQ a v -> P.PSQ a v
+removeDuplicates psq = P.fromList $ map (\k -> (k,fromJust $ P.lookup k psq)) $ L.nub $ P.keys psq
 
 data CompactTree =
     CGoalChoice  (P.PSQ COpenGoal CompactTree)
@@ -42,7 +44,6 @@ data CompactTree =
 -- A wrapper to get the necessary Ord-instance
 -- without jeopardizing Eq
 data COpenGoal = COpenGoal OpenGoal
-  deriving (Show)
 
 showCOpenGoal :: COpenGoal -> String
 showCOpenGoal (COpenGoal goal) = showOpenGoal goal
@@ -55,6 +56,8 @@ instance Eq COpenGoal where
             EQ -> True
             _  -> False
 
+instance Show COpenGoal where
+  show = showCOpenGoal
 
 
 thinner :: CompactTree -> CompactTree
@@ -78,7 +81,6 @@ findFirst :: Path -> [Path] -> Path
 findFirst path (p:aths)
     | S.fromList path == S.fromList p  =  p
     | otherwise                        = findFirst path aths
-findFirst _ [] = error "The impossible happened in CompactTrees findFirst: Could not find the path!"
 
 pathsInBFSOrder :: CompactTree -> [[Path]]
 pathsInBFSOrder tree = foo' [(tree, [])]
@@ -90,6 +92,24 @@ foo' xs = (Prelude.map snd xs) : foo' subs
       subs = Prelude.concat $ catMaybes $ Prelude.map makeSubs xs
       makeSubs (CGoalChoice psq, path) = Just $ Prelude.map ( \(goal, t) -> (t, goal : path)) $  P.toList psq
       makeSubs _                       = Nothing
+
+
+
+
+
+
+showThinnedPaths :: Tree a -> String
+showThinnedPaths x = unlines $ map unwords $ map (L.intersperse " - ") $
+            map (map (\path -> (show (map showCOpenGoal path)))) $ pathsInBFSOrder $ thinner $ toCompact $ toSimple x
+
+showPath :: Path -> String
+showPath path = unwords $ L.intersperse " - " $ map showCOpenGoal path
+
+baz :: Tree a -> String
+baz x = show $ length d - length (L.nub d)
+-- $ unwords $ map showPath $ d L.\\ (L.nub d)
+  where d = (pathsInBFSOrder $ thinner $ toCompact $ toSimple x) !! 2
+
 
 
 
@@ -120,11 +140,11 @@ bfs t = go (bfs' id t)
     go ([] : xs)     = go xs
     go ((x : _) : _) = Just x
 
-showPaths :: Tree a -> String
-showPaths = showbfs'.bfs' id.thinner.toCompact.toSimple
+showThinnedPathsBFS :: Tree a -> String
+showThinnedPathsBFS = showbfs' . bfs' id . thinner . toCompact . toSimple
 
 showbfs' :: [[(Path, IsDone)]] -> String
-showbfs' x = unlines $ map unwords $ map (intersperse " - ") $
+showbfs' x = unlines $ map unwords $ map (L.intersperse " - ") $
             map (map (\(path, isdone) -> (show (map showCOpenGoal path)) ++ " " ++ bool isdone "Done" "Fail")) x
 
 bool :: Bool -> a -> a -> a

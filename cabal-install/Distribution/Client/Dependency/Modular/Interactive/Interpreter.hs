@@ -160,7 +160,10 @@ interpretStatement (Reason) = do
     case doBFS (toTree ptr) of
       Nothing               -> return [ShowResult "Uhoh.. got Nothing, call me!"]
       (Just (_, True))      -> return [ShowResult "Found a solution - cannot find a reason."]
-      (Just (path, False))  -> return [ShowResult $ take 800 $ showPaths (toTree ptr), ShowResult (show $ map showCOpenGoal path)]
+      (Just (path, False))  -> return [ShowResult $ baz (toTree ptr),
+                                    --   ShowResult $ take 2000 $ showThinnedPaths (toTree ptr),
+                                    --   ShowResult $ take 100 $ showThinnedPathsBFS (toTree ptr),
+                                       ShowResult (show $ map showCOpenGoal path)]
 
 
 interpretStatement Help = return [ShowResult helpText, ShowChoices]
