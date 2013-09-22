@@ -5,6 +5,16 @@ import qualified Distribution.Client.Dependency.Modular.PSQ as P
 import Data.Maybe (catMaybes, fromMaybe)
 import qualified Data.Set as S
 
+
+-- Given a compacted tree, we make it thinner by removing nodes that don't lead to new
+-- unordered paths. That is wider than P.firstChoice but retains the possibility to find
+-- smaller MUSes.
+-- For example, given the tree  * - foo - bar
+--                              \_ bar - foo
+-- the thinned tree will be     * - foo - bar
+--                              \_ bar
+-- removing the foo after bar
+
 thinner :: CompactTree -> CompactTree
 thinner tree = go (pathsInBFSOrder tree) [] tree
   where

@@ -27,7 +27,7 @@ data SimpleTree a =
   deriving (Eq, Show)
 
 
--- In this tree, a CFail is a pseudo-MUS
+-- In this tree, a CFail is a pseudo-MUS.
 data CompactTree =
     CGoalChoice  (P.PSQ COpenGoal CompactTree)
   | CFail        (ConflictSet QPN) FailReason
@@ -49,7 +49,9 @@ instance Show COpenGoal where
 showCOpenGoal :: COpenGoal -> String
 showCOpenGoal (COpenGoal goal) = showOpenGoal goal
 
-
+-- For now, we eliminate flag and stanza-choices by setting them False.
+-- Hence introducing fewer dependencies. This might not matter too much,
+-- as we look for small MUSes mostly.
 toSimple :: Tree a -> SimpleTree a
 toSimple (FChoice     _ _ _ _ t) = toSimple $ fromJust $ P.lookup False t
 toSimple (SChoice     _ _ _   t) = toSimple $ fromJust $ P.lookup False t
