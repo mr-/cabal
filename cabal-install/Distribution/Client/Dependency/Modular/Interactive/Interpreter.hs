@@ -186,7 +186,7 @@ isSelected (Selections selections) tree  = or [tree `nodeMatches` selection | se
     nodeMatches (PChoice qpn _ _)     (SelPChoice pname)        =  pname  `matches` showQPN qpn
     nodeMatches (FChoice qfn _ _ _ _) (SelFSChoice name flag)   = (name   `matches` qfnName)
                                                                && (flag   `matches` qfnFlag)
-      where (qfnName, qfnFlag) = unQFN qfn
+      where (qfnName, qfnFlag)   = unQFN qfn
     nodeMatches (SChoice qsn _ _ _ )  (SelFSChoice name stanza) = (name   `matches` qsnName)
                                                                && (stanza `matches` qsnStanza)
       where (qsnName, qsnStanza) = unQSN qsn
