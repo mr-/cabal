@@ -51,7 +51,7 @@ interpretStatement (Go there) = do
     where
         select (Number n) choices  = lookup (fromInteger n) choices
         select (Version x) choices = snd <$> find (\(_,c) -> x == showChild c) choices
-        select (Package x) choices = snd <$> find (\(_,c) -> x == showChild c) choices
+        select (Package x) choices = snd <$> find (\(_,c) -> lower x == lower (showChild c)) choices
 
 interpretStatement Empty = interpretStatement (Go (Number 1))
 
@@ -194,8 +194,10 @@ isSelected (Selections selections) tree  = or [tree `nodeMatches` selection | se
 
 
 matches :: String -> String -> Bool
-matches = (==) `on` (map toLower)
+matches = (==) `on` lower
 
+lower :: String -> String
+lower = map toLower
 
 preferSelections :: Selections -> Tree a -> Tree a
 preferSelections sel = trav go
