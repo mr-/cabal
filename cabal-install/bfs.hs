@@ -4,6 +4,7 @@ import qualified Data.List as L
 import Control.Applicative ((<$>))
 import Data.Maybe
 import Control.Monad.State
+import Data.Function (on)
 
 
 
@@ -25,11 +26,17 @@ data CompactTree = CGoalChoice [(String, CompactTree)] -- assume goal choices ar
 main = undefined
 -- bfcompact removes all COtherChoice nodes; we could use a different datatype for the resulting tree to make that clear
 bfcompact :: CompactTree -> CompactTree
-bfcompact (CGoalChoice cs)  = CGoalChoice (map (\ (x, t) -> (x, bfcompact t)) cs)
+bfcompact (CGoalChoice cs)  = CGoalChoice $ map (\ (x, t) -> (x, bfcompact t)) cs
 bfcompact (COtherChoice ts) = foldr1 mergeCompactTree (map bfcompact ts)
 bfcompact CDone             = CDone
 bfcompact CFail             = CFail
 bfcompact CUndecided        = CUndecided
+
+
+mergeGoalChoices :: CompactTree -> CompactTree
+mergeGoalChoices (CGoalChoice cs)  = CGoalChoice $ map (\(k, t) -> (k, mergeGoalChoices t)) $ map head $ L.groupBy ((==) `on` fst) cs
+mergeGoalChoices (COtherChoice cs) = COtherChoice $ map mergeGoalChoices cs
+mergeGoalChoices x                = x
 
 -- merges two trees without COtherChoice nodes
 mergeCompactTree :: CompactTree -> CompactTree -> CompactTree
@@ -86,7 +93,9 @@ example = CGoalChoice [("A", CGoalChoice [("B", CFail), ("B", CGoalChoice [("C",
                      ,("B", CGoalChoice [("A", CFail)] )
                      ,("C", CGoalChoice [("A", CGoalChoice [("B", CFail)])])
                      ]
-
+example2= CGoalChoice [("A",CGoalChoice [("B",CFail)]),
+                       ("B",CGoalChoice [("A",CFail)]),
+                       ("C",CGoalChoice [("A",CGoalChoice [("B",CFail)])])]
 
 
 type COpenGoal = String
@@ -125,4 +134,24 @@ foo' xs = (Prelude.map snd xs) : foo' subs
       subs = Prelude.concat $ catMaybes $ Prelude.map makeSubs xs
       makeSubs (CGoalChoice psq, path) = Just $ Prelude.map ( \(goal, t) -> (t, goal : path)) $  psq
       makeSubs _                       = Nothing
+
+
+
+dup :: Ord a => [a] -> Maybe a
+dup l = dup' l S.empty
+  where dup' [] _ = Nothing
+        dup' (x:xs) s = if S.member x s
+                           then Just x
+                           else dup' xs (S.insert x s)
+
+psqHasDuplicates :: Ord a => [(a,b)] -> Bool
+psqHasDuplicates (psq) = isJust $ dup $ map fst psq
+
+
+treeHasDuplicates :: Int -> CompactTree -> Bool
+treeHasDuplicates _ (CFail    )               = False
+treeHasDuplicates _ CDone                     = False
+treeHasDuplicates 0 (CGoalChoice psq) = psqHasDuplicates psq
+treeHasDuplicates n (CGoalChoice psq) = psqHasDuplicates psq || or (map (\(x,y) -> treeHasDuplicates (n - 1) y) psq)
+
 

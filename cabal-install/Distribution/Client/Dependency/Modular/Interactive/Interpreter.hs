@@ -27,7 +27,9 @@ import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), 
                                                                   focusChild, focusRoot, focusUp,
                                                                   liftToPtr, toTree)
 import Distribution.Client.Dependency.Types                      (QPointer)
-import Distribution.Client.Dependency.Modular.CompactTree
+import Distribution.Client.Dependency.Modular.MUS                (doBFS)
+import Distribution.Client.Dependency.Modular.MUS.CompactTree    (showCOpenGoal)
+
 
 type InterpreterState = State UIState
 
@@ -160,10 +162,11 @@ interpretStatement (Reason) = do
     case doBFS (toTree ptr) of
       Nothing               -> return [ShowResult "Uhoh.. got Nothing, call me!"]
       (Just (_, True))      -> return [ShowResult "Found a solution - cannot find a reason."]
-      (Just (path, False))  -> return [ShowResult $ baz (toTree ptr),
+      (Just (path, False))  -> return [ShowResult (show $ map showCOpenGoal path)]
+                                    --   ShowResult $ baz (toTree ptr),
                                     --   ShowResult $ take 2000 $ showThinnedPaths (toTree ptr),
                                     --   ShowResult $ take 100 $ showThinnedPathsBFS (toTree ptr),
-                                       ShowResult (show $ map showCOpenGoal path)]
+                                    --   ShowResult $ show $ treeHasDuplicates 3 ( removeDuplicates $ toCompact $ toSimple $ toTree ptr)]
 
 
 interpretStatement Help = return [ShowResult helpText, ShowChoices]
