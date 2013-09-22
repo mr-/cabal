@@ -45,6 +45,8 @@ runInteractive platform compId solver resolverParams = do
 
     putStrLn "\n\tWelcome to cabali!"
     putStrLn "\tType \"help\" for help.\n"
+    putStrLn "(for    best     results     set     your     terminal     to    be    at     least    this    wide)\n"
+
 
     runLoop initialState
       where

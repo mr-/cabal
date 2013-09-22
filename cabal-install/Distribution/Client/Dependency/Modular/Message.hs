@@ -102,15 +102,15 @@ showFR _ EmptyGoalChoice                = " (INTERNAL ERROR: EMPTY GOAL CHOICE)"
 
 
 showNodeFromTree :: Tree QGoalReasonChain -> String
-showNodeFromTree (PChoice qpn (UserGoal:_) _) = "PChoice (UserGoal): Version of " ++ showQPN qpn
-showNodeFromTree (PChoice qpn a _)            = "PChoice: " ++ showQPN qpn ++ " (needed by " ++ showGoalReason a ++ ")"
+showNodeFromTree (PChoice qpn (UserGoal:_) _) = "Choose a version of " ++ showQPN qpn ++ ":"
+showNodeFromTree (PChoice qpn a _)            = "Choose a version of: " ++ showQPN qpn ++ " (needed by " ++ showGoalReason a ++ "):"
 showNodeFromTree (FChoice qfn _ b1 b2 _)      = "Flag: " ++ showQFN qfn ++ "\t " ++ trivial ++ " " ++ manual
     where manual  = if b2 then "manual" else "automatic"
           trivial = if b1 then "trivial (no deps introduced by this)" else "not trivial (will introduce deps)"
 showNodeFromTree (SChoice qsn _ b _)          = "Stanza: " ++ showQSN qsn -- The "reason" is obvious here
                                                     ++ "\n\t " ++ trivial
   where trivial = if b then "trivial (no deps introduced by this)" else "not trivial (will introduce deps)"
-showNodeFromTree (GoalChoice _)               = "GoalChoice: Missing dependencies"
+showNodeFromTree (GoalChoice _)               = "Missing dependencies"
 showNodeFromTree (Done _rdm)                  = "Done"
 showNodeFromTree (Fail cfs fr _)              = "FailReason: " ++ showFR cfs fr
 
