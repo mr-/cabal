@@ -2,7 +2,7 @@ module Distribution.Client.Dependency.Modular.MUS.Thinner where
 
 import Distribution.Client.Dependency.Modular.MUS.CompactTree
 import qualified Distribution.Client.Dependency.Modular.PSQ as P
-import Data.Maybe (catMaybes, fromMaybe)
+import Data.Maybe (catMaybes, fromMaybe, mapMaybe)
 import qualified Data.Set as S
 
 
@@ -20,7 +20,7 @@ thinner tree = go (pathsInBFSOrder tree) [] tree
   where
     go :: [[Path]] -> Path -> CompactTree -> CompactTree
     go paths path (CGoalChoice psq) =
-        CGoalChoice $ P.PSQ $ catMaybes $ map (\(goal, subTree) -> processSub paths path goal subTree) (P.toList psq)
+        CGoalChoice $ P.PSQ $ catMaybes $ map ( uncurry (processSub paths path) ) (P.toList psq)
     go _ _ x = x
 
     processSub :: [[Path]] -> Path -> COpenGoal -> CompactTree -> Maybe (COpenGoal, CompactTree)
@@ -30,12 +30,12 @@ thinner tree = go (pathsInBFSOrder tree) [] tree
 isFirst :: Path -> [[Path]] -> Bool
 isFirst path paths = firstFound == path
     where
-      level = paths !! (length path)
+      level = paths !! length path
       firstFound = fromMaybe (error "Thinner.isFirst: The impossible happened.. could not find path")
                              (findFirst path level)
 
 findFirst :: Path -> [Path] -> Maybe Path
-findFirst path paths = go paths
+findFirst path = go
   where
     setPath = S.fromList path
 
@@ -50,9 +50,9 @@ pathsInBFSOrder tree = go [(tree, [])]
   where
     go :: [(CompactTree, Path)] -> [[Path]]
     go [] = []
-    go xs = (Prelude.map snd xs) : go subs
+    go xs = map snd xs : go subs
         where
-          subs = Prelude.concat $ catMaybes $ Prelude.map makeSubs xs
+          subs = Prelude.concat $ mapMaybe makeSubs xs
           makeSubs (CGoalChoice psq, path) = Just $ Prelude.map ( \(goal, t) -> (t, goal : path)) $  P.toList psq
           makeSubs _                       = Nothing
 
