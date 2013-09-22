@@ -27,8 +27,7 @@ import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), 
                                                                   focusChild, focusRoot, focusUp,
                                                                   liftToPtr, toTree)
 import Distribution.Client.Dependency.Types                      (QPointer)
-import Distribution.Client.Dependency.Modular.MUS                (doBFS)
-import Distribution.Client.Dependency.Modular.MUS.CompactTree    (showCOpenGoal)
+import Distribution.Client.Dependency.Modular.MUS                (findMUS, showPath)
 
 
 type InterpreterState = State UIState
@@ -159,10 +158,10 @@ interpretStatement WhatWorks =
 
 interpretStatement (Reason) = do
     ptr <- gets uiPointer
-    case doBFS (toTree ptr) of
+    case findMUS (toTree ptr) of
       Nothing               -> return [ShowResult "Uhoh.. got Nothing, call me!"]
       (Just (_, True))      -> return [ShowResult "Found a solution - cannot find a reason."]
-      (Just (path, False))  -> return [ShowResult (show $ map showCOpenGoal path)]
+      (Just (path, False))  -> return [ShowResult $ "The following packages seem to contradict each other: " ++ (showPath path)]
                                     --   ShowResult $ baz (toTree ptr),
                                     --   ShowResult $ take 2000 $ showThinnedPaths (toTree ptr),
                                     --   ShowResult $ take 100 $ showThinnedPathsBFS (toTree ptr),

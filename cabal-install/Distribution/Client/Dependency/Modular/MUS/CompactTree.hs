@@ -9,6 +9,8 @@ import Data.Foldable hiding (toList, or)
 import Data.Maybe
 import Data.Ord (comparing)
 import Prelude hiding (foldr1)
+
+
 type Path = [COpenGoal]
 type IsDone = Bool
 
@@ -56,6 +58,9 @@ toSimple (GoalChoice          t) = SGoalChoice  (toSimple <$> t)
 toSimple (Done        _        ) = SDone
 toSimple (Fail        c f     _) = SFail c f
 
+
+-- TODO: There is a bug that introduces duplicates in the PSQs.
+-- hence removeDuplicates.
 toCompact :: SimpleTree a -> CompactTree
 toCompact (SGoalChoice ts)   = CGoalChoice $ P.sortPSQ $ P.mapKeys COpenGoal (toCompact <$> ts)
 toCompact (SPChoice _  _ ts) = foldr1 mergeTree (toCompact <$> ts)

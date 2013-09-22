@@ -13,11 +13,11 @@ import qualified Distribution.Client.Dependency.Modular.PSQ as P
 -- It is not quite clear why removeDuplicates is necessary..
 -- but it works that way.
 
-doBFS :: Tree a -> Maybe (Path, IsDone)
-doBFS = bfs .                -- bfs for the first/shortest MUS
-       removeDuplicates .    -- remove duplicates..
-       thinner .             -- heuristics to make BFS more feasible
-       toCompact . toSimple  -- Collapse tree
+findMUS :: Tree a -> Maybe (Path, IsDone)
+findMUS = bfs .                -- bfs for the first/shortest MUS
+          removeDuplicates .    -- remove duplicates..
+          thinner .             -- heuristics to make BFS more feasible
+          toCompact . toSimple  -- Collapse tree
 
 
 
