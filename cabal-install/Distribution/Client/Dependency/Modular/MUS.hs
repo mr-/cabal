@@ -19,6 +19,8 @@ doBFS = bfs .                -- bfs for the first/shortest MUS
        thinner .             -- heuristics to make BFS more feasible
        toCompact . toSimple  -- Collapse tree
 
+
+
 bfs :: CompactTree -> Maybe (Path, IsDone)
 bfs t = go (bfs' id t)
   where
@@ -43,7 +45,9 @@ zipConc = foldr conc []
     conc (x : xs) (y : ys) = (x ++ y) : conc xs ys
 
 
---Debugging output
+
+-- Debugging output
+
 showThinnedPaths :: Tree a -> String
 showThinnedPaths x = unlines $ map unwords $ map (L.intersperse " - ") $
             map (map (\path -> (show (map showCOpenGoal path)))) $ pathsInBFSOrder $ thinner $ toCompact $ toSimple x

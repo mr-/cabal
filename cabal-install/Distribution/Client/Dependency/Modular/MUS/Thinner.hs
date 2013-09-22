@@ -2,33 +2,38 @@ module Distribution.Client.Dependency.Modular.MUS.Thinner where
 
 import Distribution.Client.Dependency.Modular.MUS.CompactTree
 import qualified Distribution.Client.Dependency.Modular.PSQ as P
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, fromMaybe)
 import qualified Data.Set as S
 
 thinner :: CompactTree -> CompactTree
-thinner tree = thinner' (pathsInBFSOrder tree) [] tree
+thinner tree = go (pathsInBFSOrder tree) [] tree
+  where
+    go :: [[Path]] -> Path -> CompactTree -> CompactTree
+    go paths path (CGoalChoice psq) =
+        CGoalChoice $ P.PSQ $ catMaybes $ map (\(goal, subTree) -> processSub paths path goal subTree) (P.toList psq)
+    go _ _ x = x
 
-thinner' :: [[Path]] -> Path -> CompactTree -> CompactTree
-thinner' paths path (CGoalChoice psq) =
-    CGoalChoice $ P.PSQ $ catMaybes $ map (\(goal, tree) -> processSub paths path goal tree) (P.toList psq)
-thinner' _ _ x = x
-
-
-processSub :: [[Path]] -> Path -> COpenGoal -> CompactTree -> Maybe (COpenGoal, CompactTree)
-processSub paths path goal tree | isFirst (goal:path) paths = Just (goal, thinner' paths (goal:path) tree)
-                                | otherwise                 = Nothing
+    processSub :: [[Path]] -> Path -> COpenGoal -> CompactTree -> Maybe (COpenGoal, CompactTree)
+    processSub paths path goal subTree | isFirst (goal:path) paths = Just (goal, go paths (goal:path) subTree)
+                                       | otherwise                 = Nothing
 
 isFirst :: Path -> [[Path]] -> Bool
-isFirst path paths = findFirst path level == path
-    where level = paths !! (length path)
+isFirst path paths = firstFound == path
+    where
+      level = paths !! (length path)
+      firstFound = fromMaybe (error "Thinner.isFirst: The impossible happened.. could not find path")
+                             (findFirst path level)
 
-findFirst :: Path -> [Path] -> Path
+findFirst :: Path -> [Path] -> Maybe Path
 findFirst path paths = go paths
   where
-    go (p:aths)
-      | setPath == S.fromList p  =  p
-      | otherwise                = go aths
     setPath = S.fromList path
+
+    go :: [Path] -> Maybe Path
+    go []                        = Nothing
+    go (p:aths)
+      | setPath == S.fromList p  = Just p
+      | otherwise                = go aths
 
 pathsInBFSOrder :: CompactTree -> [[Path]]
 pathsInBFSOrder tree = go [(tree, [])]
