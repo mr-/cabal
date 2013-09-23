@@ -248,7 +248,11 @@ generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)
 helpText :: String
 helpText = unlines [
   "This interface accepts simple commands separated by ';'. E.g. go 1 ; auto",
-  "Commands: ",
+  "\nExample: " ,
+  "go 1.0.4.2; bset foo ; goto aeson | parsec:test ; bjump foo ; auto",
+  "                               ^          ^ this is both, flag or stanza",
+  "                               | while this is just package choice",
+  "\nCommands: ",
   " go n          Picks the n'th path. Alternatively, you can just type the packagename ",
   "               or the version. It matches case-insensitively",
   " up            Goes up one step",

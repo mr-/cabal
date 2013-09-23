@@ -7,9 +7,9 @@ import           Text.ParserCombinators.Parsec
 import           Text.ParserCombinators.Parsec.Language
 import qualified Text.ParserCombinators.Parsec.Token    as Token
 
---bookmark foo ; goto aeson | parsec:test ; jump foo ; auto
---                                  ^ this is both, flag or stanza
---                     ^ while this is just package choice
+-- bsetfoo ; goto aeson | parsec:test ; bjump foo ; auto
+--                  ^           ^ this is both, flag or stanza
+--                  | while this is just package choice
 
 
 data Statements =  Statements [Statement]
@@ -47,7 +47,7 @@ data GoChoice = Package String
               | Version String
               | Number  Integer
               deriving (Show, Eq)
-
+commandList :: [String]
 commandList = sort
            [ "bset"
            , "bjump"
@@ -95,28 +95,33 @@ statements = whiteSpace >> sequenceOfStmt
                         return $ Statements list
 
 statement' :: Parser Statement
-statement' =   try bsetStmt
+statement' =   try (nullAry "blist" BookList)
+           <|> try (nullAry "auto"  Auto)
+           <|> try (nullAry "up" Up)
+           <|> try (nullAry "indicateAuto" IndicateAuto)
+           <|> try (nullAry "whatWorks" WhatWorks)
+           <|> try (nullAry "install"   Install)
+           <|> try (nullAry "showPlan" ShowPlan)
+           <|> try (nullAry "back" Back)
+           <|> try (nullAry "showHistory" ShowHistory)
+           <|> try (nullAry "failReason" FailReason)
+           <|> try (nullAry "help" Help)
+           <|> try (nullAry "top" ToTop)
+           <|> try bsetStmt
            <|> try bjumpStmt
-           <|> try blistStmt
-           <|> try autoStmt
            <|> try gotoStmt
            <|> try findStmt
-           <|> try upStmt
-           <|> try indicateAutoStmt
-           <|> try topStmt
            <|> try cutStmt
-           <|> try whatWorksStmt
-           <|> try installStmt
-           <|> try showPlanStmt
            <|> try preferStmt
-           <|> try backStmt
-           <|> try showHistoryStmt
-           <|> try failReasonStmt
-           <|> try helpStmt
            <|> try emptyStmt
            <|> try goStmt           -- Order is important here.
            <|> try singleNumberStmt -- These need to come last,
                                     -- in that order!
+
+nullAry :: String -> Statement -> Parser Statement
+nullAry str st =
+    do  reserved str
+        return st
 
 singleNumberStmt :: Parser Statement
 singleNumberStmt =
@@ -152,67 +157,6 @@ cutStmt =
         var <- lexeme integer
         return $ Cut (fromInteger var)
 
--- goStmt :: Parser Statement
--- goStmt =
---     do  reserved "go"
---         var <- lexeme integer
---         return $ Go (fromInteger var)
-
-whatWorksStmt :: Parser Statement
-whatWorksStmt =
-    do  reserved "whatWorks"
-        return WhatWorks
-
-upStmt :: Parser Statement
-upStmt =
-    do  reserved "up"
-        return Up
-
-helpStmt :: Parser Statement
-helpStmt =
-    do  reserved "help"
-        return Help
-
-failReasonStmt :: Parser Statement
-failReasonStmt =
-    do  reserved "failReason"
-        return FailReason
-
-backStmt :: Parser Statement
-backStmt =
-    do  reserved "back"
-        return Back
-
-showHistoryStmt :: Parser Statement
-showHistoryStmt =
-    do  reserved "showHistory"
-        return ShowHistory
-
-showPlanStmt :: Parser Statement
-showPlanStmt =
-    do  reserved "showPlan"
-        return ShowPlan
-
-indicateAutoStmt :: Parser Statement
-indicateAutoStmt =
-    do  reserved "indicateAuto"
-        return IndicateAuto
-
-installStmt :: Parser Statement
-installStmt =
-    do  reserved "install"
-        return Install
-
-topStmt :: Parser Statement
-topStmt =
-    do  reserved "top"
-        return ToTop
-
-autoStmt :: Parser Statement
-autoStmt =
-    do  reserved "auto"
-        return Auto
-
 bsetStmt :: Parser Statement
 bsetStmt =
     do  reserved "bset"
@@ -225,16 +169,13 @@ bjumpStmt =
         var  <- identifier
         return $ BookJump var
 
-blistStmt :: Parser Statement
-blistStmt =
-    do  reserved "blist"
-        return BookList
-
 goStmt :: Parser Statement
 goStmt =
     do reserved "go"
        foo <- goParser
        return $ Go foo
+
+
 
 selectionsParser :: Parser Selections
 selectionsParser =
@@ -264,9 +205,10 @@ fsSelection =
 
 
 goParser :: Parser GoChoice
-goParser = try goPackage
-       <|> try goNumber
+goParser = try goNumber
        <|> try goVersion
+       <|> try goPackage
+
 
 goVersion :: Parser GoChoice
 goVersion =
@@ -277,14 +219,13 @@ goNumber :: Parser GoChoice
 goNumber =
   do _  <- try $ optional (char '*')
      nr <- integer
+     notFollowedBy (char '.')
      _  <- many (choice [char 'F', char 'I'])
-     eof
      return $ Number nr
 
 goPackage :: Parser GoChoice
 goPackage =
   do package <- many1 (choice [many1 letter, string "-"])
-     eof
      return $ Package $ concat package
 
 readStatements :: String -> Either String Statements
