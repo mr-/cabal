@@ -59,7 +59,7 @@ interpretStatement Auto = do
   pointer <- gets uiPointer
   case explorePointer pointer of
     Left e  -> return [Error e]
-    Right t -> setPointer t >> return [ShowResult "Created a valid installplan. \nType install to install, or showPlan to review" ]
+    Right t -> setPointer t >> showResult "Created a valid installplan. \nType install to install, or showPlan to review"
 
 interpretStatement (BookSet name) = addBookmark name >> showResult (name ++ " set")
   where
@@ -83,7 +83,7 @@ interpretStatement (BookJump name) = do
 interpretStatement (Goto selections) = do
     pointer <- gets uiPointer
     case explorePointer pointer of
-        Left e  -> return [Error e]
+        Left e  -> showError e
         Right t -> do
           let newPointer = selectPointer selections pointer t
               assignment = intermediateAssignment pointer newPointer
@@ -97,10 +97,10 @@ interpretStatement (Goto selections) = do
 
 interpretStatement Install = do ptr <- gets uiPointer
                                 if isDone ptr
-                                 then modify (\x -> x{uiInstall = Just ptr}) >> return [DoInstall]
+                                 then modify (\x -> x{uiInstall = Just ptr}) >> install
                                  else showError "Need to be on a \"Done\"-Node"
 
-interpretStatement (Cut _) = return [Error "Ooops.. not implemented yet."]
+interpretStatement (Cut _) = showError "Ooops.. not implemented yet."
 
  -- Need to make that more efficient, prune tree first. (firstchoice..)
 interpretStatement (Find sel) = do
@@ -113,7 +113,7 @@ interpretStatement (Find sel) = do
 interpretStatement IndicateAuto = do
     ptr <- gets uiPointer
     case explorePointer ptr of
-      Left e  -> return [Error e]
+      Left e  -> showError e
       Right t -> modify (\x -> x{uiAutoPointer = Just t}) >> showChoices
 
 
@@ -246,11 +246,14 @@ generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)
 showResult :: String -> InterpreterState [UICommand]
 showResult str = return [ShowResult str]
 
-showChoices:: InterpreterState [UICommand]
+showChoices :: InterpreterState [UICommand]
 showChoices = get >>= \x -> return [ShowChoices x]
 
-showError:: String -> InterpreterState [UICommand]
+showError :: String -> InterpreterState [UICommand]
 showError str = return [Error str]
+
+install :: InterpreterState [UICommand]
+install = return [DoInstall]
 
 and :: InterpreterState [UICommand] -> InterpreterState [UICommand] -> InterpreterState [UICommand]
 and = liftA2 (++)
