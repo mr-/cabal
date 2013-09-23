@@ -9,12 +9,6 @@ data UIState = UIState {uiPointer         :: QPointer,
                         uiAutoPointer     :: Maybe QPointer,
                         uiHistory         :: [(Statement, QPointer)]}
 
--- Better uiBreakPoints :: [(String, QPointer -> Bool)]
--- features: cut
--- Figure out what the given bools for flags and Stanzas mean.
-
-
-
 
 data Action = InstallNow | Abort | Continue | First deriving (Eq)
 

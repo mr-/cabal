@@ -32,6 +32,7 @@ import System.Console.Haskeline.Completion                            (Completio
 
 type AppState = StateT UIState (InputT IO)
 
+-- TODO: Make the solveroptions accessible?
 
 runInteractive :: Platform
                -> CompilerId

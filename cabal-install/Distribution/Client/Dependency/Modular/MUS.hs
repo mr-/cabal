@@ -43,10 +43,11 @@ import qualified Distribution.Client.Dependency.Modular.PSQ as P
 -- but it works that way.
 
 findMUS :: Tree a -> Maybe (Path, IsDone)
-findMUS = bfs .                -- bfs for the first/shortest MUS
-          removeDuplicates .    -- remove duplicates..
-          thinner .             -- heuristics to make BFS more feasible
-          toCompact . toSimple  -- Collapse tree
+findMUS = bfs                 -- bfs for the first/shortest MUS or Done-Node
+        . removeDuplicates    -- Remove duplicates..
+        . thinner             -- Heuristics to make BFS more feasible
+        . toCompact           -- Collapse the tree removing version choices
+        . toSimple            -- Remove/Set flags. This could be brigher
 
 
 
@@ -63,8 +64,8 @@ bfs t = go (bfs' id t)
 
 -- finds the first Fail or Done node in the compacted tree
 bfs' :: (Path -> Path) -> CompactTree -> [[(Path, IsDone)]]
-bfs' prefix CDone                  = [[(prefix [], True)]]
-bfs' prefix (CFail _ _)            = [[(prefix [], False)]]
+bfs' prefix CDone                    = [[(prefix [], True)]]
+bfs' prefix (CFail _ _)              = [[(prefix [], False)]]
 bfs' prefix (CGoalChoice (P.PSQ cs)) = [] : zipConc ((\(x, t) -> bfs' ((x :) . prefix) t) <$> cs)
 
 zipConc :: [[[(Path, IsDone)]]] -> [[(Path, IsDone)]]
@@ -90,7 +91,7 @@ showThinnedPathsBFS :: Tree a -> String
 showThinnedPathsBFS = showbfs' . bfs' id . thinner . toCompact . toSimple
 
 showbfs' :: [[(Path, IsDone)]] -> String
-showbfs' x = unlines $ map unwords $ map (L.intersperse " - ") $
+showbfs' x = unlines $ map (unwords . L.intersperse " - ") $
             map (map (\(path, isdone) -> show (map showCOpenGoal path) ++ " " ++ bool isdone "Done" "Fail")) x
 
 bool :: Bool -> a -> a -> a

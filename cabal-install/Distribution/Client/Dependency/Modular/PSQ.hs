@@ -129,6 +129,7 @@ unionWith f l@(PSQ ((c, t) : cs)) r@(PSQ ((d, u) : ds)) = case compare c d of
   EQ -> cons c (f t u) $ unionWith f (PSQ cs) (PSQ ds)
   GT -> cons d u $ unionWith f l (PSQ ds)
 
+
 mergeDuplicatesWith :: (Eq a) => (b -> b -> b) -> PSQ a b -> PSQ a b
 mergeDuplicatesWith _ (PSQ []) = PSQ []
 mergeDuplicatesWith f (PSQ xs) = PSQ $ L.map (L.foldr1 (\(x,x') (_,y') -> (x, f x' y')))
@@ -139,6 +140,7 @@ joinPSQ (PSQ a) (PSQ b) = PSQ (a ++ b)
 
 
 -- left in reverse order to make going left constant time?
+-- We never go left.
 data PSQContext k v = PSQContext {contextLefts :: (PSQ k v), contextKey ::  k, contextRights ::  (PSQ k v)}
 
 
