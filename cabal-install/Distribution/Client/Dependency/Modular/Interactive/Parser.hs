@@ -96,18 +96,18 @@ statements = whiteSpace >> sequenceOfStmt
                         return $ Statements list
 
 statement' :: Parser Statement
-statement' =   try (nullAry "blist" BookList)
-           <|> try (nullAry "auto"  Auto)
-           <|> try (nullAry "up" Up)
-           <|> try (nullAry "indicateAuto" IndicateAuto)
-           <|> try (nullAry "whatWorks" WhatWorks)
-           <|> try (nullAry "install"   Install)
-           <|> try (nullAry "showPlan" ShowPlan)
-           <|> try (nullAry "back" Back)
-           <|> try (nullAry "showHistory" ShowHistory)
-           <|> try (nullAry "failReason" FailReason)
-           <|> try (nullAry "help" Help)
-           <|> try (nullAry "top" ToTop)
+statement' =   try (nullAry "blist"         BookList    )
+           <|> try (nullAry "auto"          Auto        )
+           <|> try (nullAry "up"            Up          )
+           <|> try (nullAry "indicateAuto"  IndicateAuto)
+           <|> try (nullAry "whatWorks"     WhatWorks   )
+           <|> try (nullAry "install"       Install     )
+           <|> try (nullAry "showPlan"      ShowPlan    )
+           <|> try (nullAry "back"          Back        )
+           <|> try (nullAry "showHistory"   ShowHistory )
+           <|> try (nullAry "failReason"    FailReason  )
+           <|> try (nullAry "help"          Help        )
+           <|> try (nullAry "top"           ToTop       )
            <|> try bsetStmt
            <|> try bjumpStmt
            <|> try gotoStmt
