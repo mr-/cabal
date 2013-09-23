@@ -33,6 +33,11 @@ import qualified Distribution.Client.Dependency.Modular.PSQ as P
 -- Further, we try to make the tree thin enough to make the search feasible,
 -- while keeping it wide enough to find MUSes.
 
+-- Note that we do not reall find MUSes, since every returned Path has to
+-- include one of the packages given at the command line.
+-- To determine whether a returned Path constitutes a MUS we would have to
+-- check satisfiability after removing that package.
+
 
 -- TODO: It is not quite clear why removeDuplicates is necessary..
 -- but it works that way.
@@ -45,9 +50,8 @@ findMUS = bfs .                -- bfs for the first/shortest MUS
 
 
 
-
 -- bfs-search for a Fail or Done-node.
--- returns the path to that node.
+-- Returns the path to that node and indicates whether is Done or Fail.
 bfs :: CompactTree -> Maybe (Path, IsDone)
 bfs t = go (bfs' id t)
   where

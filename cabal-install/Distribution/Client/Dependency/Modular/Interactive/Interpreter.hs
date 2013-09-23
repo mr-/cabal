@@ -156,12 +156,12 @@ interpretStatement WhatWorks =
       works :: QPointer -> ChildType -> Bool
       works ptr ch = isRight $ explorePointer $ focus ptr ch
 
-interpretStatement (Reason) = do
+interpretStatement (FailReason) = do
     ptr <- gets uiPointer
     case findMUS (toTree ptr) of
       Nothing               -> return [ShowResult "Uhoh.. got Nothing, call me!"]
-      (Just (_, True))      -> return [ShowResult "Found a solution - cannot find a reason."]
-      (Just (path, False))  -> return [ShowResult $ "The following packages seem to contradict each other: " ++ showPath path]
+      (Just (_, True))      -> return [ShowResult "Found a solution - cannot find a failreason."]
+      (Just (path, False))  -> return [ShowResult $ "The following packages contradict each other: " ++ showPath path]
                                     --   ShowResult $ baz (toTree ptr),
                                     --   ShowResult $ take 2000 $ showThinnedPaths (toTree ptr),
                                     --   ShowResult $ take 100 $ showThinnedPathsBFS (toTree ptr),
@@ -270,6 +270,6 @@ helpText = unlines [
   " showPlan      Shows what is going to be installed/used at this point",
   " whatWorks     Lists the choices currently available that lead to a valid installPlan",
   " back          Goes back to the last command",
-  " reason        Prints the first MUS"]
+  " failReason    Prints the first MUS"]
 
 

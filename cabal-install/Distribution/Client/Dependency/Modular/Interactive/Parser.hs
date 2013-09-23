@@ -32,7 +32,7 @@ data Statement  =  BookSet    String
                  | Empty
                  | Back
                  | ShowHistory
-                 | Reason
+                 | FailReason
                  | Help
                  deriving (Show, Eq)
 
@@ -111,7 +111,7 @@ statement' =   try bsetStmt
            <|> try preferStmt
            <|> try backStmt
            <|> try showHistoryStmt
-           <|> try reasonStmt
+           <|> try failReasonStmt
            <|> try helpStmt
            <|> try emptyStmt
            <|> try goStmt           -- Order is important here.
@@ -173,10 +173,10 @@ helpStmt =
     do  reserved "help"
         return Help
 
-reasonStmt :: Parser Statement
-reasonStmt =
-    do  reserved "reason"
-        return Reason
+failReasonStmt :: Parser Statement
+failReasonStmt =
+    do  reserved "failReason"
+        return FailReason
 
 backStmt :: Parser Statement
 backStmt =
