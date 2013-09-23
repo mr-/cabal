@@ -236,5 +236,3 @@ readStatements input = case parse statements "" input of
     Left err ->  Left $ show err
     Right val -> Right val
 
-
---       "1 ; auto" and "1.1 ; auto" are fine, mysteriously
