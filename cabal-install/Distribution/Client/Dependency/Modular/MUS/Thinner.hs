@@ -16,7 +16,7 @@ import qualified Data.Set as S
 -- removing the foo after bar
 
 thinner :: CompactTree -> CompactTree
-thinner tree = go (pathsInBFSOrder tree) [] tree
+thinner tree = go (map uniquePaths $ pathsInBFSOrder tree) [] tree
   where
     go :: [[Path]] -> Path -> CompactTree -> CompactTree
     go paths path (CGoalChoice psq) =
@@ -55,4 +55,15 @@ pathsInBFSOrder tree = go [(tree, [])]
           subs = Prelude.concat $ mapMaybe makeSubs xs
           makeSubs (CGoalChoice psq, path) = Just $ Prelude.map ( \(goal, t) -> (t, goal : path)) $  P.toList psq
           makeSubs _                       = Nothing
+
+type UnorderedPath = S.Set COpenGoal
+
+uniquePaths :: [Path] -> [Path]
+uniquePaths = catMaybes . go S.empty
+  where
+    go :: S.Set (UnorderedPath) -> [Path] -> [Maybe Path]
+    go _          []                            = []
+    go setOfPaths (path:xs)
+      | (S.fromList path) `S.member` setOfPaths = Nothing   : go setOfPaths xs
+      | otherwise                               = Just path : go (S.insert (S.fromList path) setOfPaths) xs
 

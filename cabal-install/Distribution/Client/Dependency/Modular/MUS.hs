@@ -69,6 +69,9 @@ zipConc = foldr conc []
     conc (x : xs) (y : ys) = (x ++ y) : conc xs ys
 
 
+showPath :: Path -> String
+showPath path = unwords $ L.intersperse "-" $ map showCOpenGoal path
+
 
 -- Debugging output
 
@@ -86,6 +89,3 @@ showbfs' x = unlines $ map unwords $ map (L.intersperse " - ") $
 bool :: Bool -> a -> a -> a
 bool True x  _ = x
 bool False _ y = y
-
-showPath :: Path -> String
-showPath path = unwords $ L.intersperse " - " $ map showCOpenGoal path
