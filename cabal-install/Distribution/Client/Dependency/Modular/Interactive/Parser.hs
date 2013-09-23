@@ -65,7 +65,7 @@ commandList = sort
            , "whatWorks"
            , "back"
            , "showHistory"
-           , "reason"
+           , "failReason"
            , "help"
            ]
 
