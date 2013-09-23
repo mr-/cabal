@@ -45,6 +45,9 @@ findMUS = bfs .                -- bfs for the first/shortest MUS
 
 
 
+
+-- bfs-search for a Fail or Done-node.
+-- returns the path to that node.
 bfs :: CompactTree -> Maybe (Path, IsDone)
 bfs t = go (bfs' id t)
   where

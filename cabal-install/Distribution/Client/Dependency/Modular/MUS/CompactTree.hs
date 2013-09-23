@@ -64,18 +64,15 @@ toSimple (Fail        c f     _) = SFail c f
 
 -- TODO: There is a bug that introduces duplicates in the PSQs.
 -- hence removeDuplicates.
+
+-- toCompact collapses version-choices. If all of them are Failing, we have found a (pseudo-)MUS.
+-- If one is Done, the problem admits a solution and we are done.
+-- If we are left with Package-choices, we collect all of them.
 toCompact :: SimpleTree a -> CompactTree
 toCompact (SGoalChoice ts)   = CGoalChoice $ P.sortPSQ $ P.mapKeys COpenGoal (toCompact <$> ts)
 toCompact (SPChoice _  _ ts) = foldr1 mergeTree (toCompact <$> ts)
 toCompact (SFail c fr)       = CFail c fr
 toCompact SDone              = CDone
-
-
-removeDuplicates :: CompactTree -> CompactTree
-removeDuplicates (CGoalChoice psq) = CGoalChoice $ removeDuplicates <$> newPSQ
-  where newPSQ = P.mergeDuplicatesWith mergeTree psq
-removeDuplicates x = x
-
 
 
 mergeTree :: CompactTree -> CompactTree -> CompactTree
@@ -84,6 +81,14 @@ mergeTree _                 CDone              = CDone
 mergeTree (CFail _ _)       x                  = x
 mergeTree x                 (CFail _ _)        = x
 mergeTree (CGoalChoice psq) (CGoalChoice psq') = CGoalChoice $ P.unionWith mergeTree psq psq'
+
+
+removeDuplicates :: CompactTree -> CompactTree
+removeDuplicates (CGoalChoice psq) = CGoalChoice $ removeDuplicates <$> newPSQ
+  where newPSQ = P.mergeDuplicatesWith mergeTree psq
+removeDuplicates x = x
+
+
 
 
 

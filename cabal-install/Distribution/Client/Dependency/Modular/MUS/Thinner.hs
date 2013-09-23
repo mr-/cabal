@@ -27,6 +27,7 @@ thinner tree = go (map uniquePaths $ pathsInBFSOrder tree) [] tree
     processSub paths path goal subTree | isFirst (goal:path) paths = Just (goal, go paths (goal:path) subTree)
                                        | otherwise                 = Nothing
 
+-- checks if the given path is the first in its level
 isFirst :: Path -> [[Path]] -> Bool
 isFirst path paths = firstFound == path
     where
@@ -34,16 +35,18 @@ isFirst path paths = firstFound == path
       firstFound = fromMaybe (error "Thinner.isFirst: The impossible happened.. could not find path")
                              (findFirst path level)
 
+-- Find the first occurence of the path.
+-- Paths are considered unordered.
 findFirst :: Path -> [Path] -> Maybe Path
 findFirst path = go
   where
     setPath = S.fromList path
-
     go :: [Path] -> Maybe Path
     go []                        = Nothing
     go (p:aths)
       | setPath == S.fromList p  = Just p
       | otherwise                = go aths
+
 
 pathsInBFSOrder :: CompactTree -> [[Path]]
 pathsInBFSOrder tree = go [(tree, [])]
@@ -55,6 +58,7 @@ pathsInBFSOrder tree = go [(tree, [])]
           subs = Prelude.concat $ mapMaybe makeSubs xs
           makeSubs (CGoalChoice psq, path) = Just $ Prelude.map ( \(goal, t) -> (t, goal : path)) $  P.toList psq
           makeSubs _                       = Nothing
+
 
 type UnorderedPath = S.Set COpenGoal
 
