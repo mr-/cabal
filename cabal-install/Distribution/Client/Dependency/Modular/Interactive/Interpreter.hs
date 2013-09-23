@@ -160,7 +160,8 @@ interpretStatement (FailReason) = do
     case findMUS (toTree ptr) of
       Nothing               -> showResult "Uhoh.. got Nothing, call me!"
       (Just (_, True))      -> showResult "Found a solution - cannot find a failreason."
-      (Just (path, False))  -> showResult $ "The following packages contradict each other: " ++ showPath path
+      (Just (path, False))  -> showResult $ "The following packages contradict each other:\n\t" ++ showPath path
+                                                                   -- TODO: In what?
                                     --   ShowResult $ baz (toTree ptr),
                                     --   ShowResult $ take 2000 $ showThinnedPaths (toTree ptr),
                                     --   ShowResult $ take 100 $ showThinnedPathsBFS (toTree ptr),
@@ -264,8 +265,8 @@ helpText :: String
 helpText = unlines [
   "This interface accepts simple commands separated by ';'. E.g. go 1 ; auto",
   "\nExample: " ,
-  "go 1.0.4.2; bset foo ; goto aeson | parsec:test ; bjump foo ; auto",
-  "                               ^          ^ this is both, flag or stanza",
+  "  go 1.0.4.2; bset foo ; goto aeson | parsec:test ; bjump foo ; auto",
+  "                                 ^          ^ this is both, flag or stanza",
   "                               | while this is just package choice",
   "\nCommands: ",
   " go n          Picks the n'th path. Alternatively, you can just type the packagename ",

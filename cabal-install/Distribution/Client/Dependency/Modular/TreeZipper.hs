@@ -12,17 +12,6 @@ import Prelude                                           hiding (foldr, mapM)
 import Data.List                                         (isPrefixOf)
 import Data.Maybe                                        (fromJust, fromMaybe, isNothing, catMaybes)
 
-{-
-data Tree a =
-    PChoice     QPN a           (PSQ I        (Tree a))
-  | FChoice     QFN a Bool Bool (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial, second Bool whether it's manual
-  | SChoice     QSN a Bool      (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial
-  | GoalChoice                  (PSQ OpenGoal (Tree a)) -- PSQ should never be empty
-  | Done        RevDepMap
-  | Fail        (ConflictSet QPN) FailReason  (Maybe (FailTree a))
--}
-
-
 
 data Path a =
     Top
@@ -36,7 +25,6 @@ data Path a =
 data Pointer a = Pointer { toPath :: Path a, toTree :: Tree a }
                   deriving (Eq)
 
---data PointerPair a = Pair { pairShallow :: Pointer a,  pairDeep :: Pointer a}
 
 instance Functor Pointer where
   fmap f = liftToPtr (fmap f)
@@ -132,9 +120,7 @@ filterDown pre ptr              = [ptr | pre ptr] ++ rest
     rest = concat [ maybe [] (filterDown pre) (focusChild c ptr) | c <- ch ptr]
     ch p = fromJust $ children p
 
--- TODO
--- Can we be cleverer here? So as not to search foo -> bar -> baz
--- foo -> baz -> bar.. That could _actually_ solve the MUS-part.
+
 filterDownBFS :: (Pointer a -> Bool) -> Pointer a -> [Pointer a]
 filterDownBFS pre ptr = filter pre (bfs' [ptr])
  where
@@ -148,57 +134,54 @@ filterDownBFS pre ptr = filter pre (bfs' [ptr])
                      Just chen -> catMaybes [ focusChild ch pr | ch <- chen]
 
 focusUp :: Pointer a -> Maybe (Pointer a)
-focusUp (Pointer Top _)                                    = Nothing
+focusUp (Pointer Top _)                                          = Nothing
 
-focusUp (Pointer (PChoicePoint path context q a )       t) = Just $ Pointer path newTree
+focusUp (Pointer (PChoicePoint path context q a )             t) = Just $ Pointer path newTree
   where newTree = PChoice q a newPSQ
         newPSQ  = P.joinContext t context
 
-focusUp (Pointer (FChoicePoint path context q a b1 b2 ) t) = Just $ Pointer path newTree
+focusUp (Pointer (FChoicePoint path context q a b1 b2 )       t) = Just $ Pointer path newTree
   where newTree = FChoice q a b1 b2 newPSQ
         newPSQ  = P.joinContext t context
 
-focusUp (Pointer (SChoicePoint path context q a b )     t) = Just $ Pointer path newTree
+focusUp (Pointer (SChoicePoint path context q a b )           t) = Just $ Pointer path newTree
   where newTree = SChoice q a b newPSQ
         newPSQ  = P.joinContext t context
 
-focusUp (Pointer (GChoicePoint path context)            t) = Just $ Pointer path newTree
+focusUp (Pointer (GChoicePoint path context)                  t) = Just $ Pointer path newTree
   where newTree = GoalChoice  newPSQ
         newPSQ  = P.joinContext t context
 
---focusUp (Pointer (FailPoint path c f mft)          t) = Just $ Pointer path newTree
---  where newTree = Fail c f (fmap (fmap $ const t) mft)
-
-focusUp (Pointer (FailPoint path c f (Just (FailTree _ p i)))          t) = Just $ Pointer path newTree
+focusUp (Pointer (FailPoint path c f (Just (FailTree _ p i))) t) = Just $ Pointer path newTree
   where newTree = Fail c f ((Just (FailTree t p i)))
 
-focusUp (Pointer (FailPoint path c f Nothing)          _) = Just $ Pointer path newTree
+focusUp (Pointer (FailPoint path c f Nothing)                 _) = Just $ Pointer path newTree
   where newTree = Fail c f Nothing
 
 
 focusChild :: ChildType -> Pointer a -> Maybe (Pointer a)
-focusChild (CTP key)  (Pointer oldPath (PChoice q a       psq)) = Pointer newPath <$> P.lookup key psq
+focusChild (CTP key)  (Pointer oldPath (PChoice q a       psq))               = Pointer newPath <$> P.lookup key psq
   where newPath = PChoicePoint oldPath newContext q a
         newContext = P.makeContextAt key psq
 
-focusChild (CTF key)  (Pointer oldPath (FChoice q a b1 b2 psq)) = Pointer newPath <$> P.lookup key psq
+focusChild (CTF key)  (Pointer oldPath (FChoice q a b1 b2 psq))               = Pointer newPath <$> P.lookup key psq
   where newPath = FChoicePoint oldPath newContext q a b1 b2
         newContext = P.makeContextAt key psq
 
-focusChild (CTS key)  (Pointer oldPath (SChoice q a b     psq)) = Pointer newPath <$> P.lookup key psq
+focusChild (CTS key)  (Pointer oldPath (SChoice q a b     psq))               = Pointer newPath <$> P.lookup key psq
   where newPath = SChoicePoint oldPath newContext q a b
         newContext = P.makeContextAt key psq
 
-focusChild (CTOG key) (Pointer oldPath (GoalChoice        psq)) = Pointer newPath <$> P.lookup key psq
+focusChild (CTOG key) (Pointer oldPath (GoalChoice        psq))               = Pointer newPath <$> P.lookup key psq
   where newPath = GChoicePoint oldPath newContext
         newContext = P.makeContextAt key psq
 
-focusChild (CTFail _ )(Pointer oldPath (Fail c f     ft@(Just(FailTree t _ _)))) =  Just $ Pointer newPath t
+focusChild (CTFail _ ) (Pointer oldPath (Fail c f ft@(Just(FailTree t _ _)))) =  Just $ Pointer newPath t
   where newPath = FailPoint oldPath c f ft
 
-focusChild (CTFail _ )   (Pointer _        (Fail _ _     Nothing)) = Nothing -- This is sort of bad
-
-focusChild _            _                             = Nothing
+focusChild (CTFail _ ) (Pointer _        (Fail _ _     Nothing))              = Nothing -- This is sort of bad
+                                                                                        -- if we want to distinguis those cases.
+focusChild _           _                                                      = Nothing
 
 
 

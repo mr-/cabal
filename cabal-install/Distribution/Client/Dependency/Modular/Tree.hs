@@ -13,6 +13,19 @@ import Distribution.Client.Dependency.Modular.Package
 import Distribution.Client.Dependency.Modular.PSQ as P hiding (map, toList)
 import Distribution.Client.Dependency.Modular.Version
 
+-- | Type of the search tree. Inlining the choice nodes for now.
+data Tree a =
+    PChoice     QPN a           (PSQ I        (Tree a))
+  | FChoice     QFN a Bool Bool (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial, second Bool whether it's manual
+  | SChoice     QSN a Bool      (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial
+  | GoalChoice                  (PSQ OpenGoal (Tree a)) -- PSQ should never be empty
+  | Done        RevDepMap
+  | Fail        (ConflictSet QPN) FailReason  (Maybe (FailTree a))
+  deriving (Eq, Show)
+  -- Above, a choice is called trivial if it clearly does not matter. The
+  -- special case of triviality we actually consider is if there are no new
+  -- dependencies introduced by this node.
+
 data FailTree a    = FailTree { failTree  :: (Tree a)
                               , failQPN   :: QPN
                               , failI     :: I }
@@ -39,18 +52,6 @@ instance Foldable (FailTreeF a) where
 instance Traversable (FailTreeF a) where
   traverse f (FailTreeF a qpn i) =  FailTreeF <$> (f a) <*> pure qpn <*> pure i
 
--- | Type of the search tree. Inlining the choice nodes for now.
-data Tree a =
-    PChoice     QPN a           (PSQ I        (Tree a))
-  | FChoice     QFN a Bool Bool (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial, second Bool whether it's manual
-  | SChoice     QSN a Bool      (PSQ Bool     (Tree a)) -- Bool indicates whether it's trivial
-  | GoalChoice                  (PSQ OpenGoal (Tree a)) -- PSQ should never be empty
-  | Done        RevDepMap
-  | Fail        (ConflictSet QPN) FailReason  (Maybe (FailTree a))
-  deriving (Eq, Show)
-  -- Above, a choice is called trivial if it clearly does not matter. The
-  -- special case of triviality we actually consider is if there are no new
-  -- dependencies introduced by this node.
 
 data NodeType a = NTP QPN a
                 | NTF QFN a Bool Bool
@@ -58,7 +59,7 @@ data NodeType a = NTP QPN a
                 | NTGoal
                 | NTDone RevDepMap
                 | NTFail (ConflictSet QPN) FailReason deriving (Eq, Show, Ord)
--- TODO: NTFail wants the tree?
+
 
 treeToNode :: Tree a -> NodeType a
 treeToNode (PChoice     qpn a       _) = NTP qpn a
