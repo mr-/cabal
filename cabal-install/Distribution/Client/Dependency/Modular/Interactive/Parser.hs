@@ -47,6 +47,7 @@ data GoChoice = Package String
               | Version String
               | Number  Integer
               deriving (Show, Eq)
+
 commandList :: [String]
 commandList = sort
            [ "bset"
@@ -207,8 +208,7 @@ fsSelection =
 goParser :: Parser GoChoice
 goParser = try goNumber
        <|> try goVersion
-       <|> try goPackage
-
+       <|> try goPackage -- Package needs to be parsed last. Is somewhat greedy
 
 goVersion :: Parser GoChoice
 goVersion =
@@ -225,10 +225,16 @@ goNumber =
 
 goPackage :: Parser GoChoice
 goPackage =
-  do package <- many1 (choice [many1 letter, string "-"])
-     return $ Package $ concat package
+  do -- package <- many1 (choice [char '-', letter])
+     package <- many1 (alphaNum <|> oneOf "-")
+     whiteSpace -- why is that necessary to
+                -- parse of "go cabal ; auto" correctly.
+     return $ Package $ package
 
 readStatements :: String -> Either String Statements
 readStatements input = case parse statements "" input of
     Left err ->  Left $ show err
     Right val -> Right val
+
+
+--       "1 ; auto" and "1.1 ; auto" are fine, mysteriously

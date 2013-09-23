@@ -65,7 +65,8 @@ runInteractive platform compId solver resolverParams = do
           return toInstall
 
         loop First = do
-          _ <- executeUICommand ShowChoices
+          uiState <- get
+          _ <- executeUICommand (ShowChoices uiState)
           action <- handleCommands
           loop action
 
@@ -117,8 +118,7 @@ executeUICommand :: UICommand -> AppState Action
 executeUICommand (Error s)      = do
     lift $ outputStrLn s
     return Continue
-executeUICommand (ShowChoices)  = do
-    uiState <- get
+executeUICommand (ShowChoices uiState)  = do
     lift $ outputStrLn $ showNodeFromTree ( toTree $ uiPointer uiState )
     lift $ outputStrLn $ displayChoices uiState `thisOrThat` "No choices left"
     return Continue

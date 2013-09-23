@@ -31,8 +31,10 @@ data Path a =
   | SChoicePoint (Path a) (PSQContext Bool     (Tree a)) QSN a Bool
   | GChoicePoint (Path a) (PSQContext OpenGoal (Tree a))
   | FailPoint    (Path a) (ConflictSet QPN) FailReason (Maybe (FailTree a))
+    deriving (Eq)
 
 data Pointer a = Pointer { toPath :: Path a, toTree :: Tree a }
+                  deriving (Eq)
 
 --data PointerPair a = Pair { pairShallow :: Pointer a,  pairDeep :: Pointer a}
 

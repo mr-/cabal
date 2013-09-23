@@ -1,8 +1,8 @@
 module Distribution.Client.Dependency.Modular.Interactive.Interpreter where
 
-import Control.Applicative                                       ((<$>))
+import Control.Applicative                                       ((<$>), liftA2)
 import Control.Monad                                             (when)
-import Control.Monad.State                                       (State, gets, modify)
+import Control.Monad.State                                       (State, gets, modify, get)
 import Data.Function                                             (on)
 import Data.Char                                                 (toLower)
 import Data.List                                                 (find)
@@ -28,26 +28,26 @@ import Distribution.Client.Dependency.Modular.TreeZipper         (Pointer (..), 
                                                                   liftToPtr, toTree)
 import Distribution.Client.Dependency.Types                      (QPointer)
 import Distribution.Client.Dependency.Modular.MUS                (findMUS, showPath)
-
+import Prelude hiding (and)
 
 type InterpreterState = State UIState
 
 interpretStatement :: Statement -> InterpreterState [UICommand]
-interpretStatement ToTop = modifyPointer focusRoot >> return [ShowChoices]
+interpretStatement ToTop = modifyPointer focusRoot >> showChoices
 
 interpretStatement Up = do
   ptr <- gets uiPointer
   setPointer (fromMaybe ptr (focusUp ptr))
-  return [ShowChoices]
+  showChoices
 
 interpretStatement (Go there) = do
   treePointer <- gets uiPointer
   let choices = generateChoices treePointer
       focused = select there choices >>= flip focusChild treePointer
   case focused of
-    Nothing -> return [Error $ "No such child: " ++ show there]
+    Nothing -> showError $ "No such child: " ++ show there
     Just subPointer -> do setPointer subPointer
-                          return [ShowChoices]
+                          showChoices
     where
         select (Number n) choices  = lookup (fromInteger n) choices
         select (Version x) choices = snd <$> find (\(_,c) -> x == showChild c) choices
@@ -61,19 +61,19 @@ interpretStatement Auto = do
     Left e  -> return [Error e]
     Right t -> setPointer t >> return [ShowResult "Created a valid installplan. \nType install to install, or showPlan to review" ]
 
-interpretStatement (BookSet name) = addBookmark name >> return [ShowResult (name ++ " set")]
+interpretStatement (BookSet name) = addBookmark name >> showResult (name ++ " set")
   where
     addBookmark :: String -> InterpreterState ()
     addBookmark s = modify (\u -> u {uiBookmarks = (s, uiPointer u) : uiBookmarks u})
 
 interpretStatement BookList = do bookmarks <- gets uiBookmarks
-                                 return [ShowResult $ show $ map fst bookmarks]
+                                 showResult $ show $ map fst bookmarks
 
 interpretStatement (BookJump name) = do
     bookmarks <- gets uiBookmarks
     case lookup name bookmarks of
-        Nothing -> return [Error "No such bookmark."]
-        Just a  -> setPointer a >> return [ShowResult "Jumped"] -- Actual progress!
+        Nothing -> showError "No such bookmark."
+        Just a  -> setPointer a >> showResult "Jumped" -- Actual progress!
 
 
 -- TODO: Should the selected packages get precedence? Or should they be
@@ -88,7 +88,7 @@ interpretStatement (Goto selections) = do
           let newPointer = selectPointer selections pointer t
               assignment = intermediateAssignment pointer newPointer
           setPointer newPointer
-          return [ShowResult $ showAssignment assignment, ShowChoices]
+          showResult (showAssignment assignment) `and` showChoices
     where
       selectPointer :: Selections -> QPointer -> QPointer -> QPointer
       selectPointer sel here done = last $ done:found
@@ -98,7 +98,7 @@ interpretStatement (Goto selections) = do
 interpretStatement Install = do ptr <- gets uiPointer
                                 if isDone ptr
                                  then modify (\x -> x{uiInstall = Just ptr}) >> return [DoInstall]
-                                 else return [Error "Need to be on a \"Done\"-Node"]
+                                 else showError "Need to be on a \"Done\"-Node"
 
 interpretStatement (Cut _) = return [Error "Ooops.. not implemented yet."]
 
@@ -106,24 +106,24 @@ interpretStatement (Cut _) = return [Error "Ooops.. not implemented yet."]
 interpretStatement (Find sel) = do
     ptr <- gets uiPointer
     case filterDown (isSelected sel.toTree) ptr of
-        (x:_) -> setPointer x >> return [ShowChoices]
-        _     -> return [Error "Nothing found"]
+        (x:_) -> setPointer x >> showChoices
+        _     -> showError "Nothing found"
 
 
 interpretStatement IndicateAuto = do
     ptr <- gets uiPointer
     case explorePointer ptr of
       Left e  -> return [Error e]
-      Right t -> modify (\x -> x{uiAutoPointer = Just t}) >> return [ShowChoices]
+      Right t -> modify (\x -> x{uiAutoPointer = Just t}) >> showChoices
 
 
 interpretStatement ShowPlan = do
     ptr <- gets uiPointer
-    return [ShowResult $ showAssignment $ ptrToAssignment ptr]
+    showResult $ showAssignment $ ptrToAssignment ptr
 
 interpretStatement (Prefer sel) = do
     modifyPointer (\x -> preferSelections sel `liftToPtr` x)
-    return [ShowChoices]
+    showChoices
 
 
 interpretStatement Back = do
@@ -132,21 +132,20 @@ interpretStatement Back = do
         ((s,oldPtr):reminder) -> do when (s == IndicateAuto) (modify (\x -> x{uiAutoPointer = Nothing}))
                                     setPointer oldPtr
                                     modify (\x -> x{uiHistory = reminder})
-                                    return [ShowChoices]
-        _                     -> return [Error "Nothing to go back to"]
+                                    showChoices
+        _                     -> showError "Nothing to go back to"
 
 interpretStatement ShowHistory = do history <- gets uiHistory
-                                    return [ShowResult $ show $ map fst history]
+                                    showResult $ show $ map fst history
 
 interpretStatement WhatWorks =
     do ptr <- gets uiPointer
-       return                  [
-          ShowResult           $
-          show                 $
-          map showChild        $
-          filter (works ptr)   $
-          fromJust             $
-          children ptr         ]
+       showResult             $
+         show                 $
+         map showChild        $
+         filter (works ptr)   $
+         fromJust             $
+         children ptr
     where
       isRight :: Either a b -> Bool
       isRight (Right _) = True
@@ -159,16 +158,16 @@ interpretStatement WhatWorks =
 interpretStatement (FailReason) = do
     ptr <- gets uiPointer
     case findMUS (toTree ptr) of
-      Nothing               -> return [ShowResult "Uhoh.. got Nothing, call me!"]
-      (Just (_, True))      -> return [ShowResult "Found a solution - cannot find a failreason."]
-      (Just (path, False))  -> return [ShowResult $ "The following packages contradict each other: " ++ showPath path]
+      Nothing               -> showResult "Uhoh.. got Nothing, call me!"
+      (Just (_, True))      -> showResult "Found a solution - cannot find a failreason."
+      (Just (path, False))  -> showResult $ "The following packages contradict each other: " ++ showPath path
                                     --   ShowResult $ baz (toTree ptr),
                                     --   ShowResult $ take 2000 $ showThinnedPaths (toTree ptr),
                                     --   ShowResult $ take 100 $ showThinnedPathsBFS (toTree ptr),
                                     --   ShowResult $ show $ treeHasDuplicates 3 ( removeDuplicates $ toCompact $ toSimple $ toTree ptr)]
 
 
-interpretStatement Help = return [ShowResult helpText, ShowChoices]
+interpretStatement Help = showResult helpText `and` showChoices
 
 isDone :: QPointer -> Bool
 isDone (Pointer _ (Done _ )  ) = True
@@ -242,6 +241,19 @@ modifyPointer f = do ptr <- gets uiPointer
 
 generateChoices :: QPointer -> [(Int, ChildType)]
 generateChoices treePointer = zip [1..] (fromMaybe [] $ children treePointer)
+
+
+showResult :: String -> InterpreterState [UICommand]
+showResult str = return [ShowResult str]
+
+showChoices:: InterpreterState [UICommand]
+showChoices = get >>= \x -> return [ShowChoices x]
+
+showError:: String -> InterpreterState [UICommand]
+showError str = return [Error str]
+
+and :: InterpreterState [UICommand] -> InterpreterState [UICommand] -> InterpreterState [UICommand]
+and = liftA2 (++)
 
 
 

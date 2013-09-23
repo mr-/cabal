@@ -8,10 +8,11 @@ data UIState = UIState {uiPointer         :: QPointer,
                         uiInstall         :: Maybe QPointer,
                         uiAutoPointer     :: Maybe QPointer,
                         uiHistory         :: [(Statement, QPointer)]}
+                          deriving (Eq)
 
 
 data Action = InstallNow | Abort | Continue | First deriving (Eq)
 
-data UICommand = Error String | ShowChoices | ShowResult String | DoInstall deriving (Show, Eq)
+data UICommand = Error String | ShowChoices UIState | ShowResult String | DoInstall deriving (Eq)
 
 

@@ -142,6 +142,7 @@ joinPSQ (PSQ a) (PSQ b) = PSQ (a ++ b)
 -- left in reverse order to make going left constant time?
 -- We never go left.
 data PSQContext k v = PSQContext {contextLefts :: (PSQ k v), contextKey ::  k, contextRights ::  (PSQ k v)}
+                deriving (Eq)
 
 
 joinContext :: v -> PSQContext k v -> PSQ k v
