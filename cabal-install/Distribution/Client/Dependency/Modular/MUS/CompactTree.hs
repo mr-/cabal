@@ -54,7 +54,7 @@ showCOpenGoal (COpenGoal goal) = showOpenGoal goal
 -- as we look for small MUSes mostly.
 -- TODO: Better choose them according to the default.
 toSimple :: Tree a -> SimpleTree a
-toSimple (FChoice     _ _ _ _ t) = toSimple $ fromJust $ P.lookup False t
+toSimple (FChoice     _ _ _ _ t) = toSimple $ fromJust $ P.first t
 toSimple (SChoice     _ _ _   t) = toSimple $ fromJust $ P.lookup False t
 toSimple (PChoice     q a     t) = SPChoice q a (toSimple <$> t)
 toSimple (GoalChoice          t) = SGoalChoice  (toSimple <$> t)

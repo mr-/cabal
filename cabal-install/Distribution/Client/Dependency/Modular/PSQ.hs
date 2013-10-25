@@ -85,6 +85,11 @@ sortBy cmp (PSQ xs) = PSQ (L.sortBy (cmp `on` snd) xs)
 sortByKeys :: (k -> k -> Ordering) -> PSQ k a -> PSQ k a
 sortByKeys cmp (PSQ xs) = PSQ (L.sortBy (cmp `on` fst) xs)
 
+
+first :: PSQ k a -> Maybe a
+first (PSQ []) = Nothing
+first (PSQ (x:_)) = Just $ snd x
+
 -- TODO: Would this like to be more efficient?
 spanByKeys :: (k -> Bool) -> PSQ k a -> (PSQ k a, PSQ k a)
 spanByKeys f psq = (lefts, rights)
