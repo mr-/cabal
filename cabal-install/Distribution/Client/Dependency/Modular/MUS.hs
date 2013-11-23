@@ -33,11 +33,14 @@ import qualified Distribution.Client.Dependency.Modular.PSQ as P
 -- Further, we try to make the tree thin enough to make the search feasible,
 -- while keeping it wide enough to find MUSes.
 
--- Note that we do not reall find MUSes, since every returned Path has to
+-- Note that we do not really find MUSes, since every returned Path has to
 -- include one of the packages given at the command line.
+-- Also a package that is part of a MUS might have been a dependency of
+-- another package way down the tree.
 -- To determine whether a returned Path constitutes a MUS we would have to
 -- check satisfiability after removing that package.
 
+-- A shrinking would be needed to make it an actual MUS.
 
 -- TODO: It is not quite clear why removeDuplicates is necessary..
 -- but it works that way.
