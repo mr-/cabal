@@ -60,7 +60,7 @@ module Distribution.Client.Dependency (
     hideInstalledPackagesSpecificByInstalledPackageId,
     hideInstalledPackagesSpecificBySourcePackageId,
     hideInstalledPackagesAllVersions,
-    interpretPackagesPreference,
+    removeUpperBounds
   ) where
 
 import Distribution.Client.Dependency.TopDown
@@ -76,7 +76,7 @@ import Distribution.Client.Types
          , SourcePackage(..) )
 import Distribution.Client.Dependency.Types
          ( PreSolver(..), Solver(..), DependencyResolver, PackageConstraint(..)
-         , PackagePreferences(..), InstalledPreference(..)
+         , AllowNewer(..), PackagePreferences(..), InstalledPreference(..)
          , PackagesPreferenceDefault(..), QPointer
          , Progress(..), foldProgress, DependencyResolverOptions )
 import Distribution.Client.Sandbox.Types
@@ -86,9 +86,14 @@ import qualified Distribution.InstalledPackageInfo as Installed
 import Distribution.Package
          ( PackageName(..), PackageId, Package(..), packageName, packageVersion
          , InstalledPackageId, Dependency(Dependency))
+import qualified Distribution.PackageDescription as PD
+         ( PackageDescription(..), GenericPackageDescription(..)
+         , Library(..), Executable(..), TestSuite(..), Benchmark(..), CondTree)
+import Distribution.PackageDescription (BuildInfo(targetBuildDepends))
+import Distribution.PackageDescription.Configuration (mapCondTree)
 import Distribution.Version
          ( Version(..), VersionRange, anyVersion, thisVersion, withinRange
-         , simplifyVersionRange )
+         , removeUpperBound, simplifyVersionRange )
 import Distribution.Compiler
          ( CompilerId(..), CompilerFlavor(..) )
 import Distribution.System
@@ -99,6 +104,7 @@ import Distribution.Text
          ( display )
 import Distribution.Verbosity
          ( Verbosity )
+
 import Data.List (maximumBy, foldl')
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as Map
@@ -288,6 +294,88 @@ hideBrokenInstalledPackages params =
            . map (Installed.installedPackageId . fst)
            . InstalledPackageIndex.brokenPackages
            $ depResolverInstalledPkgIndex params
+
+-- | Remove upper bounds in dependencies using the policy specified by the
+-- 'AllowNewer' argument (all/some/none).
+removeUpperBounds :: AllowNewer -> DepResolverParams -> DepResolverParams
+removeUpperBounds allowNewer params =
+    params {
+      -- NB: It's important to apply 'removeUpperBounds' after
+      -- 'addSourcePackages'. Otherwise, the packages inserted by
+      -- 'addSourcePackages' won't have upper bounds in dependencies relaxed.
+
+      depResolverSourcePkgIndex = sourcePkgIndex'
+    }
+  where
+    sourcePkgIndex  = depResolverSourcePkgIndex params
+    sourcePkgIndex' = case allowNewer of
+      AllowNewerNone      -> sourcePkgIndex
+      AllowNewerAll       -> fmap relaxAllPackageDeps         sourcePkgIndex
+      AllowNewerSome pkgs -> fmap (relaxSomePackageDeps pkgs) sourcePkgIndex
+
+    relaxAllPackageDeps :: SourcePackage -> SourcePackage
+    relaxAllPackageDeps = onAllBuildDepends doRelax
+      where
+        doRelax (Dependency pkgName verRange) =
+          Dependency pkgName (removeUpperBound verRange)
+
+    relaxSomePackageDeps :: [PackageName] -> SourcePackage -> SourcePackage
+    relaxSomePackageDeps pkgNames = onAllBuildDepends doRelax
+      where
+        doRelax d@(Dependency pkgName verRange)
+          | pkgName `elem` pkgNames = Dependency pkgName
+                                      (removeUpperBound verRange)
+          | otherwise               = d
+
+    -- Walk a 'GenericPackageDescription' and apply 'f' to all 'build-depends'
+    -- fields.
+    onAllBuildDepends :: (Dependency -> Dependency)
+                      -> SourcePackage -> SourcePackage
+    onAllBuildDepends f srcPkg = srcPkg'
+      where
+        gpd        = packageDescription srcPkg
+        pd         = PD.packageDescription gpd
+        condLib    = PD.condLibrary        gpd
+        condExes   = PD.condExecutables    gpd
+        condTests  = PD.condTestSuites     gpd
+        condBenchs = PD.condBenchmarks     gpd
+
+        f' = onBuildInfo f
+        onBuildInfo g bi = bi
+          { targetBuildDepends = map g (targetBuildDepends bi) }
+
+        onLibrary    lib  = lib { PD.libBuildInfo  = f' $ PD.libBuildInfo  lib }
+        onExecutable exe  = exe { PD.buildInfo     = f' $ PD.buildInfo     exe }
+        onTestSuite  tst  = tst { PD.testBuildInfo = f' $ PD.testBuildInfo tst }
+        onBenchmark  bmk  = bmk { PD.benchmarkBuildInfo =
+                                     f' $ PD.benchmarkBuildInfo bmk }
+
+        srcPkg' = srcPkg { packageDescription = gpd' }
+        gpd'    = gpd {
+          PD.packageDescription = pd',
+          PD.condLibrary        = condLib',
+          PD.condExecutables    = condExes',
+          PD.condTestSuites     = condTests',
+          PD.condBenchmarks     = condBenchs'
+          }
+        pd' = pd {
+          PD.buildDepends = map  f            (PD.buildDepends pd),
+          PD.library      = fmap onLibrary    (PD.library pd),
+          PD.executables  = map  onExecutable (PD.executables pd),
+          PD.testSuites   = map  onTestSuite  (PD.testSuites pd),
+          PD.benchmarks   = map  onBenchmark  (PD.benchmarks pd)
+          }
+        condLib'    = fmap (onCondTree onLibrary)             condLib
+        condExes'   = map  (mapSnd $ onCondTree onExecutable) condExes
+        condTests'  = map  (mapSnd $ onCondTree onTestSuite)  condTests
+        condBenchs' = map  (mapSnd $ onCondTree onBenchmark)  condBenchs
+
+        mapSnd :: (a -> b) -> (c,a) -> (c,b)
+        mapSnd = fmap
+
+        onCondTree :: (a -> b) -> PD.CondTree v [Dependency] a
+                   -> PD.CondTree v [Dependency] b
+        onCondTree g = mapCondTree g (map f) id
 
 
 upgradeDependencies :: DepResolverParams -> DepResolverParams
