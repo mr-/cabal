@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable #-}
 module Distribution.Client.Dependency.Modular.Tree where
 
 import Control.Applicative
@@ -35,8 +36,8 @@ data FailTree a    = FailTree { failTree  :: (Tree a)
                               , failI     :: I }
                                 deriving (Eq, Show, Functor)
 
-data FailTreeF a b = FailTreeF b QPN I 
-		deriving (Functor, Foldable, Traversable, Eq, Show)
+data FailTreeF a b = FailTreeF b QPN I
+    deriving (Functor, Foldable, Traversable, Eq, Show)
 
 innFailTree :: FailTreeF a (Tree a) -> FailTree a
 innFailTree (FailTreeF t q i) = FailTree t q i
@@ -49,7 +50,7 @@ data NodeType a = NTP QPN a
                 | NTS QSN a Bool
                 | NTGoal
                 | NTDone RevDepMap
-                | NTFail (ConflictSet QPN) FailReason deriving (Eq, Show, Ord)
+                | NTFail (ConflictSet QPN) FailReason deriving (Eq, Show)
 
 
 treeToNode :: Tree a -> NodeType a
@@ -70,7 +71,7 @@ data ChildType = CTP I
                | CTS Bool
                | CTOG OpenGoal
                | CTFail (Maybe (QPN, I))
-                deriving (Show, Eq, Ord)
+                deriving (Show, Eq)
 
 
 showChild :: ChildType -> String

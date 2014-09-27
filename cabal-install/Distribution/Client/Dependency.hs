@@ -518,14 +518,14 @@ resolveDependencies  :: Platform
                      -> (Maybe QPointer -> Progress String String InstallPlan)
 
     --TODO: is this needed here? see dontUpgradeNonUpgradeablePackages
-resolveDependencies platform comp _solver params
+resolveDependencies platform comp _solver params _
   | null (depResolverTargets params)
   = return (mkInstallPlan platform comp [])
 
 resolveDependencies platform comp solver params pointer =
-  
+
   Step (debugDepResolverParams finalparams)
-  $ fmap (mkInstallPlan platform comp) 
+  $ fmap (mkInstallPlan platform comp)
   $ runSolver solver sc depResOpts pointer
   where
     (sc, depResOpts, finalparams) = resolveDependenciesConfigs platform comp solver params
@@ -537,7 +537,7 @@ resolveDependenciesConfigs :: Platform
                      -> (SolverConfig, DependencyResolverOptions, DepResolverParams)
 resolveDependenciesConfigs platform comp solver params =
     ((SolverConfig reorderGoals indGoals noReinstalls shadowing strFlags maxBkjumps),
-     (platform, comp, installedPkgIndex, sourcePkgIndex, preferences, constraints, targets))
+     (platform, comp, installedPkgIndex, sourcePkgIndex, preferences, constraints, targets), finalparams)
   where
     finalparams @ (DepResolverParams
       targets constraints

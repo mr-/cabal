@@ -978,8 +978,9 @@ data InstallFlags = InstallFlags {
     installSymlinkBinDir    :: Flag FilePath,
     installOneShot          :: Flag Bool,
     installNumJobs          :: Flag (Maybe Int),
+    installInteractive      :: Flag Bool,
     installRunTests         :: Flag Bool
-  }
+  } deriving (Show)
 
 defaultInstallFlags :: InstallFlags
 defaultInstallFlags = InstallFlags {
@@ -1005,6 +1006,7 @@ defaultInstallFlags = InstallFlags {
     installSymlinkBinDir   = mempty,
     installOneShot         = Flag False,
     installNumJobs         = mempty,
+    installInteractive     = Flag False,
     installRunTests        = mempty
   }
   where
@@ -1126,6 +1128,11 @@ installOptions showOrParseArgs =
           installReinstall (\v flags -> flags { installReinstall = v })
           (yesNoOpt showOrParseArgs)
 
+      , option [] ["interactive"]
+          "Install interactively/point-and-shoot-style."
+          installInteractive (\v flags -> flags { installInteractive = v })
+          (yesNoOpt showOrParseArgs)
+
       , option [] ["avoid-reinstalls"]
           "Do not select versions that would destructively overwrite installed packages."
           installAvoidReinstalls (\v flags -> flags { installAvoidReinstalls = v })
@@ -1232,6 +1239,7 @@ instance Monoid InstallFlags where
     installSymlinkBinDir   = mempty,
     installOneShot         = mempty,
     installNumJobs         = mempty,
+    installInteractive     = mempty,
     installRunTests        = mempty
   }
   mappend a b = InstallFlags {
@@ -1257,6 +1265,7 @@ instance Monoid InstallFlags where
     installSymlinkBinDir   = combine installSymlinkBinDir,
     installOneShot         = combine installOneShot,
     installNumJobs         = combine installNumJobs,
+    installInteractive     = combine installInteractive,
     installRunTests        = combine installRunTests
   }
     where combine field = field a `mappend` field b

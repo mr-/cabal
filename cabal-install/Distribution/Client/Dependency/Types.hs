@@ -62,7 +62,7 @@ import Distribution.Compiler
 import Distribution.System
          ( Platform )
 import Distribution.Text
-         ( Text(..) )
+         ( Text(..), display )
 
 import Text.PrettyPrint
          ( text )

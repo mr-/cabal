@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor #-}
 module Distribution.Client.Dependency.Modular.Dependency where
 
 import Prelude hiding (pi)
@@ -35,11 +36,6 @@ showVar :: Var QPN -> String
 showVar (P qpn) = showQPN qpn
 showVar (F qfn) = showQFN qfn
 showVar (S qsn) = showQSN qsn
-
-instance Functor Var where
-  fmap f (P n)  = P (f n)
-  fmap f (F fn) = F (fmap f fn)
-  fmap f (S sn) = S (fmap f sn)
 
 type ConflictSet qpn = Set (Var qpn)
 
@@ -112,7 +108,7 @@ type FalseFlaggedDeps qpn = FlaggedDeps qpn
 -- | A dependency (constraint) associates a package name with a
 -- constrained instance.
 data Dep qpn = Dep qpn (CI qpn)
-  deriving (Eq, Show, Ord, Functor)
+  deriving (Eq, Show, Functor)
 
 showDep :: Dep QPN -> String
 showDep (Dep qpn (Fixed i (Goal v _))          ) =
@@ -123,8 +119,6 @@ showDep (Dep qpn (Constrained [(vr, Goal v _)])) =
 showDep (Dep qpn ci                            ) =
   showQPN qpn ++ showCI ci
 
-instance Functor Dep where
-  fmap f (Dep x y) = Dep (f x) (fmap f y)
 
 instance ResetGoal Dep where
   resetGoal g (Dep qpn ci) = Dep qpn (resetGoal g ci)
@@ -147,7 +141,7 @@ instance ResetGoal Goal where
 -- | For open goals as they occur during the build phase, we need to store
 -- additional information about flags.
 data OpenGoal = OpenGoal (FlaggedDep QPN) QGoalReasonChain
-  deriving (Eq, Show, Ord)
+  deriving (Eq, Show)
 
 -- | Reasons why a goal can be added to a goal set.
 data GoalReason qpn =

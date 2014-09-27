@@ -41,8 +41,8 @@ data ModularConfig = ModularConfig {
 -- | Interface: This is the interface to the actual solver.
 -- It has a Pointer as optional parameter and will try to solve below that
 -- pointer, if provided.
-solve :: SolverConfig -> 
-         ModularConfig -> 
+solve :: SolverConfig ->
+         ModularConfig ->
          Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap)
 solve _  _  (Just treePointer)  = transformLog $ findDoneBelow treePointer -- was: donePtrToLog treePointer
 solve sc mc  Nothing            = transformLog $ findDoneBelow $ fromTree $ getDepTree sc mc
@@ -57,7 +57,7 @@ getDepTree sc (ModularConfig idx userPrefs userConstraints userGoals) =
            prunePhase       $
            buildPhase
   where
-    heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
+    heuristicsPhase  = --P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
                        P.deferWeakFlagChoices .
                        P.preferBaseGoalChoice .
                        if preferEasyGoalChoices sc

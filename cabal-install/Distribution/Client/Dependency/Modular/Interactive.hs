@@ -40,7 +40,7 @@ runInteractive :: Platform
                -> DepResolverParams
                -> IO (Maybe QPointer)
 runInteractive platform compId solver resolverParams = do
-    let (sc, depResOpts) = resolveDependenciesConfigs platform compId solver resolverParams
+    let (sc, depResOpts, _) = resolveDependenciesConfigs platform compId solver resolverParams
         searchTree       = modularResolverTree sc depResOpts
         initialState     = UIState (fromTree searchTree) [] Nothing Nothing []
 
