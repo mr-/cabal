@@ -149,7 +149,7 @@ import Distribution.Text
 import Distribution.Verbosity as Verbosity
          ( Verbosity, showForCabal, normal, verbose )
 import Distribution.Simple.BuildPaths ( exeExtension )
-import Distribution.Client.Dependency.Types ( Solver(..), QPointer )
+import Distribution.Client.Dependency.Types ( QPointer )
 import Distribution.Client.Dependency.Modular.Interactive (runInteractive)
 
 
@@ -275,11 +275,10 @@ makeInstallContext verbosity
 makeInstallPlan :: Verbosity -> InstallArgs -> InstallContext
                 -> IO (Maybe (Progress String String InstallPlan))
 makeInstallPlan verbosity
-  iargs@(_, _, comp, platform, _, _, mSandboxPkgInfo,
-   _, configFlags, configExFlags, installFlags,
+  iargs@(_, _, comp, platform, _, _, _mSandboxPkgInfo,
+   _, _configFlags, configExFlags, installFlags,
    _)
-  icontext@(installedPkgIndex, sourcePkgDb,
-   _, pkgSpecifiers) = do
+  icontext = do
     solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags)) (compilerId comp)
 
     let resolveUsing :: Maybe QPointer -> Progress String String InstallPlan
@@ -324,10 +323,10 @@ planPackages :: Solver
              -> InstallContext
              -> Maybe QPointer
              -> Progress String String InstallPlan
-planPackages solver iargs@(_, _, comp, platform, _, _, mSandboxPkgInfo,
-   _, configFlags, configExFlags, installFlags,
+planPackages solver iargs@(_, _, comp, platform, _, _, _mSandboxPkgInfo,
+   _, _configFlags, _configExFlags, installFlags,
    _)
-  icontext@(installedPkgIndex, sourcePkgDb,
+  icontext@(_installedPkgIndex, _sourcePkgDb,
    _, pkgSpecifiers) =
         \qPointer -> (resolveDependencies
           platform (compilerId comp)
@@ -404,7 +403,6 @@ makeResolverParams (_, _, _, _, _, _, mSandboxPkgInfo, _, configFlags, configExF
     strongFlags      = fromFlag (installStrongFlags      installFlags)
     maxBackjumps     = fromFlag (installMaxBackjumps     installFlags)
     upgradeDeps      = fromFlag (installUpgradeDeps      installFlags)
-    onlyDeps         = fromFlag (installOnlyDeps         installFlags)
     allowNewer       = fromFlag (configAllowNewer        configExFlags)
 
 ---- | Given an install plan, perform the actual installations.
