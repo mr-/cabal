@@ -57,8 +57,7 @@ getDepTree sc (ModularConfig idx userPrefs userConstraints userGoals) =
            prunePhase       $
            buildPhase
   where
-    heuristicsPhase  = --P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
-                       P.deferWeakFlagChoices .
+    heuristicsPhase  = P.deferWeakFlagChoices .
                        P.preferBaseGoalChoice .
                        if preferEasyGoalChoices sc
                          then P.lpreferEasyGoalChoices

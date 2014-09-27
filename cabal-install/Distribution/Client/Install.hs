@@ -198,8 +198,7 @@ install verbosity packageDBs repos comp platform conf useSandbox mSandboxPkgInfo
       Just progress -> do
           planResult <- foldProgress logMsg (return . Left) (return . Right) progress
           case planResult of
-             Left message -> do reportPlanningFailure verbosity args installContext message
-                                die' message
+             Left message      -> reportPlanningFailure verbosity args installContext message >> die' message
              Right installPlan -> processInstallPlan verbosity args installContext installPlan
   where
     args :: InstallArgs
@@ -282,7 +281,7 @@ makeInstallPlan verbosity
     solver <- chooseSolver verbosity (fromFlag (configSolver configExFlags)) (compilerId comp)
 
     let resolveUsing :: Maybe QPointer -> Progress String String InstallPlan
-        resolveUsing   =  planPackages solver iargs icontext
+        resolveUsing = planPackages solver iargs icontext
     if fromFlag (installInteractive installFlags) && solver == Modular -- How could this be handled better?
       then do
         notice verbosity "Starting interactive dependency solver..."
@@ -296,7 +295,9 @@ makeInstallPlan verbosity
 
 
 -- | Given an install plan, perform the actual installations.
-processInstallPlan :: Verbosity -> InstallArgs -> InstallContext
+processInstallPlan :: Verbosity
+                   -> InstallArgs
+                   -> InstallContext
                    -> InstallPlan
                    -> IO ()
 processInstallPlan verbosity
@@ -328,14 +329,14 @@ planPackages solver iargs@(_, _, comp, platform, _, _, _mSandboxPkgInfo,
    _)
   icontext@(_installedPkgIndex, _sourcePkgDb,
    _, pkgSpecifiers) =
-        \qPointer -> (resolveDependencies
-          platform (compilerId comp)
-          solver
-          (makeResolverParams iargs icontext) qPointer
-    >>= if onlyDeps then pruneInstallPlan pkgSpecifiers else return)
-
+        \qPointer ->
+        (resolveDependencies
+              platform (compilerId comp)
+              solver
+              (makeResolverParams iargs icontext) qPointer
+          >>= if onlyDeps then pruneInstallPlan pkgSpecifiers else return)
     where
-      onlyDeps         = fromFlag (installOnlyDeps         installFlags)
+      onlyDeps = fromFlag (installOnlyDeps installFlags)
 
 
 makeResolverParams :: InstallArgs -> InstallContext -> DepResolverParams
@@ -404,24 +405,6 @@ makeResolverParams (_, _, _, _, _, _, mSandboxPkgInfo, _, configFlags, configExF
     maxBackjumps     = fromFlag (installMaxBackjumps     installFlags)
     upgradeDeps      = fromFlag (installUpgradeDeps      installFlags)
     allowNewer       = fromFlag (configAllowNewer        configExFlags)
-
----- | Given an install plan, perform the actual installations.
---processInstallPlan :: Verbosity -> InstallArgs -> InstallContext
---                   -> InstallPlan
---                   -> IO ()
---processInstallPlan verbosity
---  args@(_,_, _, _, _, _, _, _, _, _, installFlags, _)
---  (installedPkgIndex, sourcePkgDb,
---   userTargets, pkgSpecifiers) installPlan = do
---    checkPrintPlan verbosity installedPkgIndex installPlan sourcePkgDb
---      installFlags pkgSpecifiers
---
---    unless dryRun $ do
---      installPlan' <- performInstallations verbosity
---                      args installedPkgIndex installPlan
---      postInstallActions verbosity args userTargets installPlan'
---  where
---    dryRun = fromFlag (installDryRun installFlags)
 
 
 -- | Remove the provided targets from the install plan.
