@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Distribution.Simple.Program.Db
@@ -34,6 +36,7 @@ module Distribution.Simple.Program.Db (
     knownPrograms,
     getProgramSearchPath,
     setProgramSearchPath,
+    modifyProgramSearchPath,
     userSpecifyPath,
     userSpecifyPaths,
     userMaybeSpecifyPath,
@@ -69,6 +72,7 @@ import Distribution.Text
 import Distribution.Verbosity
          ( Verbosity )
 
+import Data.Binary (Binary(..))
 import Data.List
          ( foldl' )
 import Data.Maybe
@@ -131,6 +135,12 @@ instance Read ProgramDb where
     [ (emptyProgramDb { configuredProgs = Map.fromList s' }, r)
     | (s', r) <- readsPrec p s ]
 
+instance Binary ProgramDb where
+  put = put . configuredProgs
+  get = do
+      progs <- get
+      return $! emptyProgramDb { configuredProgs = progs }
+
 
 -- | The Read\/Show instance does not preserve all the unconfigured 'Programs'
 -- because 'Program' is not in Read\/Show because it contains functions. So to
@@ -171,7 +181,7 @@ knownPrograms conf =
 
 -- | Get the current 'ProgramSearchPath' used by the 'ProgramDb'.
 -- This is the default list of locations where programs are looked for when
--- configuring them. This can be overriden for specific programs (with
+-- configuring them. This can be overridden for specific programs (with
 -- 'userSpecifyPath'), and specific known programs can modify or ignore this
 -- search path in their own configuration code.
 --
@@ -184,6 +194,16 @@ getProgramSearchPath = progSearchPath
 --
 setProgramSearchPath :: ProgramSearchPath -> ProgramDb -> ProgramDb
 setProgramSearchPath searchpath db = db { progSearchPath = searchpath }
+
+-- | Modify the current 'ProgramSearchPath' used by the 'ProgramDb'.
+-- This will affect programs that are configured from here on, so you
+-- should usually modify it before configuring any programs.
+--
+modifyProgramSearchPath :: (ProgramSearchPath -> ProgramSearchPath)
+                        -> ProgramDb
+                        -> ProgramDb
+modifyProgramSearchPath f db =
+  setProgramSearchPath (f $ getProgramSearchPath db) db
 
 -- |User-specify this path.  Basically override any path information
 -- for this program in the configuration. If it's not a known
@@ -274,8 +294,8 @@ configuredPrograms = Map.elems . configuredProgs
 -- Configuring known programs
 
 -- | Try to configure a specific program. If the program is already included in
--- the colleciton of unconfigured programs then we use any user-supplied
--- location and arguments. If the program gets configured sucessfully it gets
+-- the collection of unconfigured programs then we use any user-supplied
+-- location and arguments. If the program gets configured successfully it gets
 -- added to the configured collection.
 --
 -- Note that it is not a failure if the program cannot be configured. It's only
@@ -284,7 +304,7 @@ configuredPrograms = Map.elems . configuredProgs
 --
 -- The reason for it not being a failure at this stage is that we don't know up
 -- front all the programs we will need, so we try to configure them all.
--- To verify that a program was actually sucessfully configured use
+-- To verify that a program was actually successfully configured use
 -- 'requireProgram'.
 --
 configureProgram :: Verbosity
@@ -317,6 +337,7 @@ configureProgram verbosity prog conf = do
             programDefaultArgs  = [],
             programOverrideArgs = userSpecifiedArgs prog conf,
             programOverrideEnv  = [("PATH", Just newPath)],
+            programProperties   = Map.empty,
             programLocation     = location
           }
       configuredProg' <- programPostConf prog verbosity configuredProg
@@ -383,8 +404,8 @@ requireProgram verbosity prog conf = do
     Nothing             -> die notFound
     Just configuredProg -> return (configuredProg, conf')
 
-  where notFound       = "The program " ++ programName prog
-                      ++ " is required but it could not be found."
+  where notFound       = "The program '" ++ programName prog
+                      ++ "' is required but it could not be found."
 
 
 -- | Check that a program is configured and available to be run.
@@ -416,15 +437,15 @@ requireProgramVersion verbosity prog range conf = do
           | otherwise                 -> die (badVersion version location)
         Nothing                       -> die (noVersion location)
 
-  where notFound       = "The program "
-                      ++ programName prog ++ versionRequirement
+  where notFound       = "The program '"
+                      ++ programName prog ++ "'" ++ versionRequirement
                       ++ " is required but it could not be found."
-        badVersion v l = "The program "
-                      ++ programName prog ++ versionRequirement
+        badVersion v l = "The program '"
+                      ++ programName prog ++ "'" ++ versionRequirement
                       ++ " is required but the version found at "
                       ++ locationPath l ++ " is version " ++ display v
-        noVersion l    = "The program "
-                      ++ programName prog ++ versionRequirement
+        noVersion l    = "The program '"
+                      ++ programName prog ++ "'" ++ versionRequirement
                       ++ " is required but the version of "
                       ++ locationPath l ++ " could not be determined."
         versionRequirement

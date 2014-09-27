@@ -2,6 +2,7 @@
 -- |
 -- Module      :  Distribution.Simple.Register
 -- Copyright   :  Isaac Jones 2003-2004
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -14,44 +15,13 @@
 -- popular so we also provide a way to simply generate the package registration
 -- file which then must be manually passed to @ghc-pkg@. It is possible to
 -- generate registration information for where the package is to be installed,
--- or alternatively to register the package inplace in the build tree. The
+-- or alternatively to register the package in place in the build tree. The
 -- latter is occasionally handy, and will become more important when we try to
 -- build multi-package systems.
 --
 -- This module does not delegate anything to the per-compiler modules but just
 -- mixes it all in in this module, which is rather unsatisfactory. The script
 -- generation and the unregister feature are not well used or tested.
-
-{- Copyright (c) 2003-2004, Isaac Jones
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
 
 module Distribution.Simple.Register (
     register,
@@ -96,7 +66,7 @@ import Distribution.Package
          ( Package(..), packageName, InstalledPackageId(..) )
 import Distribution.InstalledPackageInfo
          ( InstalledPackageInfo, InstalledPackageInfo_(InstalledPackageInfo)
-         , showInstalledPackageInfo )
+         , showInstalledPackageInfo, ModuleReexport(..) )
 import qualified Distribution.InstalledPackageInfo as IPI
 import Distribution.Simple.Utils
          ( writeUTF8File, writeFileAtomic, setFileExecutable
@@ -115,6 +85,7 @@ import System.FilePath ((</>), (<.>), isAbsolute)
 import System.Directory
          ( getCurrentDirectory, removeDirectoryRecursive )
 
+import Control.Monad (when)
 import Data.Maybe
          ( isJust, fromMaybe, maybeToList )
 import Data.List
@@ -132,6 +103,9 @@ register pkg@PackageDescription { library       = Just lib  } lbi regFlags
     let clbi = getComponentLocalBuildInfo lbi CLibName
     installedPkgInfo <- generateRegistrationInfo
                            verbosity pkg lib lbi clbi inplace distPref
+
+    when (fromFlag (regPrintId regFlags)) $ do
+      putStrLn (display (IPI.installedPackageId installedPkgInfo))
 
      -- Three different modes:
     case () of
@@ -202,9 +176,9 @@ generateRegistrationInfo verbosity pkg lib lbi clbi inplace distPref = do
 
   let installedPkgInfo
         | inplace   = inplaceInstalledPackageInfo pwd distPref
-                        pkg lib lbi clbi
+                        pkg ipid lib lbi clbi
         | otherwise = absoluteInstalledPackageInfo
-                        pkg lib lbi clbi
+                        pkg ipid lib lbi clbi
 
   return installedPkgInfo{ IPI.installedPackageId = ipid }
 
@@ -283,15 +257,17 @@ generalInstalledPackageInfo
   :: ([FilePath] -> [FilePath]) -- ^ Translate relative include dir paths to
                                 -- absolute paths.
   -> PackageDescription
+  -> InstalledPackageId
   -> Library
+  -> LocalBuildInfo
   -> ComponentLocalBuildInfo
   -> InstallDirs FilePath
   -> InstalledPackageInfo
-generalInstalledPackageInfo adjustRelIncDirs pkg lib clbi installDirs =
+generalInstalledPackageInfo adjustRelIncDirs pkg ipid lib lbi clbi installDirs =
   InstalledPackageInfo {
-    --TODO: do not open-code this conversion from PackageId to InstalledPackageId
-    IPI.installedPackageId = InstalledPackageId (display (packageId pkg)),
+    IPI.installedPackageId = ipid,
     IPI.sourcePackageId    = packageId   pkg,
+    IPI.packageKey         = pkgKey lbi,
     IPI.license            = license     pkg,
     IPI.copyright          = copyright   pkg,
     IPI.maintainer         = maintainer  pkg,
@@ -304,6 +280,7 @@ generalInstalledPackageInfo adjustRelIncDirs pkg lib clbi installDirs =
     IPI.category           = category    pkg,
     IPI.exposed            = libExposed  lib,
     IPI.exposedModules     = exposedModules lib,
+    IPI.reexportedModules  = map fixupSelfReexport (componentModuleReexports clbi),
     IPI.hiddenModules      = otherModules bi,
     IPI.trusted            = IPI.trusted IPI.emptyInstalledPackageInfo,
     IPI.importDirs         = [ libdir installDirs | hasModules ],
@@ -334,23 +311,35 @@ generalInstalledPackageInfo adjustRelIncDirs pkg lib clbi installDirs =
     hasModules = not $ null (exposedModules lib)
                     && null (otherModules bi)
     hasLibrary = hasModules || not (null (cSources bi))
+    -- Since we currently don't decide the InstalledPackageId of our package
+    -- until just before we register, we didn't have one for the re-exports
+    -- of modules definied within this package, so we used an empty one that
+    -- we fill in here now that we know what it is. It's a bit of a hack,
+    -- we ought really to decide the InstalledPackageId ahead of time.
+    fixupSelfReexport mre@ModuleReexport {
+                        moduleReexportDefiningPackage = InstalledPackageId []
+                      }
+                    = mre {
+                        moduleReexportDefiningPackage = ipid
+                      }
+    fixupSelfReexport mre = mre
 
-
--- | Construct 'InstalledPackageInfo' for a library that is inplace in the
+-- | Construct 'InstalledPackageInfo' for a library that is in place in the
 -- build tree.
 --
--- This function knows about the layout of inplace packages.
+-- This function knows about the layout of in place packages.
 --
 inplaceInstalledPackageInfo :: FilePath -- ^ top of the build tree
                             -> FilePath -- ^ location of the dist tree
                             -> PackageDescription
+                            -> InstalledPackageId
                             -> Library
                             -> LocalBuildInfo
                             -> ComponentLocalBuildInfo
                             -> InstalledPackageInfo
-inplaceInstalledPackageInfo inplaceDir distPref pkg lib lbi clbi =
-    generalInstalledPackageInfo adjustRelativeIncludeDirs pkg lib clbi
-    installDirs
+inplaceInstalledPackageInfo inplaceDir distPref pkg ipid lib lbi clbi =
+    generalInstalledPackageInfo adjustRelativeIncludeDirs
+                                pkg ipid lib lbi clbi installDirs
   where
     adjustRelativeIncludeDirs = map (inplaceDir </>)
     installDirs =
@@ -372,12 +361,14 @@ inplaceInstalledPackageInfo inplaceDir distPref pkg lib lbi clbi =
 -- This function knows about the layout of installed packages.
 --
 absoluteInstalledPackageInfo :: PackageDescription
+                             -> InstalledPackageId
                              -> Library
                              -> LocalBuildInfo
                              -> ComponentLocalBuildInfo
                              -> InstalledPackageInfo
-absoluteInstalledPackageInfo pkg lib lbi clbi =
-    generalInstalledPackageInfo adjustReativeIncludeDirs pkg lib clbi installDirs
+absoluteInstalledPackageInfo pkg ipid lib lbi clbi =
+    generalInstalledPackageInfo adjustReativeIncludeDirs
+                                pkg ipid lib lbi clbi installDirs
   where
     -- For installed packages we install all include files into one dir,
     -- whereas in the build tree they may live in multiple local dirs.

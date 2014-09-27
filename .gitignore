@@ -5,12 +5,16 @@ cabal-dev/
 Cabal/dist/
 Cabal/tests/Setup
 cabal-install/dist/
+cabal-install/tests/PackageTests/*/dist/
 .hpc/
 *.hi
 *.o
 *.p_hi
 *.prof
 *.tix
+cabal.config
+dist-sandbox
+dist
 
 # editor temp files
 
@@ -29,3 +33,4 @@ Cabal/ghc.mk
 
 # TAGS files
 TAGS
+tags

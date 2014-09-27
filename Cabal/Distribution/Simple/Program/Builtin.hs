@@ -12,7 +12,7 @@
 --
 module Distribution.Simple.Program.Builtin (
 
-    -- * The collection of unconfigured and configured progams
+    -- * The collection of unconfigured and configured programs
     builtinPrograms,
 
     -- * Programs that Cabal knows about
@@ -46,12 +46,20 @@ module Distribution.Simple.Program.Builtin (
     hpcProgram,
   ) where
 
-import Distribution.Simple.Program.Types
-         ( Program(..), simpleProgram )
 import Distribution.Simple.Program.Find
          ( findProgramOnSearchPath )
+import Distribution.Simple.Program.Run
+         ( getProgramInvocationOutput, programInvocation )
+import Distribution.Simple.Program.Types
+         ( Program(..), ConfiguredProgram(..), simpleProgram )
 import Distribution.Simple.Utils
          ( findProgramVersion )
+import Data.Char
+         ( isDigit )
+
+import Data.List
+         ( isInfixOf )
+import qualified Data.Map as Map
 
 -- ------------------------------------------------------------
 -- * Known programs
@@ -226,7 +234,7 @@ alexProgram = (simpleProgram "alex") {
       -- Invoking "alex --version" gives a string like
       -- "Alex version 2.1.0, (c) 2003 Chris Dornan and Simon Marlow"
       case words str of
-        (_:_:ver:_) -> takeWhile (`elem` ('.':['0'..'9'])) ver
+        (_:_:ver:_) -> takeWhile (\x -> isDigit x || x == '.') ver
         _           -> ""
   }
 
@@ -292,7 +300,17 @@ ldProgram :: Program
 ldProgram = simpleProgram "ld"
 
 tarProgram :: Program
-tarProgram = simpleProgram "tar"
+tarProgram = (simpleProgram "tar") {
+  -- See #1901. Some versions of 'tar' (OpenBSD, NetBSD, ...) don't support the
+  -- '--format' option.
+  programPostConf = \verbosity tarProg -> do
+     tarHelpOutput <- getProgramInvocationOutput
+                      verbosity (programInvocation tarProg ["--help"])
+     let k = "Supports --format"
+         v = if ("--format" `isInfixOf` tarHelpOutput) then "YES" else "NO"
+         m = Map.insert k v (programProperties tarProg)
+     return $ tarProg { programProperties = m }
+  }
 
 cppProgram :: Program
 cppProgram = simpleProgram "cpp"

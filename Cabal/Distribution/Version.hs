@@ -1,9 +1,16 @@
-{-# LANGUAGE CPP, DeriveDataTypeable, StandaloneDeriving #-}
+{-# LANGUAGE CPP, DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
+#if __GLASGOW_HASKELL__ < 707
+{-# LANGUAGE StandaloneDeriving #-}
+#endif
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Distribution.Version
 -- Copyright   :  Isaac Jones, Simon Marlow 2003-2004
 --                Duncan Coutts 2008
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -95,9 +102,11 @@ module Distribution.Version (
 
  ) where
 
+import Data.Binary      ( Binary(..) )
 import Data.Data        ( Data )
 import Data.Typeable    ( Typeable )
 import Data.Version     ( Version(..) )
+import GHC.Generics     ( Generic )
 
 import Distribution.Text ( Text(..) )
 import qualified Distribution.Compat.ReadP as Parse
@@ -122,12 +131,25 @@ data VersionRange
   | UnionVersionRanges     VersionRange VersionRange
   | IntersectVersionRanges VersionRange VersionRange
   | VersionRangeParens     VersionRange -- just '(exp)' parentheses syntax
-  deriving (Show,Read,Eq,Typeable,Data,Ord)
+  deriving (Data, Eq, Ord, Generic, Read, Show, Typeable)
+
+instance Binary VersionRange
 
 #if __GLASGOW_HASKELL__ < 707
 -- starting with ghc-7.7/base-4.7 this instance is provided in "Data.Data"
 deriving instance Data Version
 #endif
+
+-- Deriving this instance from Generic gives trouble on GHC 7.2 because the
+-- Generic instance has to be standalone-derived. So, we hand-roll our own.
+-- We can't use a generic Binary instance on later versions because we must
+-- maintain compatibility between compiler versions.
+instance Binary Version where
+    get = do
+        br <- get
+        tags <- get
+        return $ Version br tags
+    put v = put (versionBranch v) >> put (versionTags v)
 
 {-# DEPRECATED AnyVersion "Use 'anyVersion', 'foldVersionRange' or 'asVersionIntervals'" #-}
 {-# DEPRECATED ThisVersion "use 'thisVersion', 'foldVersionRange' or 'asVersionIntervals'" #-}
@@ -150,7 +172,7 @@ anyVersion = AnyVersion
 -- This can be constructed using any unsatisfiable version range expression,
 -- for example @> 1 && < 1@.
 --
--- > withinRange v anyVersion = False
+-- > withinRange v noVersion = False
 --
 noVersion :: VersionRange
 noVersion = IntersectVersionRanges (LaterVersion v) (EarlierVersion v)
@@ -254,7 +276,7 @@ removeUpperBound = fromVersionIntervals . relaxLastInterval . toVersionIntervals
 
 -- | Fold over the basic syntactic structure of a 'VersionRange'.
 --
--- This provides a syntacic view of the expression defining the version range.
+-- This provides a syntactic view of the expression defining the version range.
 -- The syntactic sugar @\">= v\"@, @\"<= v\"@ and @\"== v.*\"@ is presented
 -- in terms of the other basic syntax.
 --
@@ -508,7 +530,7 @@ checkInvariant is = assert (invariant is) is
 -- | Directly construct a 'VersionIntervals' from a list of intervals.
 --
 -- Each interval must be non-empty. The sequence must be in increasing order
--- and no invervals may overlap or touch. If any of these conditions are not
+-- and no intervals may overlap or touch. If any of these conditions are not
 -- satisfied the function returns @Nothing@.
 --
 mkVersionIntervals :: [VersionInterval] -> Maybe VersionIntervals

@@ -2,6 +2,7 @@
 -- |
 -- Module      :  Distribution.Simple.SrcDist
 -- Copyright   :  Simon Marlow 2004
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -16,37 +17,6 @@
 -- it accepts the @-z@ flag. Neither of these assumptions are valid on Windows.
 -- The 'sdist' action now also does some distribution QA checks.
 
-{- Copyright (c) 2003-2004, Simon Marlow
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
-
 -- NOTE: FIX: we don't have a great way of testing this module, since
 -- we can't easily look inside a tarball once its created.
 
@@ -59,7 +29,7 @@ module Distribution.Simple.SrcDist (
   prepareTree,
   createArchive,
 
-  -- ** Snaphots
+  -- ** Snapshots
   prepareSnapshotTree,
   snapshotPackage,
   snapshotVersion,
@@ -96,13 +66,14 @@ import Distribution.Simple.LocalBuildInfo
          ( LocalBuildInfo(..), withAllComponentsInBuildOrder )
 import Distribution.Simple.BuildPaths ( autogenModuleName )
 import Distribution.Simple.Program ( defaultProgramConfiguration, requireProgram,
-                              rawSystemProgram, tarProgram )
+                                     runProgram, programProperties, tarProgram )
 import Distribution.Text
          ( display )
 
 import Control.Monad(when, unless, forM)
 import Data.Char (toLower)
 import Data.List (partition, isPrefixOf)
+import qualified Data.Map as Map
 import Data.Maybe (isNothing, catMaybes)
 import Data.Time (UTCTime, getCurrentTime, toGregorian, utctDay)
 import System.Directory ( doesFileExist )
@@ -287,7 +258,7 @@ prepareTree :: Verbosity          -- ^verbosity
             -> [PPSuffixHandler]  -- ^extra preprocessors (includes suffixes)
             -> IO ()
 prepareTree verbosity pkg_descr0 mb_lbi targetDir pps = do
-  -- If the package was configured then we can run platform independent
+  -- If the package was configured then we can run platform-independent
   -- pre-processors and include those generated files.
   case mb_lbi of
     Just lbi | not (null pps) -> do
@@ -441,13 +412,16 @@ createArchive verbosity pkg_descr mb_lbi tmpDir targetPref = do
 
   (tarProg, _) <- requireProgram verbosity tarProgram
                     (maybe defaultProgramConfiguration withPrograms mb_lbi)
-
-   -- Hmm: I could well be skating on thinner ice here by using the -C option
-   -- (=> GNU tar-specific?)  [The prev. solution used pipes and sub-command
-   -- sequences to set up the paths correctly, which is problematic in a Windows
-   -- setting.]
-  rawSystemProgram verbosity tarProg
-           ["-C", tmpDir, "-czf", tarBallFilePath, tarBallName pkg_descr]
+  let formatOptSupported = maybe False (== "YES") $
+                           Map.lookup "Supports --format"
+                           (programProperties tarProg)
+  runProgram verbosity tarProg
+    . (if formatOptSupported then (flip (++)) ["--format", "ustar"] else id)
+    -- Hmm: I could well be skating on thinner ice here by using the -C option
+    -- (=> seems to be supported at least by GNU and *BSD tar) [The
+    -- prev. solution used pipes and sub-command sequences to set up the paths
+    -- correctly, which is problematic in a Windows setting.]
+    $ ["-czf", tarBallFilePath, "-C", tmpDir, tarBallName pkg_descr]
   return tarBallFilePath
 
 -- | Given a buildinfo, return the names of all source files.

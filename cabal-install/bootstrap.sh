@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env sh
 
 # A script to bootstrap cabal-install.
 
@@ -6,25 +6,88 @@
 # HTTP packages. It then installs cabal-install itself.
 # It expects to be run inside the cabal-install directory.
 
-# install settings, you can override these by setting environment vars
+# Install settings, you can override these by setting environment vars. E.g. if
+# you don't want profiling and dynamic versions of libraries to be installed in
+# addition to vanilla, run 'EXTRA_CONFIGURE_OPTS="" ./bootstrap.sh'
+
 #VERBOSE
-#EXTRA_CONFIGURE_OPTS
+DEFAULT_CONFIGURE_OPTS="--enable-library-profiling --enable-shared"
+EXTRA_CONFIGURE_OPTS=${EXTRA_CONFIGURE_OPTS-$DEFAULT_CONFIGURE_OPTS}
 #EXTRA_BUILD_OPTS
 #EXTRA_INSTALL_OPTS
 
+die () { printf "\nError during cabal-install bootstrap:\n$1\n" >&2 && exit 2 ;}
+
 # programs, you can override these by setting environment vars
-GHC=${GHC:-ghc}
-GHC_PKG=${GHC_PKG:-ghc-pkg}
-WGET=${WGET:-wget}
-CURL=${CURL:-curl}
-FETCH=${FETCH:-fetch}
-TAR=${TAR:-tar}
-GUNZIP=${GUNZIP:-gunzip}
+GHC="${GHC:-ghc}"
+GHC_PKG="${GHC_PKG:-ghc-pkg}"
+GHC_VER="$(${GHC} --numeric-version)"
+HADDOCK=${HADDOCK:-haddock}
+WGET="${WGET:-wget}"
+CURL="${CURL:-curl}"
+FETCH="${FETCH:-fetch}"
+TAR="${TAR:-tar}"
+GZIP_PROGRAM="${GZIP_PROGRAM:-gzip}"
 SCOPE_OF_INSTALLATION="--user"
 DEFAULT_PREFIX="${HOME}/.cabal"
 
+# Try to respect $TMPDIR but override if needed - see #1710.
+[ -"$TMPDIR"- = -""- ] || echo "$TMPDIR" | grep -q ld &&
+  export TMPDIR=/tmp/cabal-$(echo $(od -XN4 -An /dev/random)) && mkdir $TMPDIR
 
-for arg in $*
+# Check for a C compiler.
+[ ! -x "$CC" ] && for ccc in gcc clang cc icc; do
+  ${ccc} --version > /dev/null 2>&1 && CC=$ccc &&
+  echo "Using $CC for C compiler. If this is not what you want, set CC." >&2 &&
+  break
+done
+
+# None found.
+[ ! -x `which "$CC"` ] &&
+  die "C compiler not found (or could not be run).
+       If a C compiler is installed make sure it is on your PATH,
+       or set the CC variable."
+
+# Check the C compiler/linker work.
+LINK="$(for link in collect2 ld; do
+  echo 'main;' | ${CC} -v -x c - -o /dev/null -\#\#\# 2>&1 | grep -q $link &&
+  echo 'main;' | ${CC} -v -x c - -o /dev/null -\#\#\# 2>&1 | grep    $link |
+  sed -e "s|\(.*$link\).*|\1|" -e 's/ //g' -e 's|"||' && break
+done)"
+
+# They don't.
+[ -z "$LINK" ] &&
+  die "C compiler and linker could not compile a simple test program.
+       Please check your toolchain."
+
+## Warn that were's overriding $LD if set (if you want).
+
+[ -x "$LD" ] && [ "$LD" != "$LINK" ] &&
+  echo "Warning: value set in $LD is not the same as C compiler's $LINK." >&2
+  echo "Using $LINK instead." >&2
+
+# Set LD, overriding environment if necessary.
+LD=$LINK
+
+# Check we're in the right directory, etc.
+grep "cabal-install" ./cabal-install.cabal > /dev/null 2>&1 ||
+  die "The bootstrap.sh script must be run in the cabal-install directory"
+
+${GHC} --numeric-version > /dev/null 2>&1  ||
+  die "${GHC} not found (or could not be run).
+       If ghc is installed,  make sure it is on your PATH,
+       or set the GHC and GHC_PKG vars."
+
+${GHC_PKG} --version     > /dev/null 2>&1  || die "${GHC_PKG} not found."
+
+GHC_VER="$(${GHC} --numeric-version)"
+GHC_PKG_VER="$(${GHC_PKG} --version | cut -d' ' -f 5)"
+
+[ ${GHC_VER} = ${GHC_PKG_VER} ] ||
+  die "Version mismatch between ${GHC} and ${GHC_PKG}.
+       If you set the GHC variable then set GHC_PKG too."
+
+for arg in "$@"
 do
   case "${arg}" in
     "--user")
@@ -34,6 +97,9 @@ do
       SCOPE_OF_INSTALLATION=${arg}
       DEFAULT_PREFIX="/usr/local"
       shift;;
+    "--no-doc")
+      NO_DOCUMENTATION=1
+      shift;;
     *)
       echo "Unknown argument or option, quitting: ${arg}"
       echo "usage: bootstrap.sh [OPTION]"
@@ -41,53 +107,54 @@ do
       echo "options:"
       echo "   --user    Install for the local user (default)"
       echo "   --global  Install systemwide (must be run as root)"
+      echo "   --no-doc  Do not generate documentation for installed packages"
       exit;;
   esac
 done
+
+# Check for haddock unless no documentation should be generated.
+if [ ! ${NO_DOCUMENTATION} ]
+then
+  ${HADDOCK} --version     > /dev/null 2>&1  || die "${HADDOCK} not found."
+fi
 
 PREFIX=${PREFIX:-${DEFAULT_PREFIX}}
 
 # Versions of the packages to install.
 # The version regex says what existing installed versions are ok.
-PARSEC_VER="3.1.5";    PARSEC_VER_REGEXP="[23]\."              # == 2.* || == 3.*
-DEEPSEQ_VER="1.3.0.2"; DEEPSEQ_VER_REGEXP="1\.[1-9]\."         # >= 1.1 && < 2
-TEXT_VER="1.1.0.0";    TEXT_VER_REGEXP="((1\.[01]\.)|(0\.([2-9]|(1[0-1]))\.))" # >= 0.2 && < 1.2
-NETWORK_VER="2.4.2.2"; NETWORK_VER_REGEXP="2\."                # == 2.*
-CABAL_VER="1.19.2";    CABAL_VER_REGEXP="1\.1[9]\."            # >= 1.19 && < 1.20
-TRANS_VER="0.3.0.0";   TRANS_VER_REGEXP="0\.[23]\."            # >= 0.2.* && < 0.4.*
-MTL_VER="2.1.2";       MTL_VER_REGEXP="[2]\."                  #  == 2.*
-HTTP_VER="4000.2.10";  HTTP_VER_REGEXP="4000\.[012]\."         # == 4000.0.* || 4000.1.* || 4000.2.*
-ZLIB_VER="0.5.4.1";    ZLIB_VER_REGEXP="0\.[45]\."             # == 0.4.* || == 0.5.*
-TIME_VER="1.4.1"       TIME_VER_REGEXP="1\.[1234]\.?"          # >= 1.1 && < 1.5
-RANDOM_VER="1.0.1.1"   RANDOM_VER_REGEXP="1\.0\."              # >= 1 && < 1.1
-STM_VER="2.4.2";       STM_VER_REGEXP="2\."                    # == 2.*
+PARSEC_VER="3.1.6";    PARSEC_VER_REGEXP="[23]\."
+                       # == 2.* || == 3.*
+DEEPSEQ_VER="1.3.0.2"; DEEPSEQ_VER_REGEXP="1\.[1-9]\."
+                       # >= 1.1 && < 2
+TEXT_VER="1.2.0.0";    TEXT_VER_REGEXP="((1\.[012]\.)|(0\.([2-9]|(1[0-1]))\.))"
+                       # >= 0.2 && < 1.3
+NETWORK_VER="2.6.0.2"; NETWORK_VER_REGEXP="2\.[0-6]\."
+                       # >= 2.0 && < 2.7
+NETWORK_URI_VER="2.6.0.1"; NETWORK_URI_VER_REGEXP="2\.[0-6]\."
+                       # >= 2.0 && < 2.7
+CABAL_VER="1.21.1.0";  CABAL_VER_REGEXP="1\.21\.1"
+                       # >= 1.21.1 && < 1.22
+TRANS_VER="0.3.0.0";   TRANS_VER_REGEXP="0\.[23]\."
+                       # >= 0.2.* && < 0.4.*
+MTL_VER="2.1.3.1";     MTL_VER_REGEXP="[2]\."
+                       #  == 2.*
+HTTP_VER="4000.2.18";  HTTP_VER_REGEXP="4000\.2\.([5-9]|1[0-9]|2[0-9])"
+                       # >= 4000.2.5 < 4000.3
+ZLIB_VER="0.5.4.1";    ZLIB_VER_REGEXP="0\.[45]\."
+                       # == 0.4.* || == 0.5.*
+TIME_VER="1.4.2"       TIME_VER_REGEXP="1\.[1234]\.?"
+                       # >= 1.1 && < 1.5
+RANDOM_VER="1.1"       RANDOM_VER_REGEXP="1\.[01]\.?"
+                       # >= 1 && < 1.2
+STM_VER="2.4.3";       STM_VER_REGEXP="2\."
+                       # == 2.*
 
-HACKAGE_URL="http://hackage.haskell.org/packages/archive"
-
-die () {
-  echo
-  echo "Error during cabal-install bootstrap:"
-  echo $1 >&2
-  exit 2
-}
-
-# Check we're in the right directory:
-grep "cabal-install" ./cabal-install.cabal > /dev/null 2>&1 \
-  || die "The bootstrap.sh script must be run in the cabal-install directory"
-
-${GHC} --numeric-version > /dev/null \
-  || die "${GHC} not found (or could not be run). If ghc is installed make sure it is on your PATH or set the GHC and GHC_PKG vars."
-${GHC_PKG} --version     > /dev/null \
-  || die "${GHC_PKG} not found."
-GHC_VER=`${GHC} --numeric-version`
-GHC_PKG_VER=`${GHC_PKG} --version | cut -d' ' -f 5`
-[ ${GHC_VER} = ${GHC_PKG_VER} ] \
-  || die "Version mismatch between ${GHC} and ${GHC_PKG} If you set the GHC variable then set GHC_PKG too"
+HACKAGE_URL="https://hackage.haskell.org/package"
 
 # Cache the list of packages:
 echo "Checking installed packages for ghc-${GHC_VER}..."
-${GHC_PKG} list --global ${SCOPE_OF_INSTALLATION} > ghc-pkg.list \
-  || die "running '${GHC_PKG} list' failed"
+${GHC_PKG} list --global ${SCOPE_OF_INSTALLATION} > ghc-pkg.list ||
+  die "running '${GHC_PKG} list' failed"
 
 # Will we need to install this package, or is a suitable version installed?
 need_pkg () {
@@ -119,10 +186,13 @@ fetch_pkg () {
   PKG=$1
   VER=$2
 
-  URL=${HACKAGE_URL}/${PKG}/${VER}/${PKG}-${VER}.tar.gz
+  URL=${HACKAGE_URL}/${PKG}-${VER}/${PKG}-${VER}.tar.gz
   if which ${CURL} > /dev/null
   then
-    ${CURL} -L --fail -C - -O ${URL} || die "Failed to download ${PKG}."
+    # TODO: switch back to resuming curl command once
+    #       https://github.com/haskell/hackage-server/issues/111 is resolved
+    #${CURL} -L --fail -C - -O ${URL} || die "Failed to download ${PKG}."
+    ${CURL} -L --fail -O ${URL} || die "Failed to download ${PKG}."
   elif which ${WGET} > /dev/null
   then
     ${WGET} -c ${URL} || die "Failed to download ${PKG}."
@@ -132,21 +202,17 @@ fetch_pkg () {
   else
     die "Failed to find a downloader. 'curl', 'wget' or 'fetch' is required."
   fi
-  [ -f "${PKG}-${VER}.tar.gz" ] \
-    || die "Downloading ${URL} did not create ${PKG}-${VER}.tar.gz"
+  [ -f "${PKG}-${VER}.tar.gz" ] ||
+     die "Downloading ${URL} did not create ${PKG}-${VER}.tar.gz"
 }
 
 unpack_pkg () {
   PKG=$1
   VER=$2
 
-  rm -rf "${PKG}-${VER}.tar" "${PKG}-${VER}"/
-  ${GUNZIP} -f "${PKG}-${VER}.tar.gz" \
-    || die "Failed to gunzip ${PKG}-${VER}.tar.gz"
-  ${TAR} -xf "${PKG}-${VER}.tar" \
-    || die "Failed to untar ${PKG}-${VER}.tar.gz"
-  [ -d "${PKG}-${VER}" ] \
-    || die "Unpacking ${PKG}-${VER}.tar.gz did not create ${PKG}-${VER}/"
+  rm -rf "${PKG}-${VER}.tar" "${PKG}-${VER}"
+  ${GZIP_PROGRAM} -d < "${PKG}-${VER}.tar.gz" | ${TAR} -xf -
+  [ -d "${PKG}-${VER}" ] || die "Failed to unpack ${PKG}-${VER}.tar.gz"
 }
 
 install_pkg () {
@@ -155,20 +221,28 @@ install_pkg () {
   [ -x Setup ] && ./Setup clean
   [ -f Setup ] && rm Setup
 
-  ${GHC} --make Setup -o Setup \
-    || die "Compiling the Setup script failed"
+  ${GHC} --make Setup -o Setup ||
+    die "Compiling the Setup script failed."
+
   [ -x Setup ] || die "The Setup script does not exist or cannot be run"
 
-  ./Setup configure ${SCOPE_OF_INSTALLATION} "--prefix=${PREFIX}" \
-    --with-compiler=${GHC} --with-hc-pkg=${GHC_PKG} \
-    ${EXTRA_CONFIGURE_OPTS} ${VERBOSE} \
-    || die "Configuring the ${PKG} package failed"
+  args="${SCOPE_OF_INSTALLATION} --prefix=${PREFIX} --with-compiler=${GHC}"
+  args="$args --with-hc-pkg=${GHC_PKG} --with-gcc=${CC} --with-ld=${LD}"
+  args="$args ${EXTRA_CONFIGURE_OPTS} ${VERBOSE}"
 
-  ./Setup build ${EXTRA_BUILD_OPTS} ${VERBOSE} \
-    || die "Building the ${PKG} package failed"
+  ./Setup configure $args || die "Configuring the ${PKG} package failed."
 
-  ./Setup install ${SCOPE_OF_INSTALLATION} ${EXTRA_INSTALL_OPTS} ${VERBOSE} \
-    || die "Installing the ${PKG} package failed"
+  ./Setup build ${EXTRA_BUILD_OPTS} ${VERBOSE} ||
+     die "Building the ${PKG} package failed."
+
+  if [ ! ${NO_DOCUMENTATION} ]
+  then
+    ./Setup haddock --with-ghc=${GHC} --with-haddock=${HADDOCK} ${VERBOSE} ||
+      die "Documenting the ${PKG} package failed."
+  fi
+
+  ./Setup install ${SCOPE_OF_INSTALLATION} ${EXTRA_INSTALL_OPTS} ${VERBOSE} ||
+     die "Installing the ${PKG} package failed."
 }
 
 do_pkg () {
@@ -198,6 +272,7 @@ info_pkg "mtl"          ${MTL_VER}     ${MTL_VER_REGEXP}
 info_pkg "text"         ${TEXT_VER}    ${TEXT_VER_REGEXP}
 info_pkg "parsec"       ${PARSEC_VER}  ${PARSEC_VER_REGEXP}
 info_pkg "network"      ${NETWORK_VER} ${NETWORK_VER_REGEXP}
+info_pkg "network-uri"  ${NETWORK_URI_VER} ${NETWORK_URI_VER_REGEXP}
 info_pkg "HTTP"         ${HTTP_VER}    ${HTTP_VER_REGEXP}
 info_pkg "zlib"         ${ZLIB_VER}    ${ZLIB_VER_REGEXP}
 info_pkg "random"       ${RANDOM_VER}  ${RANDOM_VER_REGEXP}
@@ -211,6 +286,7 @@ do_pkg   "mtl"          ${MTL_VER}     ${MTL_VER_REGEXP}
 do_pkg   "text"         ${TEXT_VER}    ${TEXT_VER_REGEXP}
 do_pkg   "parsec"       ${PARSEC_VER}  ${PARSEC_VER_REGEXP}
 do_pkg   "network"      ${NETWORK_VER} ${NETWORK_VER_REGEXP}
+do_pkg   "network-uri"  ${NETWORK_URI_VER} ${NETWORK_URI_VER_REGEXP}
 do_pkg   "HTTP"         ${HTTP_VER}    ${HTTP_VER_REGEXP}
 do_pkg   "zlib"         ${ZLIB_VER}    ${ZLIB_VER_REGEXP}
 do_pkg   "random"       ${RANDOM_VER}  ${RANDOM_VER_REGEXP}

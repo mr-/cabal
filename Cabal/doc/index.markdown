@@ -19,7 +19,6 @@ thousands of libraries and applications in the Cabal package format.
       - [A tool for working with packages](#a-tool-for-working-with-packages)
   * [Building, installing and managing packages](installing-packages.html)
   * [Creating packages](developing-packages.html)
-  * [Cabal specification, design and implementation]()
   * [Reporting bugs and deficiencies](misc.html#reporting-bugs-and-deficiencies)
   * [Stability of Cabal interfaces](misc.html#stability-of-cabal-interfaces)
 
@@ -84,7 +83,7 @@ cabal install foo/ bar/
 
 Developers and users can use the tool to install packages from remote
 Cabal package archives. By default, the `cabal` tool is configured to
-use the centeral Haskell package archive called [Hackage] but it
+use the central Haskell package archive called [Hackage] but it
 is possible to use it with any other suitable archive.
 
 ~~~~~~~~~~~~~~~~
@@ -164,7 +163,7 @@ Cabal is often compared with autoconf and automake and there is some
 overlap in functionality. The most obvious similarity is that the
 command line interface for actually configuring and building packages
 follows the same steps and has many of the same configuration
-paramaters.
+parameters.
 
 ~~~~~~~~~~
 ./configure --prefix=...
@@ -183,7 +182,7 @@ cabal install
 Cabal's build system for simple packages is considerably less flexible
 than make/automake, but has builtin knowledge of how to build Haskell
 code and requires very little manual configuration. Cabal's simple build
-system is also portable to Windows, without needing a unix-like
+system is also portable to Windows, without needing a Unix-like
 environment such as cygwin/mingwin.
 
 Compared to autoconf, Cabal takes a somewhat different approach to

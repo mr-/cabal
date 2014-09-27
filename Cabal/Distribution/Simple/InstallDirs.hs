@@ -1,8 +1,11 @@
 {-# LANGUAGE CPP, ForeignFunctionInterface #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Distribution.Simple.InstallDirs
 -- Copyright   :  Isaac Jones 2003-2004
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -15,36 +18,6 @@
 -- changing the prefix all other dirs still end up changed appropriately. So it
 -- provides a 'PathTemplate' type and functions for substituting for these
 -- templates.
-
-{- All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
 
 module Distribution.Simple.InstallDirs (
         InstallDirs(..),
@@ -70,15 +43,17 @@ module Distribution.Simple.InstallDirs (
   ) where
 
 
+import Data.Binary (Binary)
 import Data.List (isPrefixOf)
 import Data.Maybe (fromMaybe)
 import Data.Monoid (Monoid(..))
+import GHC.Generics (Generic)
 import System.Directory (getAppUserDataDirectory)
 import System.FilePath ((</>), isPathSeparator, pathSeparator)
 import System.FilePath (dropDrive)
 
 import Distribution.Package
-         ( PackageIdentifier, packageName, packageVersion )
+         ( PackageIdentifier, PackageKey, packageName, packageVersion )
 import Distribution.System
          ( OS(..), buildOS, Platform(..) )
 import Distribution.Compiler
@@ -92,15 +67,15 @@ import Foreign.C
 #endif
 
 -- ---------------------------------------------------------------------------
--- Instalation directories
+-- Installation directories
 
 
 -- | The directories where we will install files for packages.
 --
 -- We have several different directories for different types of files since
 -- many systems have conventions whereby different types of files in a package
--- are installed in different direcotries. This is particularly the case on
--- unix style systems.
+-- are installed in different directories. This is particularly the case on
+-- Unix style systems.
 --
 data InstallDirs dir = InstallDirs {
         prefix       :: dir,
@@ -118,7 +93,9 @@ data InstallDirs dir = InstallDirs {
         htmldir      :: dir,
         haddockdir   :: dir,
         sysconfdir   :: dir
-    } deriving (Read, Show)
+    } deriving (Generic, Read, Show)
+
+instance Binary dir => Binary (InstallDirs dir)
 
 instance Functor InstallDirs where
   fmap f dirs = InstallDirs {
@@ -197,16 +174,16 @@ appendSubdirs append dirs = dirs {
 -- convenient for the user to override the default installation directory
 -- by only having to specify --prefix=... rather than overriding each
 -- individually. This is done by allowing $-style variables in the dirs.
--- These are expanded by textual substituion (see 'substPathTemplate').
+-- These are expanded by textual substitution (see 'substPathTemplate').
 --
 -- A few of these installation directories are split into two components, the
 -- dir and subdir. The full installation path is formed by combining the two
--- together with @\/@. The reason for this is compatibility with other unix
+-- together with @\/@. The reason for this is compatibility with other Unix
 -- build systems which also support @--libdir@ and @--datadir@. We would like
 -- users to be able to configure @--libdir=\/usr\/lib64@ for example but
 -- because by default we want to support installing multiple versions of
 -- packages and building the same package for multiple compilers we append the
--- libsubdir to get: @\/usr\/lib64\/$pkgid\/$compiler@.
+-- libsubdir to get: @\/usr\/lib64\/$pkgkey\/$compiler@.
 --
 -- An additional complication is the need to support relocatable packages on
 -- systems which support such things, like Windows.
@@ -240,10 +217,10 @@ defaultInstallDirs comp userInstall _hasLibs = do
            JHC    -> "$compiler"
            LHC    -> "$compiler"
            UHC    -> "$pkgid"
-           _other -> "$arch-$os-$compiler" </> "$pkgid",
+           _other -> "$arch-$os-$compiler" </> "$pkgkey",
       dynlibdir    = "$libdir",
       libexecdir   = case buildOS of
-        Windows   -> "$prefix" </> "$pkgid"
+        Windows   -> "$prefix" </> "$pkgkey"
         _other    -> "$prefix" </> "libexec",
       progdir      = "$libdir" </> "hugs" </> "programs",
       includedir   = "$libdir" </> "$libsubdir" </> "include",
@@ -312,10 +289,14 @@ substituteInstallDirTemplates env dirs = dirs'
 -- | Convert from abstract install directories to actual absolute ones by
 -- substituting for all the variables in the abstract paths, to get real
 -- absolute path.
-absoluteInstallDirs :: PackageIdentifier -> CompilerId -> CopyDest -> Platform
+absoluteInstallDirs :: PackageIdentifier
+                    -> PackageKey
+                    -> CompilerId
+                    -> CopyDest
+                    -> Platform
                     -> InstallDirs PathTemplate
                     -> InstallDirs FilePath
-absoluteInstallDirs pkgId compilerId copydest platform dirs =
+absoluteInstallDirs pkgId pkg_key compilerId copydest platform dirs =
     (case copydest of
        CopyTo destdir -> fmap ((destdir </>) . dropDrive)
        _              -> id)
@@ -323,7 +304,7 @@ absoluteInstallDirs pkgId compilerId copydest platform dirs =
   . fmap fromPathTemplate
   $ substituteInstallDirTemplates env dirs
   where
-    env = initialPathTemplateEnv pkgId compilerId platform
+    env = initialPathTemplateEnv pkgId pkg_key compilerId platform
 
 
 -- |The location prefix for the /copy/ command.
@@ -338,10 +319,13 @@ data CopyDest
 -- prevents us from making a relocatable package (also known as a \"prefix
 -- independent\" package).
 --
-prefixRelativeInstallDirs :: PackageIdentifier -> CompilerId -> Platform
+prefixRelativeInstallDirs :: PackageIdentifier
+                          -> PackageKey
+                          -> CompilerId
+                          -> Platform
                           -> InstallDirTemplates
                           -> InstallDirs (Maybe FilePath)
-prefixRelativeInstallDirs pkgId compilerId platform dirs =
+prefixRelativeInstallDirs pkgId pkg_key compilerId platform dirs =
     fmap relative
   . appendSubdirs combinePathTemplate
   $ -- substitute the path template into each other, except that we map
@@ -351,7 +335,7 @@ prefixRelativeInstallDirs pkgId compilerId platform dirs =
       prefix = PathTemplate [Variable PrefixVar]
     }
   where
-    env = initialPathTemplateEnv pkgId compilerId platform
+    env = initialPathTemplateEnv pkgId pkg_key compilerId platform
 
     -- If it starts with $prefix then it's relative and produce the relative
     -- path by stripping off $prefix/ or $prefix
@@ -365,15 +349,19 @@ prefixRelativeInstallDirs pkgId compilerId platform dirs =
 -- ---------------------------------------------------------------------------
 -- Path templates
 
--- | An abstract path, posibly containing variables that need to be
+-- | An abstract path, possibly containing variables that need to be
 -- substituted for to get a real 'FilePath'.
 --
-newtype PathTemplate = PathTemplate [PathComponent]
+newtype PathTemplate = PathTemplate [PathComponent] deriving (Generic)
+
+instance Binary PathTemplate
 
 data PathComponent =
        Ordinary FilePath
      | Variable PathTemplateVariable
-     deriving Eq
+     deriving (Eq, Generic)
+
+instance Binary PathComponent
 
 data PathTemplateVariable =
        PrefixVar     -- ^ The @$prefix@ path variable
@@ -387,15 +375,18 @@ data PathTemplateVariable =
      | PkgNameVar    -- ^ The @$pkg@ package name path variable
      | PkgVerVar     -- ^ The @$version@ package version path variable
      | PkgIdVar      -- ^ The @$pkgid@ package Id path variable, eg @foo-1.0@
+     | PkgKeyVar     -- ^ The @$pkgkey@ package key path variable
      | CompilerVar   -- ^ The compiler name and version, eg @ghc-6.6.1@
      | OSVar         -- ^ The operating system name, eg @windows@ or @linux@
-     | ArchVar       -- ^ The cpu architecture name, eg @i386@ or @x86_64@
+     | ArchVar       -- ^ The CPU architecture name, eg @i386@ or @x86_64@
      | ExecutableNameVar -- ^ The executable name; used in shell wrappers
      | TestSuiteNameVar   -- ^ The name of the test suite being run
      | TestSuiteResultVar -- ^ The result of the test suite being run, eg
                           -- @pass@, @fail@, or @error@.
      | BenchmarkNameVar   -- ^ The name of the benchmark being run
-  deriving Eq
+  deriving (Eq, Generic)
+
+instance Binary PathTemplateVariable
 
 type PathTemplateEnv = [(PathTemplateVariable, PathTemplate)]
 
@@ -424,17 +415,21 @@ substPathTemplate environment (PathTemplate template) =
                   Nothing                        -> [component]
 
 -- | The initial environment has all the static stuff but no paths
-initialPathTemplateEnv :: PackageIdentifier -> CompilerId -> Platform
+initialPathTemplateEnv :: PackageIdentifier
+                       -> PackageKey
+                       -> CompilerId
+                       -> Platform
                        -> PathTemplateEnv
-initialPathTemplateEnv pkgId compilerId platform =
-     packageTemplateEnv  pkgId
+initialPathTemplateEnv pkgId pkg_key compilerId platform =
+     packageTemplateEnv  pkgId pkg_key
   ++ compilerTemplateEnv compilerId
   ++ platformTemplateEnv platform
 
-packageTemplateEnv :: PackageIdentifier -> PathTemplateEnv
-packageTemplateEnv pkgId =
+packageTemplateEnv :: PackageIdentifier -> PackageKey -> PathTemplateEnv
+packageTemplateEnv pkgId pkg_key =
   [(PkgNameVar,  PathTemplate [Ordinary $ display (packageName pkgId)])
   ,(PkgVerVar,   PathTemplate [Ordinary $ display (packageVersion pkgId)])
+  ,(PkgKeyVar,   PathTemplate [Ordinary $ display pkg_key])
   ,(PkgIdVar,    PathTemplate [Ordinary $ display pkgId])
   ]
 
@@ -473,6 +468,7 @@ installDirsTemplateEnv dirs =
 
 instance Show PathTemplateVariable where
   show PrefixVar     = "prefix"
+  show PkgKeyVar     = "pkgkey"
   show BindirVar     = "bindir"
   show LibdirVar     = "libdir"
   show LibsubdirVar  = "libsubdir"
@@ -497,6 +493,7 @@ instance Read PathTemplateVariable where
     [ (var, drop (length varStr) s)
     | (varStr, var) <- vars
     , varStr `isPrefixOf` s ]
+    -- NB: order matters! Longer strings first
     where vars = [("prefix",     PrefixVar)
                  ,("bindir",     BindirVar)
                  ,("libdir",     LibdirVar)
@@ -506,6 +503,7 @@ instance Read PathTemplateVariable where
                  ,("docdir",     DocdirVar)
                  ,("htmldir",    HtmldirVar)
                  ,("pkgid",      PkgIdVar)
+                 ,("pkgkey",     PkgKeyVar)
                  ,("pkg",        PkgNameVar)
                  ,("version",    PkgVerVar)
                  ,("compiler",   CompilerVar)
@@ -522,7 +520,7 @@ instance Show PathComponent where
   showList = foldr (\x -> (shows x .)) id
 
 instance Read PathComponent where
-  -- for some reason we colapse multiple $ symbols here
+  -- for some reason we collapse multiple $ symbols here
   readsPrec _ = lex0
     where lex0 [] = []
           lex0 ('$':'$':s') = lex0 ('$':s')

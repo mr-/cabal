@@ -3,6 +3,7 @@
 -- |
 -- Module      :  Distribution.Simple.Utils
 -- Copyright   :  Isaac Jones, Simon Marlow 2003-2004
+-- License     :  BSD3
 --                portions Copyright (c) 2007, Galois Inc.
 --
 -- Maintainer  :  cabal-devel@haskell.org
@@ -14,36 +15,6 @@
 -- has low level functions for running programs, a bunch of wrappers for
 -- various directory and file functions that do extra logging.
 
-{- All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
-
 module Distribution.Simple.Utils (
         cabalVersion,
 
@@ -53,6 +24,7 @@ module Distribution.Simple.Utils (
         topHandler, topHandlerWith,
         warn, notice, setupMessage, info, debug,
         debugNoWrap, chattyTry,
+        printRawCommandAndArgs, printRawCommandAndArgsAndEnv,
 
         -- * running programs
         rawSystemExit,
@@ -139,6 +111,8 @@ module Distribution.Simple.Utils (
         normaliseLineEndings,
 
         -- * generic utils
+        dropWhileEndLE,
+        takeWhileEndLE,
         equating,
         comparing,
         isInfixOf,
@@ -155,7 +129,7 @@ import Control.Concurrent.MVar
 import Data.List
   ( nub, unfoldr, isPrefixOf, tails, intercalate )
 import Data.Char as Char
-    ( toLower, chr, ord )
+    ( isDigit, toLower, chr, ord )
 import Data.Bits
     ( Bits((.|.), (.&.), shiftL, shiftR) )
 import qualified Data.ByteString.Lazy as BS
@@ -178,7 +152,7 @@ import System.Directory
 import System.IO
     ( Handle, openFile, openBinaryFile, openBinaryTempFile
     , IOMode(ReadMode), hSetBinaryMode
-    , hGetContents, stdin, stderr, stdout, hPutStr, hFlush, hClose )
+    , hGetContents, stderr, stdout, hPutStr, hFlush, hClose )
 import System.IO.Error as IO.Error
     ( isDoesNotExistError, isAlreadyExistsError
     , ioeSetFileName, ioeGetFileName, ioeGetErrorString )
@@ -198,23 +172,12 @@ import Distribution.Version
     (Version(..))
 
 import Control.Exception (IOException, evaluate, throwIO)
-import System.Process (rawSystem)
-import qualified System.Process as Process (CreateProcess(..))
-
 import Control.Concurrent (forkIO)
-import System.Process (runInteractiveProcess, waitForProcess, proc,
-                       StdStream(..))
-#if __GLASGOW_HASKELL__ >= 702
-import System.Process (showCommandForUser)
-#endif
-
-#ifndef mingw32_HOST_OS
-import System.Posix.Signals (installHandler, sigINT, sigQUIT, Handler(..))
-import System.Process.Internals (defaultSignal, runGenProcess_)
-#else
-import System.Process (createProcess)
-#endif
-
+import qualified System.Process as Process
+         ( CreateProcess(..), StdStream(..), proc)
+import System.Process
+         ( createProcess, rawSystem, runInteractiveProcess
+         , showCommandForUser, waitForProcess)
 import Distribution.Compat.CopyFile
          ( copyFile, copyOrdinaryFile, copyExecutableFile
          , setFileOrdinary, setFileExecutable, setDirOrdinary )
@@ -267,8 +230,8 @@ topHandlerWith cont prog = catchIO prog handle
                          Nothing   -> ""
                          Just path -> path ++ location ++ ": "
         location     = case ioeGetLocation ioe of
-                         l@(n:_) | n >= '0' && n <= '9' -> ':' : l
-                         _                              -> ""
+                         l@(n:_) | Char.isDigit n -> ':' : l
+                         _                        -> ""
         detail       = ioeGetErrorString ioe
 
 topHandler :: IO a -> IO a
@@ -372,62 +335,23 @@ maybeExit cmd = do
   unless (res == ExitSuccess) $ exitWith res
 
 printRawCommandAndArgs :: Verbosity -> FilePath -> [String] -> IO ()
-printRawCommandAndArgs verbosity path args
- | verbosity >= deafening = print (path, args)
- | verbosity >= verbose   =
-#if __GLASGOW_HASKELL__ >= 702
-                            putStrLn $ showCommandForUser path args
-#else
-                            putStrLn $ unwords (path : args)
-#endif
- | otherwise              = return ()
+printRawCommandAndArgs verbosity path args =
+    printRawCommandAndArgsAndEnv verbosity path args Nothing
 
 printRawCommandAndArgsAndEnv :: Verbosity
                              -> FilePath
                              -> [String]
-                             -> [(String, String)]
+                             -> Maybe [(String, String)]
                              -> IO ()
-printRawCommandAndArgsAndEnv verbosity path args env
- | verbosity >= deafening = do putStrLn ("Environment: " ++ show env)
-                               print (path, args)
- | verbosity >= verbose   = putStrLn $ unwords (path : args)
+printRawCommandAndArgsAndEnv verbosity path args menv
+ | verbosity >= deafening = do
+       maybe (return ()) (putStrLn . ("Environment: " ++) . show) menv
+       print (path, args)
+ | verbosity >= verbose   = putStrLn $ showCommandForUser path args
  | otherwise              = return ()
 
 
--- This is taken directly from the process package.
--- The reason we need it is that runProcess doesn't handle ^C in the same
--- way that rawSystem handles it, but rawSystem doesn't allow us to pass
--- an environment.
-syncProcess :: String -> Process.CreateProcess -> IO ExitCode
-#if mingw32_HOST_OS
-syncProcess _fun c = do
-  (_,_,_,p) <- createProcess c
-  waitForProcess p
-#else
-syncProcess fun c = do
-  -- The POSIX version of system needs to do some manipulation of signal
-  -- handlers.  Since we're going to be synchronously waiting for the child,
-  -- we want to ignore ^C in the parent, but handle it the default way
-  -- in the child (using SIG_DFL isn't really correct, it should be the
-  -- original signal handler, but the GHC RTS will have already set up
-  -- its own handler and we don't want to use that).
-  r <- Exception.bracket (installHandlers) (restoreHandlers) $
-       (\_ -> do (_,_,_,p) <- runGenProcess_ fun c
-                              (Just defaultSignal) (Just defaultSignal)
-                 waitForProcess p)
-  return r
-    where
-      installHandlers = do
-        old_int  <- installHandler sigINT  Ignore Nothing
-        old_quit <- installHandler sigQUIT Ignore Nothing
-        return (old_int, old_quit)
-      restoreHandlers (old_int, old_quit) = do
-        _ <- installHandler sigINT  old_int Nothing
-        _ <- installHandler sigQUIT old_quit Nothing
-        return ()
-#endif  /* mingw32_HOST_OS */
-
--- Exit with the same exitcode if the subcommand fails
+-- Exit with the same exit code if the subcommand fails
 rawSystemExit :: Verbosity -> FilePath -> [String] -> IO ()
 rawSystemExit verbosity path args = do
   printRawCommandAndArgs verbosity path args
@@ -452,10 +376,19 @@ rawSystemExitWithEnv :: Verbosity
                      -> [(String, String)]
                      -> IO ()
 rawSystemExitWithEnv verbosity path args env = do
-    printRawCommandAndArgsAndEnv verbosity path args env
+    printRawCommandAndArgsAndEnv verbosity path args (Just env)
     hFlush stdout
-    exitcode <- syncProcess "rawSystemExitWithEnv" (proc path args)
-                { Process.env = Just env }
+    (_,_,_,ph) <- createProcess $
+                  (Process.proc path args) { Process.env = (Just env)
+#ifdef MIN_VERSION_process
+#if MIN_VERSION_process(1,2,0)
+-- delegate_ctlc has been added in process 1.2, and we still want to be able to
+-- bootstrap GHC on systems not having that version
+                                           , Process.delegate_ctlc = True
+#endif
+#endif
+                                           }
+    exitcode <- waitForProcess ph
     unless (exitcode == ExitSuccess) $ do
         debug verbosity $ path ++ " returned " ++ show exitcode
         exitWith exitcode
@@ -471,29 +404,29 @@ rawSystemIOWithEnv :: Verbosity
                    -> Maybe Handle  -- ^ stderr
                    -> IO ExitCode
 rawSystemIOWithEnv verbosity path args mcwd menv inp out err = do
-    maybe (printRawCommandAndArgs       verbosity path args)
-          (printRawCommandAndArgsAndEnv verbosity path args) menv
+    printRawCommandAndArgsAndEnv verbosity path args menv
     hFlush stdout
-    exitcode <- syncProcess "rawSystemIOWithEnv" (proc path args)
-                { Process.cwd     = mcwd
-                , Process.env     = menv
-                , Process.std_in  = mbToStd inp
-                , Process.std_out = mbToStd out
-                , Process.std_err = mbToStd err }
-                `Exception.finally` (mapM_ maybeClose [inp, out, err])
+    (_,_,_,ph) <- createProcess $
+                  (Process.proc path args) { Process.cwd           = mcwd
+                                           , Process.env           = menv
+                                           , Process.std_in        = mbToStd inp
+                                           , Process.std_out       = mbToStd out
+                                           , Process.std_err       = mbToStd err
+#ifdef MIN_VERSION_process
+#if MIN_VERSION_process(1,2,0)
+-- delegate_ctlc has been added in process 1.2, and we still want to be able to
+-- bootstrap GHC on systems not having that version
+                                           , Process.delegate_ctlc = True
+#endif
+#endif
+                                           }
+    exitcode <- waitForProcess ph
     unless (exitcode == ExitSuccess) $ do
       debug verbosity $ path ++ " returned " ++ show exitcode
     return exitcode
   where
-  -- Also taken from System.Process
-  maybeClose :: Maybe Handle -> IO ()
-  maybeClose (Just  hdl)
-    | hdl /= stdin && hdl /= stdout && hdl /= stderr = hClose hdl
-  maybeClose _ = return ()
-
-  mbToStd :: Maybe Handle -> StdStream
-  mbToStd Nothing    = Inherit
-  mbToStd (Just hdl) = UseHandle hdl
+    mbToStd :: Maybe Handle -> Process.StdStream
+    mbToStd = maybe Process.Inherit Process.UseHandle
 
 -- | Run a command and return its output.
 --
@@ -609,7 +542,7 @@ findProgramVersion versionArg selectVersion verbosity path = do
   return version
 
 
--- | Like the unix xargs program. Useful for when we've got very long command
+-- | Like the Unix xargs program. Useful for when we've got very long command
 -- lines that might overflow an OS limit on command line length and so you
 -- need to invoke a command multiple times to get all the args in.
 --
@@ -854,7 +787,7 @@ createDirectoryIfMissingVerbose verbosity create_parents path0
           -- createDirectory (and indeed POSIX mkdir) does not distinguish
           -- between a dir already existing and a file already existing. So we
           -- check for it here. Unfortunately there is a slight race condition
-          -- here, but we think it is benign. It could report an exeption in
+          -- here, but we think it is benign. It could report an exception in
           -- the case that the dir did exist but another process deletes the
           -- directory and creates a file in its place before we can check
           -- that the directory did indeed exist.
@@ -1085,7 +1018,7 @@ withFileContents name action =
 
 -- | Writes a file atomically.
 --
--- The file is either written sucessfully or an IO exception is raised and
+-- The file is either written successfully or an IO exception is raised and
 -- the original file is left unchanged.
 --
 -- On windows it is not possible to delete a file that is open by a process.
@@ -1292,12 +1225,42 @@ writeUTF8File path = writeFileAtomic path . BS.Char8.pack . toUTF8
 normaliseLineEndings :: String -> String
 normaliseLineEndings [] = []
 normaliseLineEndings ('\r':'\n':s) = '\n' : normaliseLineEndings s -- windows
-normaliseLineEndings ('\r':s)      = '\n' : normaliseLineEndings s -- old osx
+normaliseLineEndings ('\r':s)      = '\n' : normaliseLineEndings s -- old OS X
 normaliseLineEndings (  c :s)      =   c  : normaliseLineEndings s
 
 -- ------------------------------------------------------------
 -- * Common utils
 -- ------------------------------------------------------------
+
+-- | @dropWhileEndLE p@ is semantically the same as @reverse . dropWhile p
+-- . reverse@, but quite a bit faster. The difference between
+-- "Data.List.dropWhileEnd" and this version is that the one in "Data.List" is
+-- strict in elements, but spine-lazy, while this one is spine-strict but lazy
+-- in elements. That's what @LE@ stands for - "lazy in elements".
+--
+-- Example:
+--
+-- @
+-- > tail $ Data.List.dropWhileEnd (<3) [undefined, 5, 4, 3, 2, 1]
+-- *** Exception: Prelude.undefined
+-- > tail $ dropWhileEndLE (<3) [undefined, 5, 4, 3, 2, 1]
+-- [5,4,3]
+-- > take 3 $ dropWhileEnd (<3) [5, 4, 3, 2, 1, undefined]
+-- [5,4,3]
+-- > take 3 $ dropWhileEndLE (<3) [5, 4, 3, 2, 1, undefined]
+-- *** Exception: Prelude.undefined
+-- @
+dropWhileEndLE :: (a -> Bool) -> [a] -> [a]
+dropWhileEndLE p = foldr (\x r -> if null r && p x then [] else x:r) []
+
+-- @takeWhileEndLE p@ is semantically the same as @reverse . takeWhile p
+-- . reverse@, but is usually faster (as well as being easier to read).
+takeWhileEndLE :: (a -> Bool) -> [a] -> [a]
+takeWhileEndLE p = fst . foldr go ([], False)
+  where
+    go x (rest, done)
+      | not done && p x = (x:rest, False)
+      | otherwise = (rest, True)
 
 equating :: Eq a => (b -> a) -> b -> b -> Bool
 equating p x y = p x == p y

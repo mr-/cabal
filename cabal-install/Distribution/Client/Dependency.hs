@@ -42,7 +42,7 @@ module Distribution.Client.Dependency (
     applySandboxInstallPolicy,
 
     -- ** Extra policy options
-    dontUpgradeBasePackage,
+    dontUpgradeNonUpgradeablePackages,
     hideBrokenInstalledPackages,
     upgradeDependencies,
     reinstallTargets,
@@ -55,6 +55,7 @@ module Distribution.Client.Dependency (
     setIndependentGoals,
     setAvoidReinstalls,
     setShadowPkgs,
+    setStrongFlags,
     setMaxBackjumps,
     addSourcePackages,
     hideInstalledPackagesSpecificByInstalledPackageId,
@@ -68,6 +69,7 @@ import Distribution.Client.Dependency.TopDown
 import Distribution.Client.Dependency.Modular
          ( modularResolver, SolverConfig(..) )
 import qualified Distribution.Client.PackageIndex as PackageIndex
+import Distribution.Simple.PackageIndex (InstalledPackageIndex)
 import qualified Distribution.Simple.PackageIndex as InstalledPackageIndex
 import qualified Distribution.Client.InstallPlan as InstallPlan
 import Distribution.Client.InstallPlan (InstallPlan)
@@ -76,6 +78,7 @@ import Distribution.Client.Types
          , SourcePackage(..) )
 import Distribution.Client.Dependency.Types
          ( PreSolver(..), Solver(..), DependencyResolver, PackageConstraint(..)
+         , debugPackageConstraint
          , AllowNewer(..), PackagePreferences(..), InstalledPreference(..)
          , PackagesPreferenceDefault(..), QPointer
          , Progress(..), foldProgress, DependencyResolverOptions )
@@ -105,7 +108,7 @@ import Distribution.Text
 import Distribution.Verbosity
          ( Verbosity )
 
-import Data.List (maximumBy, foldl')
+import Data.List (maximumBy, foldl', intercalate)
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
@@ -124,15 +127,24 @@ data DepResolverParams = DepResolverParams {
        depResolverConstraints       :: [PackageConstraint],
        depResolverPreferences       :: [PackagePreference],
        depResolverPreferenceDefault :: PackagesPreferenceDefault,
-       depResolverInstalledPkgIndex :: InstalledPackageIndex.PackageIndex,
+       depResolverInstalledPkgIndex :: InstalledPackageIndex,
        depResolverSourcePkgIndex    :: PackageIndex.PackageIndex SourcePackage,
        depResolverReorderGoals      :: Bool,
        depResolverIndependentGoals  :: Bool,
        depResolverAvoidReinstalls   :: Bool,
        depResolverShadowPkgs        :: Bool,
+       depResolverStrongFlags       :: Bool,
        depResolverMaxBackjumps      :: Maybe Int
      }
 
+debugDepResolverParams :: DepResolverParams -> String
+debugDepResolverParams p =
+     "targets: " ++ intercalate ", " (map display (depResolverTargets p))
+  ++ "\nconstraints: "
+  ++   concatMap (("\n  " ++) . debugPackageConstraint) (depResolverConstraints p)
+  ++ "\npreferences: "
+  ++   concatMap (("\n  " ++) . debugPackagePreference) (depResolverPreferences p)
+  ++ "\nstrategy: " ++ show (depResolverPreferenceDefault p)
 
 -- | A package selection preference for a particular package.
 --
@@ -148,7 +160,16 @@ data PackagePreference =
      -- | If we prefer versions of packages that are already installed.
    | PackageInstalledPreference PackageName InstalledPreference
 
-basicDepResolverParams :: InstalledPackageIndex.PackageIndex
+-- | Provide a textual representation of a package preference
+-- for debugging purposes.
+--
+debugPackagePreference :: PackagePreference -> String
+debugPackagePreference (PackageVersionPreference   pn vr) =
+  display pn ++ " " ++ display (simplifyVersionRange vr)
+debugPackagePreference (PackageInstalledPreference pn ip) =
+  display pn ++ " " ++ show ip
+
+basicDepResolverParams :: InstalledPackageIndex
                        -> PackageIndex.PackageIndex SourcePackage
                        -> DepResolverParams
 basicDepResolverParams installedPkgIndex sourcePkgIndex =
@@ -163,6 +184,7 @@ basicDepResolverParams installedPkgIndex sourcePkgIndex =
        depResolverIndependentGoals  = False,
        depResolverAvoidReinstalls   = False,
        depResolverShadowPkgs        = False,
+       depResolverStrongFlags       = False,
        depResolverMaxBackjumps      = Nothing
      }
 
@@ -220,24 +242,33 @@ setShadowPkgs b params =
       depResolverShadowPkgs = b
     }
 
+setStrongFlags :: Bool -> DepResolverParams -> DepResolverParams
+setStrongFlags b params =
+    params {
+      depResolverStrongFlags = b
+    }
+
 setMaxBackjumps :: Maybe Int -> DepResolverParams -> DepResolverParams
 setMaxBackjumps n params =
     params {
       depResolverMaxBackjumps = n
     }
 
-dontUpgradeBasePackage :: DepResolverParams -> DepResolverParams
-dontUpgradeBasePackage params =
+-- | Some packages are specific to a given compiler version and should never be
+-- upgraded.
+dontUpgradeNonUpgradeablePackages :: DepResolverParams -> DepResolverParams
+dontUpgradeNonUpgradeablePackages params =
     addConstraints extraConstraints params
   where
     extraConstraints =
       [ PackageConstraintInstalled pkgname
       | all (/=PackageName "base") (depResolverTargets params)
-      , pkgname <-  [ PackageName "base", PackageName "ghc-prim" ]
+      , pkgname <- map PackageName [ "base", "ghc-prim", "integer-gmp"
+                                   , "integer-simple" ]
       , isInstalled pkgname ]
     -- TODO: the top down resolver chokes on the base constraints
     -- below when there are no targets and thus no dep on base.
-    -- Need to refactor contraints separate from needing packages.
+    -- Need to refactor constraints separate from needing packages.
     isInstalled = not . null
                 . InstalledPackageIndex.lookupPackageName
                                  (depResolverInstalledPkgIndex params)
@@ -387,7 +418,7 @@ reinstallTargets params =
     hideInstalledPackagesAllVersions (depResolverTargets params) params
 
 
-standardInstallPolicy :: InstalledPackageIndex.PackageIndex
+standardInstallPolicy :: InstalledPackageIndex
                       -> SourcePackageDb
                       -> [PackageSpecifier SourcePackage]
                       -> DepResolverParams
@@ -468,7 +499,7 @@ chooseSolver verbosity Choose        (CompilerId f v) = do
   return chosenSolver
 
 runSolver :: Solver -> SolverConfig -> DependencyResolver
-runSolver TopDown = const topDownResolver -- TODO: warn about unsuported options
+runSolver TopDown = const topDownResolver -- TODO: warn about unsupported options
 runSolver Modular = modularResolver
 
 -- | Run the dependency solver.
@@ -486,26 +517,29 @@ resolveDependencies  :: Platform
                      -> DepResolverParams
                      -> (Maybe QPointer -> Progress String String InstallPlan)
 
-    --TODO: is this needed here? see dontUpgradeBasePackage
-resolveDependencies platform comp _solver params _pointer
+    --TODO: is this needed here? see dontUpgradeNonUpgradeablePackages
+resolveDependencies platform comp _solver params
   | null (depResolverTargets params)
   = return (mkInstallPlan platform comp [])
 
 resolveDependencies platform comp solver params pointer =
-    fmap (mkInstallPlan platform comp) $ runSolver solver sc depResOpts pointer
+  
+  Step (debugDepResolverParams finalparams)
+  $ fmap (mkInstallPlan platform comp) 
+  $ runSolver solver sc depResOpts pointer
   where
-    (sc, depResOpts) = resolveDependenciesConfigs platform comp solver params
+    (sc, depResOpts, finalparams) = resolveDependenciesConfigs platform comp solver params
 
 resolveDependenciesConfigs :: Platform
                      -> CompilerId
                      -> Solver
                      -> DepResolverParams
-                     -> (SolverConfig, DependencyResolverOptions)
+                     -> (SolverConfig, DependencyResolverOptions, DepResolverParams)
 resolveDependenciesConfigs platform comp solver params =
-    ((SolverConfig reorderGoals indGoals noReinstalls shadowing maxBkjumps),
+    ((SolverConfig reorderGoals indGoals noReinstalls shadowing strFlags maxBkjumps),
      (platform, comp, installedPkgIndex, sourcePkgIndex, preferences, constraints, targets))
   where
-    DepResolverParams
+    finalparams @ (DepResolverParams
       targets constraints
       prefs defpref
       installedPkgIndex
@@ -514,7 +548,8 @@ resolveDependenciesConfigs platform comp solver params =
       indGoals
       noReinstalls
       shadowing
-      maxBkjumps      = dontUpgradeBasePackage
+      strFlags
+      maxBkjumps)     = dontUpgradeNonUpgradeablePackages
                       -- TODO:
                       -- The modular solver can properly deal with broken
                       -- packages and won't select them. So the
@@ -526,7 +561,6 @@ resolveDependenciesConfigs platform comp solver params =
 
     preferences = interpretPackagesPreference
                     (Set.fromList targets) defpref prefs
-
 
 -- | Make an install plan from the output of the dep resolver.
 -- It checks that the plan is valid, or it's an error in the dep resolver.
@@ -589,7 +623,7 @@ interpretPackagesPreference selected defaultPref prefs =
 -- It is suitable for tasks such as selecting packages to download for user
 -- inspection. It is not suitable for selecting packages to install.
 --
--- Note: if no installed package index is available, it is ok to pass 'mempty'.
+-- Note: if no installed package index is available, it is OK to pass 'mempty'.
 -- It simply means preferences for installed packages will be ignored.
 --
 resolveWithoutDependencies :: DepResolverParams
@@ -597,7 +631,7 @@ resolveWithoutDependencies :: DepResolverParams
 resolveWithoutDependencies (DepResolverParams targets constraints
                               prefs defpref installedPkgIndex sourcePkgIndex
                               _reorderGoals _indGoals _avoidReinstalls
-                              _shadowing _maxBjumps) =
+                              _shadowing _strFlags _maxBjumps) =
     collectEithers (map selectPackage targets)
   where
     selectPackage :: PackageName -> Either ResolveNoDepsError SourcePackage

@@ -1,7 +1,10 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Distribution.Simple.Compiler
 -- Copyright   :  Isaac Jones 2003-2004
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -16,36 +19,6 @@
 -- only know about a single global package collection but GHC has a global and
 -- per-user one and it lets you create arbitrary other package databases. We do
 -- not yet fully support this latter feature.
-
-{- All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
 
 module Distribution.Simple.Compiler (
         -- * Haskell implementations
@@ -70,7 +43,10 @@ module Distribution.Simple.Compiler (
         unsupportedLanguages,
         extensionsToFlags,
         unsupportedExtensions,
-        parmakeSupported
+        parmakeSupported,
+        reexportedModulesSupported,
+        renamingPackageFlagsSupported,
+        packageKeySupported
   ) where
 
 import Distribution.Compiler
@@ -79,9 +55,11 @@ import Distribution.Text (display)
 import Language.Haskell.Extension (Language(Haskell98), Extension)
 
 import Control.Monad (liftM)
+import Data.Binary (Binary)
 import Data.List (nub)
 import qualified Data.Map as M (Map, lookup)
 import Data.Maybe (catMaybes, isNothing)
+import GHC.Generics (Generic)
 import System.Directory (canonicalizePath)
 
 data Compiler = Compiler {
@@ -94,7 +72,9 @@ data Compiler = Compiler {
         compilerProperties      :: M.Map String String
         -- ^ A key-value map for properties not covered by the above fields.
     }
-    deriving (Show, Read)
+    deriving (Generic, Show, Read)
+
+instance Binary Compiler
 
 showCompilerId :: Compiler -> String
 showCompilerId = display . compilerId
@@ -119,7 +99,9 @@ compilerVersion = (\(CompilerId _ v) -> v) . compilerId
 data PackageDB = GlobalPackageDB
                | UserPackageDB
                | SpecificPackageDB FilePath
-    deriving (Eq, Ord, Show, Read)
+    deriving (Eq, Generic, Ord, Show, Read)
+
+instance Binary PackageDB
 
 -- | We typically get packages from several databases, and stack them
 -- together. This type lets us be explicit about that stacking. For example
@@ -163,13 +145,15 @@ absolutePackageDBPath (SpecificPackageDB db) =
 -- ------------------------------------------------------------
 
 -- | Some compilers support optimising. Some have different levels.
--- For compliers that do not the level is just capped to the level
+-- For compilers that do not the level is just capped to the level
 -- they do support.
 --
 data OptimisationLevel = NoOptimisation
                        | NormalOptimisation
                        | MaximumOptimisation
-    deriving (Eq, Show, Read, Enum, Bounded)
+    deriving (Bounded, Enum, Eq, Generic, Read, Show)
+
+instance Binary OptimisationLevel
 
 flagToOptimisationLevel :: Maybe String -> OptimisationLevel
 flagToOptimisationLevel Nothing  = NormalOptimisation
@@ -218,9 +202,25 @@ extensionToFlag comp ext = lookup ext (compilerExtensions comp)
 
 -- | Does this compiler support parallel --make mode?
 parmakeSupported :: Compiler -> Bool
-parmakeSupported comp =
+parmakeSupported = ghcSupported "Support parallel --make"
+
+-- | Does this compiler support reexported-modules?
+reexportedModulesSupported :: Compiler -> Bool
+reexportedModulesSupported = ghcSupported "Support reexported-modules"
+
+-- | Does this compiler support thinning/renaming on package flags?
+renamingPackageFlagsSupported :: Compiler -> Bool
+renamingPackageFlagsSupported = ghcSupported "Support thinning and renaming package flags"
+
+-- | Does this compiler support package keys?
+packageKeySupported :: Compiler -> Bool
+packageKeySupported = ghcSupported "Uses package keys"
+
+-- | Utility function for GHC only features
+ghcSupported :: String -> Compiler -> Bool
+ghcSupported key comp =
   case compilerFlavor comp of
-    GHC -> case M.lookup "Support parallel --make" (compilerProperties comp) of
+    GHC -> case M.lookup key (compilerProperties comp) of
       Just "YES" -> True
       _          -> False
     _   -> False

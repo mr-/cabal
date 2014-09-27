@@ -1,8 +1,11 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Distribution.Compiler
 -- Copyright   :  Isaac Jones 2003-2004
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -22,36 +25,6 @@
 -- moment we just have to live with this deficiency. If you're interested, see
 -- ticket #57.
 
-{- All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
-
 module Distribution.Compiler (
   -- * Compiler flavor
   CompilerFlavor(..),
@@ -64,10 +37,12 @@ module Distribution.Compiler (
   CompilerId(..),
   ) where
 
+import Data.Binary (Binary)
 import Data.Data (Data)
 import Data.Typeable (Typeable)
 import Data.Maybe (fromMaybe)
 import Distribution.Version (Version(..))
+import GHC.Generics (Generic)
 
 import qualified System.Info (compilerName, compilerVersion)
 import Distribution.Text (Text(..), display)
@@ -81,7 +56,9 @@ import Control.Monad (when)
 data CompilerFlavor = GHC | NHC | YHC | Hugs | HBC | Helium | JHC | LHC | UHC
                     | HaskellSuite String -- string is the id of the actual compiler
                     | OtherCompiler String
-  deriving (Show, Read, Eq, Ord, Typeable, Data)
+  deriving (Generic, Show, Read, Eq, Ord, Typeable, Data)
+
+instance Binary CompilerFlavor
 
 knownCompilerFlavors :: [CompilerFlavor]
 knownCompilerFlavors = [GHC, NHC, YHC, Hugs, HBC, Helium, JHC, LHC, UHC]
@@ -154,7 +131,9 @@ defaultCompilerFlavor = case buildCompilerFlavor of
 -- ------------------------------------------------------------
 
 data CompilerId = CompilerId CompilerFlavor Version
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Generic, Ord, Read, Show)
+
+instance Binary CompilerId
 
 instance Text CompilerId where
   disp (CompilerId f (Version [] _)) = disp f

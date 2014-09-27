@@ -2,6 +2,7 @@
 -- |
 -- Module      :  Distribution.Simple
 -- Copyright   :  Isaac Jones 2003-2005
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -23,36 +24,6 @@
 -- The original idea was that there could be different build systems that all
 -- presented the same compatible command line interfaces. There is still a
 -- "Distribution.Make" system but in practice no packages use it.
-
-{- All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
 
 {-
 Work around this warning:
@@ -85,7 +56,7 @@ module Distribution.Simple (
 -- local
 import Distribution.Simple.Compiler hiding (Flag)
 import Distribution.Simple.UserHooks
-import Distribution.Package --must not specify imports, since we're exporting moule.
+import Distribution.Package --must not specify imports, since we're exporting module.
 import Distribution.PackageDescription
          ( PackageDescription(..), GenericPackageDescription, Executable(..)
          , updatePackageDescription, hasLibs
@@ -134,7 +105,7 @@ import Distribution.Text
 import System.Environment(getArgs, getProgName)
 import System.Directory(removeFile, doesFileExist,
                         doesDirectoryExist, removeDirectoryRecursive)
-import System.Exit
+import System.Exit       (exitWith,ExitCode(..))
 import System.IO.Error   (isDoesNotExistError)
 import Control.Exception (throwIO)
 import Distribution.Compat.Environment (getEnvironment)
@@ -376,12 +347,9 @@ testAction hooks flags args = do
     -- default action is a no-op and if the package uses the old test interface
     -- the new handler will find no tests.
     runTests hooks args False pkg_descr localBuildInfo
-    --FIXME: this is a hack, passing the args inside the flags
-    -- it's because the args to not get passed to the main test hook
-    let flags' = flags { testList = Flag args }
-    hookedAction preTest testHook postTest
+    hookedActionWithArgs preTest testHook postTest
             (getBuildConfig hooks verbosity distPref)
-            hooks flags' args
+            hooks flags args
 
 benchAction :: UserHooks -> BenchmarkFlags -> Args -> IO ()
 benchAction hooks flags args = do
@@ -482,7 +450,7 @@ getBuildConfig hooks verbosity distPref = do
       let cFlags' = cFlags {
             -- Since the list of unconfigured programs is not serialized,
             -- restore it to the same value as normally used at the beginning
-            -- of a conigure run:
+            -- of a configure run:
             configPrograms = restoreProgramConfiguration
                                (builtinPrograms ++ hookedPrograms hooks)
                                (configPrograms cFlags),
@@ -539,7 +507,7 @@ simpleUserHooks =
        buildHook = defaultBuildHook,
        replHook  = defaultReplHook,
        copyHook  = \desc lbi _ f -> install desc lbi f, -- has correct 'copy' behavior with params
-       testHook = defaultTestHook,
+       testHook  = defaultTestHook,
        benchHook = defaultBenchHook,
        instHook  = defaultInstallHook,
        sDistHook = \p l h f -> sdist p l f srcPref (allSuffixHandlers h),
@@ -682,10 +650,10 @@ getHookedBuildInfo verbosity = do
       info verbosity $ "Reading parameters from " ++ infoFile
       readHookedBuildInfo verbosity infoFile
 
-defaultTestHook :: PackageDescription -> LocalBuildInfo
+defaultTestHook :: Args -> PackageDescription -> LocalBuildInfo
                 -> UserHooks -> TestFlags -> IO ()
-defaultTestHook pkg_descr localbuildinfo _ flags =
-    test pkg_descr localbuildinfo flags
+defaultTestHook args pkg_descr localbuildinfo _ flags =
+    test args pkg_descr localbuildinfo flags
 
 defaultBenchHook :: Args -> PackageDescription -> LocalBuildInfo
                  -> UserHooks -> BenchmarkFlags -> IO ()

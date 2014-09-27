@@ -53,7 +53,7 @@ translateConfig sc (Platform arch os, cid, iidx, sidx, pprefs, pcs, pns)
     = ModularConfig idx pprefs gcs pns
     where
       -- Indices have to be converted into solver-specific uniform index.
-      idx    = convPIs os arch cid (shadowPkgs sc) iidx sidx
+      idx    = convPIs os arch cid (shadowPkgs sc) (strongFlags sc) iidx sidx
       -- Constraints have to be converted into a finite map indexed by PN.
       gcs    = M.fromListWith (++) (map (\ pc -> (pcName pc, [pc])) pcs)
 

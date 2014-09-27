@@ -34,7 +34,7 @@ import Distribution.Package
 import Distribution.PackageDescription
          ( GenericPackageDescription(packageDescription)
          , PackageDescription(..), specVersion
-         , BuildType(..), knownBuildTypes )
+         , BuildType(..), knownBuildTypes, defaultRenaming )
 import Distribution.PackageDescription.Parse
          ( readPackageDescription )
 import Distribution.Simple.Configure
@@ -59,7 +59,7 @@ import Distribution.Simple.Command
 import Distribution.Simple.Program.GHC
          ( GhcMode(..), GhcOptions(..), renderGhcOptions )
 import qualified Distribution.Simple.PackageIndex as PackageIndex
-import Distribution.Simple.PackageIndex (PackageIndex)
+import Distribution.Simple.PackageIndex (InstalledPackageIndex)
 import Distribution.Client.Config
          ( defaultCabalDir )
 import Distribution.Client.IndexUtils
@@ -100,7 +100,7 @@ data SetupScriptOptions = SetupScriptOptions {
     useCompiler              :: Maybe Compiler,
     usePlatform              :: Maybe Platform,
     usePackageDB             :: PackageDBStack,
-    usePackageIndex          :: Maybe PackageIndex,
+    usePackageIndex          :: Maybe InstalledPackageIndex,
     useProgramConfig         :: ProgramConfiguration,
     useDistPref              :: FilePath,
     useLoggingHandle         :: Maybe Handle,
@@ -236,7 +236,7 @@ externalSetupMethod verbosity options pkg bt mkargs = do
   useCachedSetupExecutable = (bt == Simple || bt == Configure || bt == Make)
 
   maybeGetInstalledPackages :: SetupScriptOptions -> Compiler
-                               -> ProgramConfiguration -> IO PackageIndex
+                               -> ProgramConfiguration -> IO InstalledPackageIndex
   maybeGetInstalledPackages options' comp conf =
     case usePackageIndex options' of
       Just index -> return index
@@ -461,8 +461,9 @@ externalSetupMethod verbosity options pkg bt mkargs = do
             , ghcOptSourcePath      = [workingDir]
             , ghcOptPackageDBs      = usePackageDB options''
             , ghcOptPackages        = maybe []
-                                      (\ipkgid -> [(ipkgid, cabalPkgid)])
+                                      (\ipkgid -> [(ipkgid, cabalPkgid, defaultRenaming)])
                                       maybeCabalLibInstalledPkgId
+            , ghcOptExtra           = ["-threaded"]
             }
       let ghcCmdLine = renderGhcOptions compiler ghcOptions
       case useLoggingHandle options of

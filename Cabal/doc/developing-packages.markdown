@@ -18,9 +18,7 @@ Proglet.hs
 It is assumed that (apart from external dependencies) all the files that
 make up a package live under a common project root directory. This
 simple example has all the project files in one directory, but most
-packages will use one or more subdirectories. See section [TODO](#TODO)
-for the standard practices for organising the files in your project
-directory.
+packages will use one or more subdirectories.
 
 To turn this into a Cabal package we need two extra files in the
 project's root directory:
@@ -40,8 +38,8 @@ questions starting with the package name and version.
 
 ~~~~~~~~~~
 $ cabal init
-Package name [default "proglet"]? 
-Package version [default "0.1"]? 
+Package name [default "proglet"]?
+Package version [default "0.1"]?
 ...
 ~~~~~~~~~~
 
@@ -264,7 +262,7 @@ has some tips on package versioning.
 
 The combination of package name and version is called the _package ID_
 and is written with a hyphen to separate the name and version, e.g.
-"HUnit-1.1". 
+"HUnit-1.1".
 
 For Cabal packages, the combination of the package name and version
 _uniquely_ identifies each package. Or to put it another way: two
@@ -285,7 +283,7 @@ are not very complicated.
 Cabal packages
 :   Cabal packages are really source packages. That is they contain
     Haskell (and sometimes C) source code.
-    
+
     Cabal packages can be compiled to produce GHC packages. They can
     also be translated into operating system packages.
 
@@ -294,14 +292,14 @@ GHC packages
     packages, not executables. Library packages have to be registered
     with GHC for them to be available in GHCi or to be used when
     compiling other programs or packages.
-    
+
     The low-level tool `ghc-pkg` is used to register GHC packages and to
     get information on what packages are currently registered.
-    
+
     You never need to make GHC packages manually. When you build and
     install a Cabal package containing a library then it gets registered
     with GHC automatically.
-    
+
     Haskell implementations other than GHC have essentially the same
     concept of registered packages. For the most part, Cabal hides the
     slight differences.
@@ -310,12 +308,12 @@ Operating system packages
 :   On operating systems like Linux and Mac OS X, the system has a
     specific notion of a package and there are tools for installing and
     managing packages.
-    
+
     The Cabal package format is designed to allow Cabal packages to be
     translated, mostly-automatically, into operating system packages.
     They are usually translated 1:1, that is a single Cabal package
     becomes a single system package.
-    
+
     It is also possible to make Windows installers from Cabal packages,
     though this is typically done for a program together with all of its
     library dependencies, rather than packaging each library separately.
@@ -351,7 +349,7 @@ automatic package management. This means tools like `cabal` can resolve
 dependencies and install a package plus all of its dependencies
 automatically. Alternatively, it is possible to mechanically (or mostly
 mechanically) translate Cabal packages into system packages and let the
-system package managager install dependencies automatically.
+system package manager install dependencies automatically.
 
 It is important to track dependencies accurately so that packages can
 reliably be moved from one system to another system and still be able to
@@ -364,15 +362,15 @@ could cause the code to fail to build on some other system.
 
 The explicit dependency approach is in contrast to the traditional
 "./configure" approach where instead of specifying dependencies
-declarativly, the `./configure` script checks if the dependencies are
+declaratively, the `./configure` script checks if the dependencies are
 present on the system. Some manual work is required to transform a
 `./configure` based package into a Linux distribution package (or
 similar). This conversion work is usually done by people other than the
 package author(s). The practical effect of this is that only the most
-popular packages will benefit from automatic package managment. Instead,
+popular packages will benefit from automatic package management. Instead,
 Cabal forces the original author to specify the dependencies but the
 advantage is that every package can benefit from automatic package
-managment.
+management.
 
 The "./configure" approach tends to encourage packages that adapt
 themselves to the environment in which they are built, for example by
@@ -380,7 +378,7 @@ disabling optional features so that they can continue to work when a
 particular dependency is not available. This approach makes sense in a
 world where installing additional dependencies is a tiresome manual
 process and so minimising dependencies is important. The automatic
-package managment view is that packages should just declare what they
+package management view is that packages should just declare what they
 need and the package manager will take responsibility for ensuring that
 all the dependencies are installed.
 
@@ -419,7 +417,7 @@ that are needed and the build system will take care of using the right
 flags for the compiler. Additionally this makes it easier for tools to
 discover what system C libraries a package needs, which is useful for
 tracking dependencies on system libraries (e.g. when translating into
-linux distro packages).
+Linux distribution packages).
 
 In fact both of these examples fall into the category of explicitly
 specifying dependencies. Not all dependencies are other Cabal packages.
@@ -449,7 +447,7 @@ very well; if the executables depend on the library, they must
 explicitly list all the modules they directly or indirectly import from
 that library.  Fortunately, starting with Cabal 1.8.0.4, executables can
 also declare the package that they are in as a dependency, and Cabal
-will treat them as if they were in another package that dependended on
+will treat them as if they were in another package that depended on
 the library.
 
 Internally, the package may consist of much more than a bunch of Haskell
@@ -489,7 +487,7 @@ _package_`.cabal`
 
 :   a single-module Haskell program to perform various setup tasks (with
     the interface described in the section on [building and installing
-    packages](#building-and-installing-a-package)). This module should
+    packages](installing-packages.html). This module should
     import only modules that will be present in all Haskell
     implementations, including modules of the Cabal library. The
     content of this file is determined by the `build-type` setting in
@@ -498,7 +496,7 @@ _package_`.cabal`
 
 Once you have these, you can create a source bundle of this directory
 for distribution. Building of the package is discussed in the section on
-[building and installing packages](#building-and-installing-a-package).
+[building and installing packages](installing-packages.html).
 
 One of the purposes of Cabal is to make it easier to build a package
 with different Haskell implementations. So it provides abstractions of
@@ -627,7 +625,7 @@ The simple build infrastructure can also handle packages where building
 is governed by system-dependent parameters, if you specify a little more
 (see the section on [system-dependent
 parameters](#system-dependent-parameters)). A few packages require [more
-elaborate solutions](#complex-packages).
+elaborate solutions](#more-complex-packages).
 
 ## Package descriptions ##
 
@@ -655,8 +653,8 @@ several sections.
   information](#build-information).
 
 * Following is an arbitrary number of executable sections
-  which describe an [executable program](#executable) and relevant
-  [build information](#build-information).
+  which describe an executable program and relevant [build
+  information](#build-information).
 
 Each section consists of a number of property descriptions
 in the form of field/value pairs, with a syntax roughly like mail
@@ -724,8 +722,7 @@ These fields may occur in the first top-level properties section and
 describe the package as a whole:
 
 `name:` _package-name_ (required)
-:   The unique name of the [package](#packages), without the version
-    number.
+:   The unique name of the package, without the version number.
 
 `version:` _numbers_ (required)
 :   The package version number, usually consisting of a sequence of
@@ -733,7 +730,7 @@ describe the package as a whole:
 
 `cabal-version:`  _>= x.y_
 :   The version of the Cabal specification that this package description uses.
-    The Cabal specification does slowly evolve, intoducing new features and
+    The Cabal specification does slowly evolve, introducing new features and
     occasionally changing the meaning of existing features. By specifying
     which version of the spec you are using it enables programs which process
     the package description to know what syntax to expect and what each part
@@ -744,8 +741,8 @@ describe the package as a whole:
     bounds do not make sense. In future this field will specify just a version
     number, rather than a version range.
 
-    The version number you specify will affect both compatability and
-    behaviour. Most tools (including the Cabal libray and cabal program)
+    The version number you specify will affect both compatibility and
+    behaviour. Most tools (including the Cabal library and cabal program)
     understand a range of versions of the Cabal specification. Older tools
     will of course only work with older versions of the Cabal specification.
     Most of the time, tools that are too old will recognise this fact and
@@ -760,7 +757,7 @@ describe the package as a whole:
     In particular, the syntax of package descriptions changed significantly
     with Cabal version 1.2 and the `cabal-version` field is now required.
     Files written in the old syntax are still recognized, so if you require
-    compatability with very old Cabal versions then you may write your package
+    compatibility with very old Cabal versions then you may write your package
     description file using the old syntax.  Please consult the user's guide of
     an older Cabal version for a description of that syntax.
 
@@ -792,8 +789,8 @@ describe the package as a whole:
     ~~~~~~~~~~~~~~~~
 
     For build type `Make` (see the section on [more complex
-    packages](#more-complex-packages) below), the contents of
-    `Setup.hs` must be:
+    packages](installing-packages.html#more-complex-packages) below),
+    the contents of `Setup.hs` must be:
 
     ~~~~~~~~~~~~~~~~
     import Distribution.Make
@@ -840,7 +837,7 @@ describe the package as a whole:
 `bug-reports:` _URL_
 :   The URL where users should direct bug reports. This would normally be either:
 
-    * A `mailto:` URL, eg for a person or a mailing list.
+    * A `mailto:` URL, e.g. for a person or a mailing list.
 
     * An `http:` (or `https:`) URL for an online bug tracking system.
 
@@ -866,8 +863,8 @@ describe the package as a whole:
     package before.
 
     For library packages, this field is used as prologue text by [`setup
-    haddock`](#setup-haddock), and thus may contain the same markup as
-    [haddock][] documentation comments.
+    haddock`](installing-packages.html#setup-haddock), and thus may
+    contain the same markup as [haddock][] documentation comments.
 
 `category:` _freeform_
 :   A classification category for future use by the package catalogue [Hackage].  These
@@ -910,8 +907,9 @@ describe the package as a whole:
 
 `extra-source-files:` _filename list_
 :   A list of additional files to be included in source distributions
-    built with [`setup sdist`](#setup-sdist). As with `data-files` it
-    can use a limited form of `*` wildcards in file names.
+    built with [`setup sdist`](installing-packages.html#setup-sdist). As
+    with `data-files` it can use a limited form of `*` wildcards in file
+    names.
 
 `extra-doc-files:` _filename list_
 :   A list of additional files to be included in source distributions,
@@ -921,9 +919,10 @@ describe the package as a whole:
 
 `extra-tmp-files:` _filename list_
 :   A list of additional files or directories to be removed by [`setup
-    clean`](#setup-clean). These would typically be additional files
-    created by additional hooks, such as the scheme described in the
-    section on [system-dependent parameters](#system-dependent-parameters).
+    clean`](installing-packages.html#setup-clean). These would typically
+    be additional files created by additional hooks, such as the scheme
+    described in the section on [system-dependent
+    parameters](#system-dependent-parameters).
 
 ### Library ###
 
@@ -945,6 +944,21 @@ The library section should contain the following fields:
     may be necessary to set `exposed: False` for some old libraries that
     use a flat module namespace or where it is known that the exposed
     modules would clash with other common modules.
+
+`reexported-modules:` _exportlist _
+:   Supported only in GHC 7.10 and later.  A list of modules to _reexport_ from
+    this package.  The syntax of this field is `orig-pkg:Name as NewName` to
+    reexport module `Name` from `orig-pkg` with the new name `NewName`.  We also
+    support abbreviated versions of the syntax: if you omit `as NewName`,
+    we'll reexport without renaming; if you omit `orig-pkg`, then we will
+    automatically figure out which package to reexport from, if it's
+    unambiguous.
+
+    Reexported modules are useful for compatibility shims when a package has
+    been split into multiple packages, and they have the useful property that
+    if a package provides a module, and another package reexports it under
+    the same name, these are not considered a conflict (as would be the case
+    with a stub module.)  They can also be used to resolve name conflicts.
 
 The library section may also contain build information fields (see the
 section on [build information](#build-information)).
@@ -1280,6 +1294,23 @@ values for these fields.
 
     It is only syntactic sugar. It is exactly equivalent to `foo >= 1.2 && < 1.3`.
 
+    With Cabal 1.20 and GHC 7.10, `build-depends` also supports module
+    thinning and renaming, which allows you to selectively decide what
+    modules become visible from a package dependency.  For example:
+
+    ~~~~~~~~~~~~~~~~
+    build-depends: containers (Data.Set, Data.IntMap as Map)
+    ~~~~~~~~~~~~~~~~
+
+    This results in only the modules `Data.Set` and `Map` being visible to
+    the user from containers, hiding all other modules.  To add additional
+    names for modules without hiding the others, you can use the `with`
+    keyword:
+
+    ~~~~~~~~~~~~~~~~
+    build-depends: containers with (Data.IntMap as Map)
+    ~~~~~~~~~~~~~~~~
+
     Note: Prior to Cabal 1.8, build-depends specified in each section
     were global to all sections. This was unintentional, but some packages
     were written to depend on it, so if you need your build-depends to
@@ -1399,6 +1430,11 @@ values for these fields.
     arguments are compiler-dependent, this field is more useful with the
     setup described in the section on [system-dependent
     parameters](#system-dependent-parameters).
+
+`cpp-options:` _token list_
+:   Command-line arguments for pre-processing Haskell code. Applies to
+    haskell source and other pre-processed Haskell source like .hsc .chs.
+    Does not apply to C code, that's what cc-options is for.
 
 `ld-options:` _token list_
 :   Command-line arguments to be passed to the linker. Since the
@@ -1536,12 +1572,12 @@ following fields.
 :   The default value of this flag.
 
     Note that this value may be [overridden in several
-    ways](#controlling-flag-assignments"). The rationale for having
-    flags default to True is that users usually want new features as
-    soon as they are available. Flags representing features that are not
-    (yet) recommended for most users (such as experimental features or
-    debugging support) should therefore explicitly override the default
-    to False.
+    ways](installing-packages.html#controlling-flag-assignments"). The
+    rationale for having flags default to True is that users usually
+    want new features as soon as they are available. Flags representing
+    features that are not (yet) recommended for most users (such as
+    experimental features or debugging support) should therefore
+    explicitly override the default to False.
 
 `manual:` _boolean_ (default: `False`)
 :   By default, Cabal will first try to satisfy dependencies with the
@@ -1618,9 +1654,9 @@ The following tests are currently supported.
 
 #### Resolution of Conditions and Flags ####
 
-If a package descriptions specifies configuration flags the package user
-can [control these in several ways](#controlling-flag-assignments). If
-the user does not fix the value of a flag, Cabal will try to find a flag
+If a package descriptions specifies configuration flags the package user can
+[control these in several ways](installing-packages.html#controlling-flag-assignments).
+If the user does not fix the value of a flag, Cabal will try to find a flag
 assignment in the following way.
 
   * For each flag specified, it will assign its default value, evaluate
@@ -1729,7 +1765,7 @@ are currently two kinds defined:
 
 You can specify one kind or the other or both. As an example here are
 the repositories for the Cabal library. Note that the `this` kind of
-repo specifies a tag.
+repository specifies a tag.
 
 ~~~~~~~~~~~~~~~~
 source-repository head
@@ -1773,8 +1809,8 @@ The exact fields are as follows:
 :   CVS requires a named module, as each CVS server can host multiple
     named repositories.
 
-    This field is required for the CVS repo type and should not be used
-    otherwise.
+    This field is required for the CVS repository type and should not
+    be used otherwise.
 
 `branch:` _token_
 :   Many source control systems support the notion of a branch, as a
@@ -1787,17 +1823,17 @@ The exact fields are as follows:
 
 `tag:` _token_
 :   A tag identifies a particular state of a source repository. The tag
-    can be used with a `this` repo kind to identify the state of a repo
-    corresponding to a particular package version or release. The exact
-    form of the tag depends on the repository type.
+    can be used with a `this` repository kind to identify the state of
+    a repository corresponding to a particular package version or
+    release. The exact form of the tag depends on the repository type.
 
-    This field is required for the `this` repo kind.
+    This field is required for the `this` repository kind.
 
 `subdir:` _directory_
 :   Some projects put the sources for multiple packages under a single
     source repository. This field lets you specify the relative path
     from the root of the repository to the top directory for the
-    package, ie the directory containing the package's `.cabal` file.
+    package, i.e. the directory containing the package's `.cabal` file.
 
     This field is optional. It default to empty which corresponds to the
     root directory of the repository.
@@ -1820,7 +1856,7 @@ The `get` command supports the following options:
 
 `-s --source-repository` _[head|this|...]_
 :   Fork the package's source repository using the appropriate version control
-    system. The optional argument allows to choose a specific repo kind.
+    system. The optional argument allows to choose a specific repository kind.
 
 
 ## Accessing data files from package code ##
@@ -1828,9 +1864,9 @@ The `get` command supports the following options:
 The placement on the target system of files listed in the `data-files`
 field varies between systems, and in some cases one can even move
 packages around after installation (see [prefix
-independence](#prefix-independence)).  To enable packages to find these
-files in a portable way, Cabal generates a module called
-`Paths_`_pkgname_ (with any hyphens in _pkgname_ replaced by
+independence](installing-packages.html#prefix-independence)). To enable
+packages to find these files in a portable way, Cabal generates a module
+called `Paths_`_pkgname_ (with any hyphens in _pkgname_ replaced by
 underscores) during building, so that it may be imported by modules of
 the package.  This module defines a function
 
@@ -2097,27 +2133,27 @@ a few options:
   * Finally, with the `build-type` `Custom`, you can also write your
     own setup script from scratch. It must conform to the interface
     described in the section on [building and installing
-    packages](#building-and-installing-a-package), and you may use the
-    Cabal library for all or part of the work.  One option is to copy
-    the source of `Distribution.Simple`, and alter it for your needs.
-    Good luck.
+    packages](installing-packages.html), and you may use the Cabal
+    library for all or part of the work.  One option is to copy the
+    source of `Distribution.Simple`, and alter it for your needs. Good
+    luck.
 
 
 
-[dist-simple]:  ../libraries/Cabal/Distribution-Simple.html
-[dist-make]:    ../libraries/Cabal/Distribution-Make.html
-[dist-license]: ../libraries/Cabal/Distribution-License.html#t:License
-[extension]:    ../libraries/Cabal/Language-Haskell-Extension.html#t:Extension
-[BuildType]:    ../libraries/Cabal/Distribution-PackageDescription.html#t:BuildType
+[dist-simple]:  ../release/cabal-latest/doc/API/Cabal/Distribution-Simple.html
+[dist-make]:    ../release/cabal-latest/doc/API/Cabal/Distribution-Make.html
+[dist-license]: ../release/cabal-latest/doc/API/Cabal/Distribution-License.html#t:License
+[extension]:    ../release/cabal-latest/doc/API/Cabal/Language-Haskell-Extension.html#t:Extension
+[BuildType]:    ../release/cabal-latest/doc/API/Cabal/Distribution-PackageDescription.html#t:BuildType
 [data-version]: http://hackage.haskell.org/packages/archive/base/latest/doc/html/Data-Version.html
 [alex]:       http://www.haskell.org/alex/
 [autoconf]:   http://www.gnu.org/software/autoconf/
 [c2hs]:       http://www.cse.unsw.edu.au/~chak/haskell/c2hs/
-[cpphs]:      http://www.haskell.org/cpphs/
-[greencard]:  http://www.haskell.org/greencard/
+[cpphs]:      http://projects.haskell.org/cpphs/
+[greencard]:  http://hackage.haskell.org/package/greencard
 [haddock]:    http://www.haskell.org/haddock/
 [HsColour]:   http://www.cs.york.ac.uk/fp/darcs/hscolour/
 [happy]:      http://www.haskell.org/happy/
 [Hackage]:    http://hackage.haskell.org/
-[pkg-config]: http://pkg-config.freedesktop.org/
+[pkg-config]: http://www.freedesktop.org/wiki/Software/pkg-config/
 [REPL]:       http://en.wikipedia.org/wiki/Read%E2%80%93eval%E2%80%93print_loop

@@ -1,7 +1,9 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Distribution.PackageDescription.Parse
 -- Copyright   :  Isaac Jones 2003-2005
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -10,36 +12,6 @@
 -- Some of the complexity in this module is due to the fact that we have to be
 -- backwards compatible with old @.cabal@ files, so there's code to translate
 -- into the newer structure.
-
-{- All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
 
 module Distribution.PackageDescription.Parse (
         -- * Package descriptions
@@ -77,11 +49,15 @@ import Control.Applicative (Applicative(..))
 import Control.Arrow (first)
 import System.Directory (doesFileExist)
 import qualified Data.ByteString.Lazy.Char8 as BS.Char8
+import Data.Typeable
+import Data.Data
+import qualified Data.Map as Map
 
 import Distribution.Text
          ( Text(disp, parse), display, simpleParse )
 import Distribution.Compat.ReadP
          ((+++), option)
+import qualified Distribution.Compat.ReadP as Parse
 import Text.PrettyPrint
 
 import Distribution.ParseUtils hiding (parseFields)
@@ -147,7 +123,7 @@ pkgDescrFieldDescrs =
  , simpleField "maintainer"
            showFreeText           parseFreeText
            maintainer             (\val pkg -> pkg{maintainer=val})
- , commaListField  "build-depends"
+ , commaListFieldWithSep vcat "build-depends"
            disp                   parse
            buildDepends           (\xs    pkg -> pkg{buildDepends=xs})
  , simpleField "stability"
@@ -177,19 +153,19 @@ pkgDescrFieldDescrs =
  , listField "tested-with"
            showTestedWith         parseTestedWithQ
            testedWith             (\val pkg -> pkg{testedWith=val})
- , listField "data-files"
+ , listFieldWithSep vcat "data-files"
            showFilePath           parseFilePathQ
            dataFiles              (\val pkg -> pkg{dataFiles=val})
  , simpleField "data-dir"
            showFilePath           parseFilePathQ
            dataDir                (\val pkg -> pkg{dataDir=val})
- , listField "extra-source-files"
+ , listFieldWithSep vcat "extra-source-files"
            showFilePath    parseFilePathQ
            extraSrcFiles          (\val pkg -> pkg{extraSrcFiles=val})
- , listField "extra-tmp-files"
+ , listFieldWithSep vcat "extra-tmp-files"
            showFilePath       parseFilePathQ
            extraTmpFiles          (\val pkg -> pkg{extraTmpFiles=val})
- , listField "extra-doc-files"
+ , listFieldWithSep vcat "extra-doc-files"
            showFilePath    parseFilePathQ
            extraDocFiles          (\val pkg -> pkg{extraDocFiles=val})
  ]
@@ -207,8 +183,11 @@ storeXFieldsPD _ _ = Nothing
 
 libFieldDescrs :: [FieldDescr Library]
 libFieldDescrs =
-  [ listField "exposed-modules" disp parseModuleNameQ
+  [ listFieldWithSep vcat "exposed-modules" disp parseModuleNameQ
       exposedModules (\mods lib -> lib{exposedModules=mods})
+
+  , commaListFieldWithSep vcat "reexported-modules" disp parse
+      reexportedModules (\mods lib -> lib{reexportedModules=mods})
 
   , boolField "exposed"
       libExposed     (\val lib -> lib{libExposed=val})
@@ -414,6 +393,10 @@ binfoFieldDescrs =
  , commaListField  "build-tools"
            disp               parseBuildTool
            buildTools         (\xs  binfo -> binfo{buildTools=xs})
+ , commaListFieldWithSep vcat "build-depends"
+           disp                   parse
+           buildDependsWithRenaming
+           setBuildDependsWithRenaming
  , spaceListField "cpp-options"
            showToken          parseTokenQ'
            cppOptions          (\val binfo -> binfo{cppOptions=val})
@@ -429,7 +412,7 @@ binfoFieldDescrs =
  , listField "frameworks"
            showToken          parseTokenQ
            frameworks         (\val binfo -> binfo{frameworks=val})
- , listField   "c-sources"
+ , listFieldWithSep vcat "c-sources"
            showFilePath       parseFilePathQ
            cSources           (\paths binfo -> binfo{cSources=paths})
 
@@ -449,16 +432,16 @@ binfoFieldDescrs =
            disp               parseExtensionQ
            oldExtensions      (\exts  binfo -> binfo{oldExtensions=exts})
 
- , listField   "extra-libraries"
+ , listFieldWithSep vcat "extra-libraries"
            showToken          parseTokenQ
            extraLibs          (\xs    binfo -> binfo{extraLibs=xs})
  , listField   "extra-lib-dirs"
            showFilePath       parseFilePathQ
            extraLibDirs       (\xs    binfo -> binfo{extraLibDirs=xs})
- , listField   "includes"
+ , listFieldWithSep vcat "includes"
            showFilePath       parseFilePathQ
            includes           (\paths binfo -> binfo{includes=paths})
- , listField   "install-includes"
+ , listFieldWithSep vcat "install-includes"
            showFilePath       parseFilePathQ
            installIncludes    (\paths binfo -> binfo{installIncludes=paths})
  , listField   "include-dirs"
@@ -467,7 +450,7 @@ binfoFieldDescrs =
  , listField   "hs-source-dirs"
            showFilePath       parseFilePathQ
            hsSourceDirs       (\paths binfo -> binfo{hsSourceDirs=paths})
- , listField   "other-modules"
+ , listFieldWithSep vcat "other-modules"
            disp               parseModuleNameQ
            otherModules       (\val binfo -> binfo{otherModules=val})
  , listField   "ghc-prof-options"
@@ -594,7 +577,7 @@ constraintFieldNames = ["build-depends"]
 -- they add and define an accessor that specifies what the dependencies
 -- are.  This way we would completely reuse the parsing knowledge from the
 -- field descriptor.
-parseConstraint :: Field -> ParseResult [Dependency]
+parseConstraint :: Field -> ParseResult [DependencyWithRenaming]
 parseConstraint (F l n v)
     | n == "build-depends" = runP l n (parseCommaList parse) v
 parseConstraint f = userBug $ "Constraint was expected (got: " ++ show f ++ ")"
@@ -790,7 +773,7 @@ parsePackageDescription file = do
     --  * an optional library section, and an arbitrary number of executable
     --    sections (in any order).
     --
-    -- The current implementatition just gathers all library-specific fields
+    -- The current implementation just gathers all library-specific fields
     -- in a library section and wraps all executable stanzas in an executable
     -- section.
     sectionizeFields :: [Field] -> [Field]
@@ -1029,11 +1012,19 @@ parsePackageDescription file = do
 
         let simplFlds = [ F l n v | F l n v <- allflds ]
             condFlds = [ f | f@IfBlock{} <- allflds ]
+            sections = [ s | s@Section{} <- allflds ]
 
-        let (depFlds, dataFlds) = partition isConstraint simplFlds
+        -- Put these through the normal parsing pass too, so that we
+        -- collect the ModRenamings
+        let depFlds = filter isConstraint simplFlds
+        
+        mapM_
+            (\(Section l n _ _) -> lift . warning $
+                "Unexpected section '" ++ n ++ "' on line " ++ show l)
+            sections
 
-        a <- parser dataFlds
-        deps <- liftM concat . mapM (lift . parseConstraint) $ depFlds
+        a <- parser simplFlds
+        deps <- liftM concat . mapM (lift . fmap (map dependency) .  parseConstraint) $ depFlds
 
         ifs <- mapM processIfs condFlds
 
@@ -1237,3 +1228,32 @@ findIndentTabs = concatMap checkLine
 
 --test_findIndentTabs = findIndentTabs $ unlines $
 --    [ "foo", "  bar", " \t baz", "\t  biz\t", "\t\t \t mib" ]
+
+-- | Dependencies plus module renamings.  This is what users specify; however,
+-- renaming information is not used for dependency resolution.
+data DependencyWithRenaming = DependencyWithRenaming Dependency ModuleRenaming
+  deriving (Read, Show, Eq, Typeable, Data)
+
+dependency :: DependencyWithRenaming -> Dependency
+dependency (DependencyWithRenaming dep _) = dep
+
+instance Text DependencyWithRenaming where
+  disp (DependencyWithRenaming d rns) = disp d <+> disp rns
+  parse = do d <- parse
+             Parse.skipSpaces
+             rns <- parse
+             Parse.skipSpaces
+             return (DependencyWithRenaming d rns)
+
+buildDependsWithRenaming :: BuildInfo -> [DependencyWithRenaming]
+buildDependsWithRenaming pkg =
+    map (\dep@(Dependency n _) ->
+            DependencyWithRenaming dep
+                (Map.findWithDefault defaultRenaming n (targetBuildRenaming pkg)))
+        (targetBuildDepends pkg)
+
+setBuildDependsWithRenaming :: [DependencyWithRenaming] -> BuildInfo -> BuildInfo
+setBuildDependsWithRenaming deps pkg = pkg {
+    targetBuildDepends = map dependency deps,
+    targetBuildRenaming = Map.fromList (map (\(DependencyWithRenaming (Dependency n _) rns) -> (n, rns)) deps)
+  }

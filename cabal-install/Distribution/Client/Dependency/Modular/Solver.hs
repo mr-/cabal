@@ -26,21 +26,24 @@ data SolverConfig = SolverConfig {
   independentGoals      :: Bool,
   avoidReinstalls       :: Bool,
   shadowPkgs            :: Bool,
+  strongFlags           :: Bool,
   maxBackjumps          :: Maybe Int
 }
 
 data ModularConfig = ModularConfig {
-  index             :: Index,
-  preferences       :: PN -> PackagePreferences,
-  globalConstraints :: Map PN [PackageConstraint],
-  globalGoals       :: [PN]
+  index             :: Index, -- all available packages as an index
+  preferences       :: PN -> PackagePreferences,   -- preferences
+  globalConstraints :: Map PN [PackageConstraint], -- global constraints
+  globalGoals       :: [PN]                        -- global goals
 }
 
 
 -- | Interface: This is the interface to the actual solver.
 -- It has a Pointer as optional parameter and will try to solve below that
 -- pointer, if provided.
-solve :: SolverConfig -> ModularConfig -> Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap)
+solve :: SolverConfig -> 
+         ModularConfig -> 
+         Maybe (Pointer QGoalReasonChain) -> Log Message (Assignment, RevDepMap)
 solve _  _  (Just treePointer)  = transformLog $ findDoneBelow treePointer -- was: donePtrToLog treePointer
 solve sc mc  Nothing            = transformLog $ findDoneBelow $ fromTree $ getDepTree sc mc
 
@@ -54,17 +57,23 @@ getDepTree sc (ModularConfig idx userPrefs userConstraints userGoals) =
            prunePhase       $
            buildPhase
   where
-    heuristicsPhase  = if preferEasyGoalChoices sc
-                         then P.preferBaseGoalChoice . P.deferDefaultFlagChoices . P.lpreferEasyGoalChoices
-                         else P.preferBaseGoalChoice
+    heuristicsPhase  = P.firstGoal . -- after doing goal-choice heuristics, commit to the first choice (saves space)
+                       P.deferWeakFlagChoices .
+                       P.preferBaseGoalChoice .
+                       if preferEasyGoalChoices sc
+                         then P.lpreferEasyGoalChoices
+                         else id
     preferencesPhase = P.preferPackagePreferences userPrefs
     validationPhase  = P.enforceManualFlags . -- can only be done after user constraints
                        P.enforcePackageConstraints userConstraints .
                        validateTree idx
     prunePhase       = (if avoidReinstalls sc then P.avoidReinstalls (const True) else id) .
                        -- packages that can never be "upgraded":
-                       P.requireInstalled (`elem` [PackageName "base",
-                                                   PackageName "ghc-prim"])
+                       P.requireInstalled (`elem` [ PackageName "base"
+                                                  , PackageName "ghc-prim"
+                                                  , PackageName "integer-gmp"
+                                                  , PackageName "integer-simple"
+                                                  ])
     buildPhase       = buildTree idx (independentGoals sc) userGoals
 
 

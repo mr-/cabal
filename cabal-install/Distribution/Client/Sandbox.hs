@@ -64,7 +64,8 @@ import Distribution.Client.Sandbox.Types      ( SandboxPackageInfo(..)
                                               , UseSandbox(..) )
 import Distribution.Client.Types              ( PackageLocation(..)
                                               , SourcePackage(..) )
-import Distribution.Client.Utils              ( inDir, tryCanonicalizePath )
+import Distribution.Client.Utils              ( inDir, tryCanonicalizePath
+                                              , tryFindAddSourcePackageDesc )
 import Distribution.PackageDescription.Configuration
                                               ( flattenPackageDescription )
 import Distribution.PackageDescription.Parse  ( readPackageDescription )
@@ -80,7 +81,6 @@ import Distribution.Simple.Setup              ( Flag(..), HaddockFlags(..)
 import Distribution.Simple.SrcDist            ( prepareTree )
 import Distribution.Simple.Utils              ( die, debug, notice, info, warn
                                               , debugNoWrap, defaultPackageDesc
-                                              , tryFindPackageDesc
                                               , intercalate, topHandlerWith
                                               , createDirectoryIfMissingVerbose )
 import Distribution.Package                   ( Package(..) )
@@ -90,6 +90,7 @@ import Distribution.Verbosity                 ( Verbosity, lessVerbose )
 import Distribution.Client.Compat.Environment ( lookupEnv, setEnv )
 import Distribution.Client.Compat.FilePerms   ( setFileHidden )
 import qualified Distribution.Client.Sandbox.Index as Index
+import Distribution.Simple.PackageIndex       ( InstalledPackageIndex )
 import qualified Distribution.Simple.PackageIndex  as InstalledPackageIndex
 import qualified Distribution.Simple.Register      as Register
 import qualified Data.Map                          as M
@@ -228,7 +229,7 @@ getSandboxPackageDB configFlags = do
 -- | Which packages are installed in the sandbox package DB?
 getInstalledPackagesInSandbox :: Verbosity -> ConfigFlags
                                  -> Compiler -> ProgramConfiguration
-                                 -> IO InstalledPackageIndex.PackageIndex
+                                 -> IO InstalledPackageIndex
 getInstalledPackagesInSandbox verbosity configFlags comp conf = do
     sandboxDB <- getSandboxPackageDB configFlags
     getPackageDBContents verbosity comp sandboxDB conf
@@ -527,7 +528,9 @@ loadConfigOrSandboxConfig verbosity globalFlags userInstallFlag = do
         flag = (globalRequireSandbox . savedGlobalFlags $ config)
                `mappend` (globalRequireSandbox globalFlags)
         checkFlag (Flag True)  =
-          die $ "'require-sandbox' is set to True, but no sandbox is present."
+          die $ "'require-sandbox' is set to True, but no sandbox is present. "
+             ++ "Use '--no-require-sandbox' if you want to override "
+             ++ "'require-sandbox' temporarily."
         checkFlag (Flag False) = return ()
         checkFlag (NoFlag)     = return ()
 
@@ -618,9 +621,9 @@ withSandboxPackageInfo verbosity configFlags globalFlags
   -- List all packages installed in the sandbox.
   installedPkgIndex <- getInstalledPackagesInSandbox verbosity
                        configFlags comp conf
-
+  let err = "Error reading sandbox package information."
   -- Get the package descriptions for all add-source deps.
-  depsCabalFiles <- mapM tryFindPackageDesc buildTreeRefs
+  depsCabalFiles <- mapM (flip tryFindAddSourcePackageDesc err) buildTreeRefs
   depsPkgDescs   <- mapM (readPackageDescription verbosity) depsCabalFiles
   let depsMap           = M.fromList (zip buildTreeRefs depsPkgDescs)
       isInstalled pkgid = not . null
@@ -726,10 +729,11 @@ maybeReinstallAddSourceDeps verbosity numJobsFlag configFlags' globalFlags' = do
         configProgramPaths = configProgramPaths sandboxConfigFlags
                              `mappend` configProgramPaths savedFlags,
         configProgramArgs  = configProgramArgs sandboxConfigFlags
-                             `mappend` configProgramArgs savedFlags
-        -- NOTE: We don't touch the @configPackageDBs@ field because
-        -- @sandboxConfigFlags@ contains the sandbox location which was set when
-        -- creating @cabal.sandbox.config@.
+                             `mappend` configProgramArgs savedFlags,
+        -- NOTE: Unconditionally choosing the value from
+        -- 'dist/setup-config'. Sandbox package DB location may have been
+        -- changed by 'configure -w'.
+        configPackageDBs   = configPackageDBs savedFlags
         -- FIXME: Is this compatible with the 'inherit' feature?
         }
 

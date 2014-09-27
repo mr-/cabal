@@ -19,6 +19,7 @@ module Distribution.Client.Sandbox.PackageEnvironment (
   , showPackageEnvironment
   , showPackageEnvironmentWithComments
   , setPackageDB
+  , sandboxPackageDBPath
   , loadUserConfig
 
   , basePackageEnvironment
@@ -30,27 +31,29 @@ module Distribution.Client.Sandbox.PackageEnvironment (
 
 import Distribution.Client.Config      ( SavedConfig(..), commentSavedConfig
                                        , loadConfig, configFieldDescriptions
-                                       , installDirsFields, defaultCompiler )
+                                       , haddockFlagsFields
+                                       , installDirsFields, withProgramsFields
+                                       , withProgramOptionsFields
+                                       , defaultCompiler )
 import Distribution.Client.ParseUtils  ( parseFields, ppFields, ppSection )
 import Distribution.Client.Setup       ( GlobalFlags(..), ConfigExFlags(..)
                                        , InstallFlags(..)
                                        , defaultSandboxLocation )
-import Distribution.Simple.Command     ( ShowOrParseArgs(..), viewAsFieldDescr )
 import Distribution.Simple.Compiler    ( Compiler, PackageDB(..)
                                        , compilerFlavor, showCompilerId )
 import Distribution.Simple.InstallDirs ( InstallDirs(..), PathTemplate
                                        , defaultInstallDirs, combineInstallDirs
                                        , fromPathTemplate, toPathTemplate )
-import Distribution.Simple.Program     ( defaultProgramConfiguration )
-import Distribution.Simple.Setup       ( Flag(..), ConfigFlags(..)
-                                       , programConfigurationOptions
+import Distribution.Simple.Setup       ( Flag(..)
+                                       , ConfigFlags(..), HaddockFlags(..)
                                        , fromFlagOrDefault, toFlag, flagToMaybe )
-import Distribution.Simple.Utils       ( die, info, notice, warn, lowercase )
+import Distribution.Simple.Utils       ( die, info, notice, warn )
 import Distribution.ParseUtils         ( FieldDescr(..), ParseResult(..)
-                                       , commaListField
+                                       , commaListField, commaNewLineListField
                                        , liftField, lineNo, locatedErrorMsg
                                        , parseFilePathQ, readFields
-                                       , showPWarning, simpleField, syntaxError )
+                                       , showPWarning, simpleField
+                                       , syntaxError, warning )
 import Distribution.System             ( Platform )
 import Distribution.Verbosity          ( Verbosity, normal )
 import Control.Monad                   ( foldM, liftM2, when, unless )
@@ -208,14 +211,23 @@ initialPackageEnvironment sandboxDir compiler platform = do
        }
     }
 
+-- | Return the path to the sandbox package database.
+sandboxPackageDBPath :: FilePath -> Compiler -> Platform -> String
+sandboxPackageDBPath sandboxDir compiler platform =
+    sandboxDir
+         </> (Text.display platform ++ "-"
+             ++ showCompilerId compiler
+             ++ "-packages.conf.d")
+
+
 -- | Use the package DB location specific for this compiler.
 setPackageDB :: FilePath -> Compiler -> Platform -> ConfigFlags -> ConfigFlags
 setPackageDB sandboxDir compiler platform configFlags =
   configFlags {
-    configPackageDBs = [Just (SpecificPackageDB $ sandboxDir
-                              </> (Text.display platform ++ "-"
-                                   ++ showCompilerId compiler
-                                   ++ "-packages.conf.d"))]
+    configPackageDBs = [Just (SpecificPackageDB $ sandboxPackageDBPath
+                                                      sandboxDir
+                                                      compiler
+                                                      platform)]
     }
 
 -- | Almost the same as 'savedConf `mappend` pkgEnv', but some settings are
@@ -390,7 +402,7 @@ pkgEnvFieldDescrs = [
     pkgEnvInherit (\v pkgEnv -> pkgEnv { pkgEnvInherit = v })
 
     -- FIXME: Should we make these fields part of ~/.cabal/config ?
-  , commaListField "constraints"
+  , commaNewLineListField "constraints"
     Text.disp Text.parse
     (configExConstraints . savedConfigureExFlags . pkgEnvSavedConfig)
     (\v pkgEnv -> updateConfigureExFlags pkgEnv
@@ -403,7 +415,6 @@ pkgEnvFieldDescrs = [
                   (\flags -> flags { configPreferences = v }))
   ]
   ++ map toPkgEnv configFieldDescriptions'
-  ++ map toPkgEnv programOptionsFields
   where
     optional = Parse.option mempty . fmap toFlag
 
@@ -411,14 +422,6 @@ pkgEnvFieldDescrs = [
     configFieldDescriptions' = filter
       (\(FieldDescr name _ _) -> name /= "preference" && name /= "constraint")
       configFieldDescriptions
-
-    programOptionsFields :: [FieldDescr SavedConfig]
-    programOptionsFields =
-      map viewAsFieldDescr $
-      programConfigurationOptions defaultProgramConfiguration ParseArgs
-      (configProgramArgs . savedConfigureFlags)
-      (\v cfg -> cfg { savedConfigureFlags =
-                          (savedConfigureFlags cfg) { configProgramArgs = v } })
 
     toPkgEnv :: FieldDescr SavedConfig -> FieldDescr PackageEnvironment
     toPkgEnv fieldDescr =
@@ -457,10 +460,17 @@ parsePackageEnvironment initial str = do
   pkgEnv <- parse others
   let config       = pkgEnvSavedConfig pkgEnv
       installDirs0 = savedUserInstallDirs config
-  -- 'install-dirs' is the only section that we care about.
-  installDirs <- foldM parseSection installDirs0 knownSections
+  (haddockFlags, installDirs, paths, args) <-
+    foldM parseSections
+    (savedHaddockFlags config, installDirs0, [], [])
+    knownSections
   return pkgEnv {
     pkgEnvSavedConfig = config {
+       savedConfigureFlags    = (savedConfigureFlags config) {
+          configProgramPaths  = paths,
+          configProgramArgs   = args
+          },
+       savedHaddockFlags      = haddockFlags,
        savedUserInstallDirs   = installDirs,
        savedGlobalInstallDirs = installDirs
        }
@@ -468,26 +478,54 @@ parsePackageEnvironment initial str = do
 
   where
     isKnownSection :: ParseUtils.Field -> Bool
-    isKnownSection (ParseUtils.Section _ "install-dirs" _ _) = True
-    isKnownSection _                                         = False
+    isKnownSection (ParseUtils.Section _ "haddock" _ _)                 = True
+    isKnownSection (ParseUtils.Section _ "install-dirs" _ _)            = True
+    isKnownSection (ParseUtils.Section _ "program-locations" _ _)       = True
+    isKnownSection (ParseUtils.Section _ "program-default-options" _ _) = True
+    isKnownSection _                                                    = False
 
     parse :: [ParseUtils.Field] -> ParseResult PackageEnvironment
     parse = parseFields pkgEnvFieldDescrs initial
 
-    parseSection :: InstallDirs (Flag PathTemplate)
-                    -> ParseUtils.Field
-                    -> ParseResult (InstallDirs (Flag PathTemplate))
-    parseSection accum (ParseUtils.Section line "install-dirs" name fs)
-      | name' == "" = do accum' <- parseFields installDirsFields accum fs
-                         return accum'
-      | otherwise   =
+    parseSections :: SectionsAccum -> ParseUtils.Field
+                     -> ParseResult SectionsAccum
+    parseSections accum@(h,d,p,a)
+                 (ParseUtils.Section _ "haddock" name fs)
+      | name == "" = do h' <- parseFields haddockFlagsFields h fs
+                        return (h', d, p, a)
+      | otherwise  = do
+          warning "The 'haddock' section should be unnamed"
+          return accum
+    parseSections (h,d,p,a)
+                  (ParseUtils.Section line "install-dirs" name fs)
+      | name == "" = do d' <- parseFields installDirsFields d fs
+                        return (h, d',p,a)
+      | otherwise  =
         syntaxError line $
         "Named 'install-dirs' section: '" ++ name
         ++ "'. Note that named 'install-dirs' sections are not allowed in the '"
         ++ userPackageEnvironmentFile ++ "' file."
-      where name' = lowercase name
-    parseSection _accum f =
-      syntaxError (lineNo f)  "Unrecognized stanza."
+    parseSections accum@(h, d,p,a)
+                  (ParseUtils.Section _ "program-locations" name fs)
+      | name == "" = do p' <- parseFields withProgramsFields p fs
+                        return (h, d, p', a)
+      | otherwise  = do
+          warning "The 'program-locations' section should be unnamed"
+          return accum
+    parseSections accum@(h, d, p, a)
+                  (ParseUtils.Section _ "program-default-options" name fs)
+      | name == "" = do a' <- parseFields withProgramOptionsFields a fs
+                        return (h, d, p, a')
+      | otherwise  = do
+          warning "The 'program-default-options' section should be unnamed"
+          return accum
+    parseSections accum f = do
+      warning $ "Unrecognized stanza on line " ++ show (lineNo f)
+      return accum
+
+-- | Accumulator type for 'parseSections'.
+type SectionsAccum = (HaddockFlags, InstallDirs (Flag PathTemplate)
+                     , [(String, FilePath)], [(String, [String])])
 
 -- | Write out the package environment file.
 writePackageEnvironmentFile :: FilePath -> IncludeComments

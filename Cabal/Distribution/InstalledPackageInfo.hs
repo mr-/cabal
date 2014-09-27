@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Distribution.InstalledPackageInfo
@@ -56,6 +58,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
 
 module Distribution.InstalledPackageInfo (
         InstalledPackageInfo_(..), InstalledPackageInfo,
+        ModuleReexport(..),
         ParseResult(..), PError(..), PWarning,
         emptyInstalledPackageInfo,
         parseInstalledPackageInfo,
@@ -77,24 +80,30 @@ import Distribution.License     ( License(..) )
 import Distribution.Package
          ( PackageName(..), PackageIdentifier(..)
          , PackageId, InstalledPackageId(..)
-         , packageName, packageVersion )
+         , packageName, packageVersion, PackageKey(..) )
 import qualified Distribution.Package as Package
-         ( Package(..) )
 import Distribution.ModuleName
          ( ModuleName )
 import Distribution.Version
          ( Version(..) )
 import Distribution.Text
          ( Text(disp, parse) )
+import Text.PrettyPrint as Disp
+import qualified Distribution.Compat.ReadP as Parse
+
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
 
 -- -----------------------------------------------------------------------------
 -- The InstalledPackageInfo type
+
 
 data InstalledPackageInfo_ m
    = InstalledPackageInfo {
         -- these parts are exactly the same as PackageDescription
         installedPackageId :: InstalledPackageId,
         sourcePackageId    :: PackageId,
+        packageKey         :: PackageKey,
         license           :: License,
         copyright         :: String,
         maintainer        :: String,
@@ -108,6 +117,7 @@ data InstalledPackageInfo_ m
         -- these parts are required by an installed package only:
         exposed           :: Bool,
         exposedModules    :: [m],
+        reexportedModules :: [ModuleReexport],
         hiddenModules     :: [m],
         trusted           :: Bool,
         importDirs        :: [FilePath],  -- contain sources in case of Hugs
@@ -126,10 +136,16 @@ data InstalledPackageInfo_ m
         haddockInterfaces :: [FilePath],
         haddockHTMLs      :: [FilePath]
     }
-    deriving (Read, Show)
+    deriving (Generic, Read, Show)
+
+instance Binary m => Binary (InstalledPackageInfo_ m)
 
 instance Package.Package          (InstalledPackageInfo_ str) where
    packageId = sourcePackageId
+
+instance Package.PackageInstalled (InstalledPackageInfo_ str) where
+   installedPackageId = installedPackageId
+   installedDepends = depends
 
 type InstalledPackageInfo = InstalledPackageInfo_ ModuleName
 
@@ -138,6 +154,8 @@ emptyInstalledPackageInfo
    = InstalledPackageInfo {
         installedPackageId = InstalledPackageId "",
         sourcePackageId    = PackageIdentifier (PackageName "") noVersion,
+        packageKey         = OldPackageKey (PackageIdentifier
+                                               (PackageName "") noVersion),
         license           = AllRightsReserved,
         copyright         = "",
         maintainer        = "",
@@ -150,6 +168,7 @@ emptyInstalledPackageInfo
         category          = "",
         exposed           = False,
         exposedModules    = [],
+        reexportedModules = [],
         hiddenModules     = [],
         trusted           = False,
         importDirs        = [],
@@ -171,6 +190,33 @@ emptyInstalledPackageInfo
 
 noVersion :: Version
 noVersion = Version{ versionBranch=[], versionTags=[] }
+
+-- -----------------------------------------------------------------------------
+-- Module re-exports
+
+data ModuleReexport = ModuleReexport {
+       moduleReexportDefiningPackage :: InstalledPackageId,
+       moduleReexportDefiningName    :: ModuleName,
+       moduleReexportName            :: ModuleName
+    }
+    deriving (Generic, Read, Show)
+
+instance Binary ModuleReexport
+
+instance Text ModuleReexport where
+    disp (ModuleReexport pkgid origname newname) =
+          disp pkgid <> Disp.char ':' <> disp origname
+      <+> Disp.text "as" <+> disp newname
+
+    parse = do
+      pkgid    <- parse
+      _ <- Parse.char ':'
+      origname <- parse
+      Parse.skipSpaces
+      _ <- Parse.string "as"
+      Parse.skipSpaces
+      newname  <- parse
+      return (ModuleReexport pkgid origname newname)
 
 -- -----------------------------------------------------------------------------
 -- Parsing
@@ -208,6 +254,9 @@ basicFieldDescrs =
  , simpleField "id"
                            disp                   parse
                            installedPackageId     (\ipid pkg -> pkg{installedPackageId=ipid})
+ , simpleField "key"
+                           disp                   parse
+                           packageKey             (\ipid pkg -> pkg{packageKey=ipid})
  , simpleField "license"
                            disp                   parseLicenseQ
                            license                (\l pkg -> pkg{license=l})
@@ -247,6 +296,9 @@ installedFieldDescrs = [
  , listField   "exposed-modules"
         disp               parseModuleNameQ
         exposedModules     (\xs    pkg -> pkg{exposedModules=xs})
+ , listField   "reexported-modules"
+        disp               parse
+        reexportedModules  (\xs    pkg -> pkg{reexportedModules=xs})
  , listField   "hidden-modules"
         disp               parseModuleNameQ
         hiddenModules      (\xs    pkg -> pkg{hiddenModules=xs})

@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Distribution.Simple.Program.Types
@@ -38,6 +40,10 @@ import Distribution.Version
 import Distribution.Verbosity
          ( Verbosity )
 
+import Data.Binary (Binary)
+import qualified Data.Map as Map
+import GHC.Generics (Generic)
+
 -- | Represents a program which can be configured.
 --
 -- Note: rather than constructing this directly, start with 'simpleProgram' and
@@ -57,7 +63,7 @@ data Program = Program {
                               -> IO (Maybe FilePath),
 
        -- | Try to find the version of the program. For many programs this is
-       -- not possible or is not necessary so it's ok to return Nothing.
+       -- not possible or is not necessary so it's OK to return Nothing.
        programFindVersion :: Verbosity -> FilePath -> IO (Maybe Version),
 
        -- | A function to do any additional configuration after we have
@@ -96,11 +102,18 @@ data ConfiguredProgram = ConfiguredProgram {
        -- the current to form the environment for the new process.
        programOverrideEnv :: [(String, Maybe String)],
 
+       -- | A key-value map listing various properties of the program, useful
+       -- for feature detection. Populated during the configuration step, key
+       -- names depend on the specific program.
+       programProperties :: Map.Map String String,
+
        -- | Location of the program. eg. @\/usr\/bin\/ghc-6.4@
        programLocation :: ProgramLocation
-     } deriving (Read, Show, Eq)
+     } deriving (Eq, Generic, Read, Show)
 
--- | Where a program was found. Also tells us whether it's specifed by user or
+instance Binary ConfiguredProgram
+
+-- | Where a program was found. Also tells us whether it's specified by user or
 -- not.  This includes not just the path, but the program as well.
 data ProgramLocation
     = UserSpecified { locationPath :: FilePath }
@@ -108,7 +121,9 @@ data ProgramLocation
       -- eg. --ghc-path=\/usr\/bin\/ghc-6.6
     | FoundOnSystem { locationPath :: FilePath }
       -- ^The program was found automatically.
-      deriving (Read, Show, Eq)
+      deriving (Eq, Generic, Read, Show)
+
+instance Binary ProgramLocation
 
 -- | The full path of a configured program.
 programPath :: ConfiguredProgram -> FilePath
@@ -144,5 +159,6 @@ simpleConfiguredProgram name loc = ConfiguredProgram {
      programDefaultArgs  = [],
      programOverrideArgs = [],
      programOverrideEnv  = [],
+     programProperties   = Map.empty,
      programLocation     = loc
   }

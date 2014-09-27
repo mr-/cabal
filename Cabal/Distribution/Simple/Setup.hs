@@ -1,8 +1,11 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Distribution.Simple.Setup
 -- Copyright   :  Isaac Jones 2003-2004
 --                Duncan Coutts 2007
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -25,36 +28,6 @@
 -- needs is to unify it with the code for managing sets of fields that can be
 -- read and written from files. This would allow us to save configure flags in
 -- config files.
-
-{- All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
 
 {-# LANGUAGE CPP #-}
 
@@ -80,7 +53,7 @@ module Distribution.Simple.Setup (
   defaultBenchmarkFlags, benchmarkCommand,
   CopyDest(..),
   configureArgs, configureOptions, configureCCompiler, configureLinker,
-  buildOptions, installDirsOptions,
+  buildOptions, haddockOptions, installDirsOptions,
   programConfigurationOptions, programConfigurationPaths',
 
   defaultDistPref,
@@ -124,9 +97,11 @@ import Distribution.Simple.InstallDirs
 import Distribution.Verbosity
 
 import Control.Monad (liftM)
+import Data.Binary (Binary)
 import Data.List   ( sort )
 import Data.Char   ( isSpace, isAlpha )
 import Data.Monoid ( Monoid(..) )
+import GHC.Generics (Generic)
 
 -- FIXME Not sure where this should live
 defaultDistPref :: FilePath
@@ -153,7 +128,9 @@ defaultDistPref = "dist"
 -- Its monoid instance gives us the behaviour where it starts out as
 -- 'NoFlag' and later flags override earlier ones.
 --
-data Flag a = Flag a | NoFlag deriving (Show, Read, Eq)
+data Flag a = Flag a | NoFlag deriving (Eq, Generic, Show, Read)
+
+instance Binary a => Binary (Flag a)
 
 instance Functor Flag where
   fmap f (Flag x) = Flag (f x)
@@ -200,7 +177,9 @@ flagToList (Flag x) = [x]
 flagToList NoFlag   = []
 
 allFlags :: [Flag Bool] -> Flag Bool
-allFlags flags = toFlag $ all (\f -> fromFlagOrDefault False f) flags
+allFlags flags = if all (\f -> fromFlagOrDefault False f) flags
+                 then Flag True
+                 else NoFlag
 
 -- ------------------------------------------------------------
 -- * Global flags
@@ -277,11 +256,11 @@ data ConfigFlags = ConfigFlags {
     configPrograms      :: ProgramConfiguration, -- ^All programs that cabal may
                                                  -- run
 
-    configProgramPaths  :: [(String, FilePath)], -- ^user specifed programs paths
-    configProgramArgs   :: [(String, [String])], -- ^user specifed programs args
+    configProgramPaths  :: [(String, FilePath)], -- ^user specified programs paths
+    configProgramArgs   :: [(String, [String])], -- ^user specified programs args
     configProgramPathExtra :: [FilePath],        -- ^Extend the $PATH
     configHcFlavor      :: Flag CompilerFlavor, -- ^The \"flavor\" of the
-                                                -- compiler, sugh as GHC or
+                                                -- compiler, such as GHC or
                                                 -- Hugs.
     configHcPath        :: Flag FilePath, -- ^given compiler location
     configHcPkg         :: Flag FilePath, -- ^given hc-pkg location
@@ -317,13 +296,17 @@ data ConfigFlags = ConfigFlags {
     configConfigurationsFlags :: FlagAssignment,
     configTests               :: Flag Bool, -- ^Enable test suite compilation
     configBenchmarks          :: Flag Bool, -- ^Enable benchmark compilation
-    configLibCoverage         :: Flag Bool,
-      -- ^Enable test suite program coverage.
-    configExactConfiguration  :: Flag Bool
+    configCoverage :: Flag Bool, -- ^Enable program coverage
+    configLibCoverage :: Flag Bool, -- ^OBSOLETE. Just used to signal error.
+    configExactConfiguration  :: Flag Bool,
       -- ^All direct dependencies and flags are provided on the command line by
       -- the user via the '--dependency' and '--flags' options.
+    configFlagError :: Flag String
+      -- ^Halt and show an error message indicating an error in flag assignment
   }
-  deriving (Read,Show)
+  deriving (Generic, Read, Show)
+
+instance Binary ConfigFlags
 
 configAbsolutePaths :: ConfigFlags -> IO ConfigFlags
 configAbsolutePaths f =
@@ -350,15 +333,17 @@ defaultConfigFlags progConf = emptyConfigFlags {
     -- See #1589.
     configGHCiLib      = Flag True,
 #else
-    configGHCiLib      = Flag False,
+    configGHCiLib      = NoFlag,
 #endif
     configSplitObjs    = Flag False, -- takes longer, so turn off by default
     configStripExes    = Flag True,
     configStripLibs    = Flag True,
     configTests        = Flag False,
     configBenchmarks   = Flag False,
-    configLibCoverage  = Flag False,
-    configExactConfiguration = Flag False
+    configCoverage     = Flag False,
+    configLibCoverage  = NoFlag,
+    configExactConfiguration = Flag False,
+    configFlagError    = NoFlag
   }
 
 configureCommand :: ProgramConfiguration -> CommandUI ConfigFlags
@@ -543,8 +528,13 @@ configureOptions showOrParseArgs =
          (boolOpt [] [])
 
       ,option "" ["library-coverage"]
-         "build library and test suites with Haskell Program Coverage enabled. (GHC only)"
+         "OBSOLETE. Please use --enable-coverage instead."
          configLibCoverage (\v flags -> flags { configLibCoverage = v })
+         (boolOpt [] [])
+
+      ,option "" ["coverage"]
+         "build package with Haskell Program Coverage enabled. (GHC only)"
+         configCoverage (\v flags -> flags { configCoverage = v })
          (boolOpt [] [])
 
       ,option "" ["exact-configuration"]
@@ -696,9 +686,11 @@ instance Monoid ConfigFlags where
     configExtraIncludeDirs    = mempty,
     configConfigurationsFlags = mempty,
     configTests               = mempty,
-    configLibCoverage         = mempty,
+    configCoverage         = mempty,
+    configLibCoverage   = mempty,
     configExactConfiguration  = mempty,
-    configBenchmarks          = mempty
+    configBenchmarks          = mempty,
+    configFlagError     = mempty
   }
   mappend a b =  ConfigFlags {
     configPrograms      = configPrograms b,
@@ -733,9 +725,11 @@ instance Monoid ConfigFlags where
     configExtraIncludeDirs    = combine configExtraIncludeDirs,
     configConfigurationsFlags = combine configConfigurationsFlags,
     configTests               = combine configTests,
+    configCoverage         = combine configCoverage,
     configLibCoverage         = combine configLibCoverage,
     configExactConfiguration  = combine configExactConfiguration,
-    configBenchmarks          = combine configBenchmarks
+    configBenchmarks          = combine configBenchmarks,
+    configFlagError     = combine configFlagError
   }
     where combine field = field a `mappend` field b
 
@@ -956,6 +950,7 @@ data RegisterFlags = RegisterFlags {
     regGenPkgConf  :: Flag (Maybe FilePath),
     regInPlace     :: Flag Bool,
     regDistPref    :: Flag FilePath,
+    regPrintId     :: Flag Bool,
     regVerbosity   :: Flag Verbosity
   }
   deriving Show
@@ -967,6 +962,7 @@ defaultRegisterFlags = RegisterFlags {
     regGenPkgConf  = NoFlag,
     regInPlace     = Flag False,
     regDistPref    = Flag defaultDistPref,
+    regPrintId     = Flag False,
     regVerbosity   = Flag normal
   }
 
@@ -1004,6 +1000,11 @@ registerCommand = makeCommand name shortDesc longDesc
          "instead of registering, generate a package registration file"
          regGenPkgConf (\v flags -> flags { regGenPkgConf  = v })
          (optArg' "PKG" Flag flagToList)
+
+      ,option "" ["print-ipid"]
+         "print the installed package ID calculated for this package"
+         regPrintId (\v flags -> flags { regPrintId = v })
+         trueArg
       ]
 
 unregisterCommand :: CommandUI RegisterFlags
@@ -1041,6 +1042,7 @@ instance Monoid RegisterFlags where
     regGenScript   = mempty,
     regGenPkgConf  = mempty,
     regInPlace     = mempty,
+    regPrintId     = mempty,
     regDistPref    = mempty,
     regVerbosity   = mempty
   }
@@ -1049,6 +1051,7 @@ instance Monoid RegisterFlags where
     regGenScript   = combine regGenScript,
     regGenPkgConf  = combine regGenPkgConf,
     regInPlace     = combine regInPlace,
+    regPrintId     = combine regPrintId,
     regDistPref    = combine regDistPref,
     regVerbosity   = combine regVerbosity
   }
@@ -1194,86 +1197,8 @@ haddockCommand = makeCommand name shortDesc longDesc defaultHaddockFlags options
   where
     name       = "haddock"
     shortDesc  = "Generate Haddock HTML documentation."
-    longDesc   = Just $ \_ -> "Requires the program haddock, either version 0.x or 2.x.\n"
-    options showOrParseArgs =
-      [optionVerbosity haddockVerbosity
-       (\v flags -> flags { haddockVerbosity = v })
-      ,optionDistPref
-         haddockDistPref (\d flags -> flags { haddockDistPref = d })
-         showOrParseArgs
-
-      ,option "" ["keep-temp-files"]
-         "Keep temporary files"
-         haddockKeepTempFiles (\b flags -> flags { haddockKeepTempFiles = b })
-         trueArg
-
-      ,option "" ["hoogle"]
-         "Generate a hoogle database"
-         haddockHoogle (\v flags -> flags { haddockHoogle = v })
-         trueArg
-
-      ,option "" ["html"]
-         "Generate HTML documentation (the default)"
-         haddockHtml (\v flags -> flags { haddockHtml = v })
-         trueArg
-
-      ,option "" ["html-location"]
-         "Location of HTML documentation for pre-requisite packages"
-         haddockHtmlLocation (\v flags -> flags { haddockHtmlLocation = v })
-         (reqArgFlag "URL")
-
-      ,option "" ["executables"]
-         "Run haddock for Executables targets"
-         haddockExecutables (\v flags -> flags { haddockExecutables = v })
-         trueArg
-
-      ,option "" ["tests"]
-         "Run haddock for Test Suite targets"
-         haddockTestSuites (\v flags -> flags { haddockTestSuites = v })
-         trueArg
-
-      ,option "" ["benchmarks"]
-         "Run haddock for Benchmark targets"
-         haddockBenchmarks (\v flags -> flags { haddockBenchmarks = v })
-         trueArg
-
-      ,option "" ["all"]
-         "Run haddock for all targets"
-         (\f -> allFlags [ haddockExecutables f
-                         , haddockTestSuites  f
-                         , haddockBenchmarks  f])
-         (\v flags -> flags { haddockExecutables = v
-                            , haddockTestSuites  = v
-                            , haddockBenchmarks  = v })
-         trueArg
-
-      ,option "" ["internal"]
-         "Run haddock for internal modules and include all symbols"
-         haddockInternal (\v flags -> flags { haddockInternal = v })
-         trueArg
-
-      ,option "" ["css"]
-         "Use PATH as the haddock stylesheet"
-         haddockCss (\v flags -> flags { haddockCss = v })
-         (reqArgFlag "PATH")
-
-      ,option "" ["hyperlink-source","hyperlink-sources"]
-         "Hyperlink the documentation to the source code (using HsColour)"
-         haddockHscolour (\v flags -> flags { haddockHscolour = v })
-         trueArg
-
-      ,option "" ["hscolour-css"]
-         "Use PATH as the HsColour stylesheet"
-         haddockHscolourCss (\v flags -> flags { haddockHscolourCss = v })
-         (reqArgFlag "PATH")
-
-      ,option "" ["contents-location"]
-         "Bake URL in as the location for the contents page"
-         haddockContents (\v flags -> flags { haddockContents = v })
-         (reqArg' "URL"
-                (toFlag . toPathTemplate)
-                (flagToList . fmap fromPathTemplate))
-      ]
+    longDesc   = Just $ \_ -> "Requires the program haddock, version 2.x.\n"
+    options showOrParseArgs = haddockOptions showOrParseArgs
       ++ programConfigurationPaths   progConf ParseArgs
              haddockProgramPaths (\v flags -> flags { haddockProgramPaths = v})
       ++ programConfigurationOption  progConf showOrParseArgs
@@ -1283,6 +1208,87 @@ haddockCommand = makeCommand name shortDesc longDesc defaultHaddockFlags options
     progConf = addKnownProgram haddockProgram
              $ addKnownProgram ghcProgram
              $ emptyProgramConfiguration
+
+haddockOptions :: ShowOrParseArgs -> [OptionField HaddockFlags]
+haddockOptions showOrParseArgs =
+  [optionVerbosity haddockVerbosity
+   (\v flags -> flags { haddockVerbosity = v })
+  ,optionDistPref
+   haddockDistPref (\d flags -> flags { haddockDistPref = d })
+   showOrParseArgs
+
+  ,option "" ["keep-temp-files"]
+   "Keep temporary files"
+   haddockKeepTempFiles (\b flags -> flags { haddockKeepTempFiles = b })
+   trueArg
+
+  ,option "" ["hoogle"]
+   "Generate a hoogle database"
+   haddockHoogle (\v flags -> flags { haddockHoogle = v })
+   trueArg
+
+  ,option "" ["html"]
+   "Generate HTML documentation (the default)"
+   haddockHtml (\v flags -> flags { haddockHtml = v })
+   trueArg
+
+  ,option "" ["html-location"]
+   "Location of HTML documentation for pre-requisite packages"
+   haddockHtmlLocation (\v flags -> flags { haddockHtmlLocation = v })
+   (reqArgFlag "URL")
+
+  ,option "" ["executables"]
+   "Run haddock for Executables targets"
+   haddockExecutables (\v flags -> flags { haddockExecutables = v })
+   trueArg
+
+  ,option "" ["tests"]
+   "Run haddock for Test Suite targets"
+   haddockTestSuites (\v flags -> flags { haddockTestSuites = v })
+   trueArg
+
+  ,option "" ["benchmarks"]
+   "Run haddock for Benchmark targets"
+   haddockBenchmarks (\v flags -> flags { haddockBenchmarks = v })
+   trueArg
+
+  ,option "" ["all"]
+   "Run haddock for all targets"
+   (\f -> allFlags [ haddockExecutables f
+                   , haddockTestSuites  f
+                   , haddockBenchmarks  f])
+         (\v flags -> flags { haddockExecutables = v
+                            , haddockTestSuites  = v
+                            , haddockBenchmarks  = v })
+         trueArg
+
+  ,option "" ["internal"]
+   "Run haddock for internal modules and include all symbols"
+   haddockInternal (\v flags -> flags { haddockInternal = v })
+   trueArg
+
+  ,option "" ["css"]
+   "Use PATH as the haddock stylesheet"
+   haddockCss (\v flags -> flags { haddockCss = v })
+   (reqArgFlag "PATH")
+
+  ,option "" ["hyperlink-source","hyperlink-sources"]
+   "Hyperlink the documentation to the source code (using HsColour)"
+   haddockHscolour (\v flags -> flags { haddockHscolour = v })
+   trueArg
+
+  ,option "" ["hscolour-css"]
+   "Use PATH as the HsColour stylesheet"
+   haddockHscolourCss (\v flags -> flags { haddockHscolourCss = v })
+   (reqArgFlag "PATH")
+
+  ,option "" ["contents-location"]
+   "Bake URL in as the location for the contents page"
+   haddockContents (\v flags -> flags { haddockContents = v })
+   (reqArg' "URL"
+    (toFlag . toPathTemplate)
+    (flagToList . fmap fromPathTemplate))
+  ]
 
 emptyHaddockFlags :: HaddockFlags
 emptyHaddockFlags = mempty
@@ -1409,8 +1415,17 @@ defaultBuildFlags  = BuildFlags {
   }
 
 buildCommand :: ProgramConfiguration -> CommandUI BuildFlags
-buildCommand progConf = makeCommand name shortDesc longDesc
-                        defaultBuildFlags (buildOptions progConf)
+buildCommand progConf =
+  makeCommand name shortDesc longDesc
+  defaultBuildFlags
+  (\showOrParseArgs ->
+    [ optionVerbosity
+      buildVerbosity (\v flags -> flags { buildVerbosity = v })
+
+    , optionDistPref
+      buildDistPref (\d flags -> flags { buildDistPref = d }) showOrParseArgs
+    ]
+    ++ buildOptions progConf showOrParseArgs)
   where
     name       = "build"
     shortDesc  = "Compile all targets or specific targets."
@@ -1419,13 +1434,14 @@ buildCommand progConf = makeCommand name shortDesc longDesc
         ++ "  " ++ pname ++ " build           "
         ++ "    All the components in the package\n"
         ++ "  " ++ pname ++ " build foo       "
-        ++ "    A component (i.e. lib, exe, test suite)\n"
+        ++ "    A component (i.e. lib, exe, test suite)\n\n"
+        ++ programFlagsDescription progConf
 --TODO: re-enable once we have support for module/file targets
 --        ++ "  " ++ pname ++ " build Foo.Bar   "
 --        ++ "    A module\n"
 --        ++ "  " ++ pname ++ " build Foo/Bar.hs"
 --        ++ "    A file\n\n"
---        ++ "If a target is ambigious it can be qualified with the component "
+--        ++ "If a target is ambiguous it can be qualified with the component "
 --        ++ "name, e.g.\n"
 --        ++ "  " ++ pname ++ " build foo:Foo.Bar\n"
 --        ++ "  " ++ pname ++ " build testsuite1:Foo/Bar.hs\n"
@@ -1433,13 +1449,7 @@ buildCommand progConf = makeCommand name shortDesc longDesc
 buildOptions :: ProgramConfiguration -> ShowOrParseArgs
                 -> [OptionField BuildFlags]
 buildOptions progConf showOrParseArgs =
-  [ optionVerbosity
-      buildVerbosity (\v flags -> flags { buildVerbosity = v })
-
-  , optionDistPref
-      buildDistPref (\d flags -> flags { buildDistPref = d }) showOrParseArgs
-
-  , optionNumJobs
+  [ optionNumJobs
       buildNumJobs (\v flags -> flags { buildNumJobs = v })
   ]
 
@@ -1475,7 +1485,7 @@ instance Monoid BuildFlags where
     where combine field = field a `mappend` field b
 
 -- ------------------------------------------------------------
--- * Repl Flags
+-- * REPL Flags
 -- ------------------------------------------------------------
 
 data ReplFlags = ReplFlags {
@@ -1528,7 +1538,7 @@ replCommand progConf = CommandUI {
 --        ++ "    A module\n"
 --        ++ "  " ++ pname ++ " repl Foo/Bar.hs"
 --        ++ "    A file\n\n"
---        ++ "If a target is ambigious it can be qualified with the component "
+--        ++ "If a target is ambiguous it can be qualified with the component "
 --        ++ "name, e.g.\n"
 --        ++ "  " ++ pname ++ " repl foo:Foo.Bar\n"
 --        ++ "  " ++ pname ++ " repl testsuite1:Foo/Bar.hs\n"
@@ -1564,7 +1574,7 @@ replCommand progConf = CommandUI {
 -- * Test flags
 -- ------------------------------------------------------------
 
-data TestShowDetails = Never | Failures | Always
+data TestShowDetails = Never | Failures | Always | Streaming
     deriving (Eq, Ord, Enum, Bounded, Show)
 
 knownTestShowDetails :: [TestShowDetails]
@@ -1593,9 +1603,6 @@ data TestFlags = TestFlags {
     testMachineLog  :: Flag PathTemplate,
     testShowDetails :: Flag TestShowDetails,
     testKeepTix     :: Flag Bool,
-    --TODO: eliminate the test list and pass it directly as positional args to
-    --the testHook
-    testList        :: Flag [String],
     -- TODO: think about if/how options are passed to test exes
     testOptions     :: [PathTemplate]
   }
@@ -1608,7 +1615,6 @@ defaultTestFlags  = TestFlags {
     testMachineLog  = toFlag $ toPathTemplate $ "$pkgid.log",
     testShowDetails = toFlag Failures,
     testKeepTix     = toFlag False,
-    testList        = Flag [],
     testOptions     = []
   }
 
@@ -1640,7 +1646,8 @@ testCommand = makeCommand name shortDesc longDesc defaultTestFlags options
       , option [] ["show-details"]
             ("'always': always show results of individual test cases. "
              ++ "'never': never show results of individual test cases. "
-             ++ "'failures': show results of failing test cases.")
+             ++ "'failures': show results of failing test cases. "
+             ++ "'streaming': show results of test cases in real time.")
             testShowDetails (\v flags -> flags { testShowDetails = v })
             (reqArg "FILTER"
                 (readP_to_E (\_ -> "--show-details flag expects one of "
@@ -1680,7 +1687,6 @@ instance Monoid TestFlags where
     testMachineLog  = mempty,
     testShowDetails = mempty,
     testKeepTix     = mempty,
-    testList        = mempty,
     testOptions     = mempty
   }
   mappend a b = TestFlags {
@@ -1690,7 +1696,6 @@ instance Monoid TestFlags where
     testMachineLog  = combine testMachineLog,
     testShowDetails = combine testShowDetails,
     testKeepTix     = combine testKeepTix,
-    testList        = combine testList,
     testOptions     = combine testOptions
   }
     where combine field = field a `mappend` field b
@@ -1860,10 +1865,9 @@ boolOpt' :: OptFlags -> OptFlags
             -> MkOptDescr (a -> Flag Bool) (Flag Bool -> a -> a) a
 boolOpt' = Command.boolOpt' flagToMaybe Flag
 
-trueArg, falseArg :: SFlags -> LFlags -> Description -> (b -> Flag Bool) ->
-                     (Flag Bool -> (b -> b)) -> OptDescr b
-trueArg  = noArg (Flag True)
-falseArg = noArg (Flag False)
+trueArg, falseArg :: MkOptDescr (a -> Flag Bool) (Flag Bool -> a -> a) a
+trueArg  sfT lfT = boolOpt' (sfT, lfT) ([], [])   sfT lfT
+falseArg sfF lfF = boolOpt' ([],  [])  (sfF, lfF) sfF lfF
 
 reqArgFlag :: ArgPlaceHolder -> SFlags -> LFlags -> Description ->
               (b -> Flag String) -> (Flag String -> b -> b) -> OptDescr b

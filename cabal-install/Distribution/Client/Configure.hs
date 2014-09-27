@@ -35,7 +35,7 @@ import Distribution.Simple.Compiler
 import Distribution.Simple.Program (ProgramConfiguration )
 import Distribution.Simple.Setup
          ( ConfigFlags(..), fromFlag, toFlag, flagToMaybe, fromFlagOrDefault )
-import Distribution.Simple.PackageIndex (PackageIndex)
+import Distribution.Simple.PackageIndex (InstalledPackageIndex)
 import Distribution.Simple.Utils
          ( defaultPackageDesc )
 import qualified Distribution.InstalledPackageInfo as Installed
@@ -48,7 +48,7 @@ import Distribution.PackageDescription.Configuration
 import Distribution.Version
          ( anyVersion, thisVersion )
 import Distribution.Simple.Utils as Utils
-         ( notice, debug, die )
+         ( notice, info, debug, die )
 import Distribution.System
          ( Platform )
 import Distribution.Verbosity as Verbosity
@@ -64,6 +64,8 @@ chooseCabalVersion :: ConfigExFlags -> Maybe Version -> VersionRange
 chooseCabalVersion configExFlags maybeVersion =
   maybe defaultVersionRange thisVersion maybeVersion
   where
+    -- Cabal < 1.19.2 doesn't support '--exact-configuration' which is needed
+    -- for '--allow-newer' to work.
     allowNewer = fromFlagOrDefault False $
                  fmap isAllowNewer (configAllowNewer configExFlags)
 
@@ -95,7 +97,10 @@ configure verbosity packageDBs repos comp platform conf
   maybePlan <- foldProgress logMsg (return . Left) (return . Right)
                             progress
   case maybePlan of
-    Left message -> die message
+    Left message -> do
+      info verbosity message
+      setupWrapper verbosity (setupScriptOptions installedPkgIndex) Nothing
+        configureCommand (const configFlags) extraArgs
 
     Right installPlan -> case InstallPlan.ready installPlan of
       [pkg@(ReadyPackage (SourcePackage _ _ (LocalUnpackedPackage _) _) _ _ _)] ->
@@ -144,7 +149,7 @@ configure verbosity packageDBs repos comp platform conf
 planLocalPackage :: Verbosity -> Compiler
                  -> Platform
                  -> ConfigFlags -> ConfigExFlags
-                 -> PackageIndex
+                 -> InstalledPackageIndex
                  -> SourcePackageDb
                  -> IO (Progress String String InstallPlan)
 planLocalPackage verbosity comp platform configFlags configExFlags installedPkgIndex

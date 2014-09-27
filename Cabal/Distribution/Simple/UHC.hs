@@ -2,6 +2,7 @@
 -- |
 -- Module      :  Distribution.Simple.UHC
 -- Copyright   :  Andres Loeh 2009
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -13,39 +14,6 @@
 -- particular to Isaac Jones, Duncan Coutts and Henning Thielemann, for
 -- inspiration on how to design this module.
 
-{-
-Copyright (c) 2009, Andres Loeh
-Copyright (c) 2003-2005, Isaac Jones
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
-
 module Distribution.Simple.UHC (
     configure, getInstalledPackages,
     buildLib, buildExe, installLib, registerPackage
@@ -56,7 +24,7 @@ import Data.List
 import qualified Data.Map as M ( empty )
 import Distribution.Compat.ReadP
 import Distribution.InstalledPackageInfo
-import Distribution.Package
+import Distribution.Package hiding (installedPackageId)
 import Distribution.PackageDescription
 import Distribution.Simple.BuildPaths
 import Distribution.Simple.Compiler as C
@@ -118,7 +86,7 @@ uhcLanguageExtensions =
      (FlexibleInstances,            alwaysOn)]
 
 getInstalledPackages :: Verbosity -> Compiler -> PackageDBStack -> ProgramConfiguration
-                     -> IO PackageIndex
+                     -> IO InstalledPackageIndex
 getInstalledPackages verbosity comp packagedbs conf = do
   let compilerid = compilerId comp
   systemPkgDir <- rawSystemProgramStdoutConf verbosity uhcProgram conf ["--meta-pkgdir-system"]
@@ -150,7 +118,7 @@ packageDbPaths user system db =
     UserPackageDB           ->  [ user ]
     SpecificPackageDB path  ->  [ path ]
 
--- | Hack to add version numbers to UHC-builtin packages. This should sooner or
+-- | Hack to add version numbers to UHC-built-in packages. This should sooner or
 -- later be fixed on the UHC side.
 addBuiltinVersions :: String -> String
 {-
@@ -247,6 +215,8 @@ constructUHCCmdLine user system lbi bi clbi odir verbosity =
   ++ ["-i" ++ odir]
   ++ ["-i" ++ l | l <- nub (hsSourceDirs bi)]
   ++ ["-i" ++ autogenModulesDir lbi]
+     -- cpp options
+  ++ ["--optP=" ++ opt | opt <- cppOptions bi]
      -- output path
   ++ ["--odir=" ++ odir]
      -- optimization
@@ -270,7 +240,7 @@ installLib verbosity _lbi targetDir _dynlibTargetDir builtDir pkg _library = do
     -- putStrLn $ "built: " ++ builtDir
     installDirectoryContents verbosity (builtDir </> display (packageId pkg)) targetDir
 
--- currently hardcoded UHC code generator and variant to use
+-- currently hard-coded UHC code generator and variant to use
 uhcTarget, uhcTargetVariant :: String
 uhcTarget        = "bc"
 uhcTargetVariant = "plain"

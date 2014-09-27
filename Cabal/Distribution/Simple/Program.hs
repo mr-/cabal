@@ -58,7 +58,7 @@ module Distribution.Simple.Program (
     , runProgramInvocation
     , getProgramInvocationOutput
 
-    -- * The collection of unconfigured and configured progams
+    -- * The collection of unconfigured and configured programs
     , builtinPrograms
 
     -- * The collection of configured programs we can run
@@ -168,8 +168,8 @@ runDbProgram verbosity prog programDb args =
     Nothing             -> die notFound
     Just configuredProg -> runProgram verbosity configuredProg args
  where
-   notFound = "The program " ++ programName prog
-           ++ " is required but it could not be found"
+   notFound = "The program '" ++ programName prog
+           ++ "' is required but it could not be found"
 
 -- | Looks up the given program in the program database and runs it.
 --
@@ -183,8 +183,8 @@ getDbProgramOutput verbosity prog programDb args =
     Nothing             -> die notFound
     Just configuredProg -> getProgramOutput verbosity configuredProg args
  where
-   notFound = "The program " ++ programName prog
-           ++ " is required but it could not be found"
+   notFound = "The program '" ++ programName prog
+           ++ "' is required but it could not be found"
 
 
 ---------------------

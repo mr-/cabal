@@ -1,5 +1,5 @@
 name: Cabal
-version: 1.19.2
+version: 1.21.1.0
 copyright: 2003-2006, Isaac Jones
            2005-2011, Duncan Coutts
 license: BSD3
@@ -24,7 +24,10 @@ build-type: Custom
 -- that we build Setup.lhs using our own local Cabal source code.
 
 extra-source-files:
-  README tests/README changelog
+  README.md tests/README.md changelog
+  doc/developing-packages.markdown doc/index.markdown
+  doc/installing-packages.markdown
+  doc/misc.markdown
 
   -- Generated with 'misc/gen-extra-source-files.sh' & 'M-x sort-lines':
   tests/PackageTests/BenchmarkExeV10/Foo.hs
@@ -80,6 +83,11 @@ extra-source-files:
   tests/PackageTests/DeterministicAr/Lib.hs
   tests/PackageTests/DeterministicAr/my.cabal
   tests/PackageTests/EmptyLib/empty/empty.cabal
+  tests/PackageTests/Haddock/CPP.hs
+  tests/PackageTests/Haddock/Literate.lhs
+  tests/PackageTests/Haddock/my.cabal
+  tests/PackageTests/Haddock/NoCPP.hs
+  tests/PackageTests/Haddock/Simple.hs
   tests/PackageTests/OrderFlags/Foo.hs
   tests/PackageTests/OrderFlags/my.cabal
   tests/PackageTests/PathsModule/Executable/Main.hs
@@ -119,16 +127,21 @@ source-repository head
 
 library
   build-depends:
-    base       >= 4       && < 5,
-    deepseq    >= 1.3     && < 1.4,
-    filepath   >= 1       && < 1.4,
-    directory  >= 1       && < 1.3,
-    process    >= 1.0.1.1 && < 1.3,
-    time       >= 1.1     && < 1.5,
-    containers >= 0.1     && < 0.6,
-    array      >= 0.1     && < 0.6,
-    pretty     >= 1       && < 1.2,
+    base       >= 4.2 && < 5,
+    binary     >= 0.7 && < 0.8,
+    deepseq    >= 1.3 && < 1.4,
+    filepath   >= 1   && < 1.4,
+    directory  >= 1   && < 1.3,
+    process    >= 1.1.0.1 && < 1.3,
+    time       >= 1.1 && < 1.6,
+    containers >= 0.1 && < 0.6,
+    array      >= 0.1 && < 0.6,
+    pretty     >= 1   && < 1.2,
     bytestring >= 0.9
+
+  -- Needed for GHC.Generics before GHC 7.6
+  if impl(ghc < 7.6)
+    build-depends: ghc-prim >= 0.2 && < 0.3
 
   if !os(windows)
     build-depends:
@@ -137,6 +150,7 @@ library
   ghc-options: -Wall -fno-ignore-asserts -fwarn-tabs
 
   exposed-modules:
+    Distribution.Compat.CreatePipe
     Distribution.Compat.Environment
     Distribution.Compat.Exception
     Distribution.Compat.ReadP
@@ -196,6 +210,9 @@ library
     Distribution.Simple.Setup
     Distribution.Simple.SrcDist
     Distribution.Simple.Test
+    Distribution.Simple.Test.ExeV10
+    Distribution.Simple.Test.LibV09
+    Distribution.Simple.Test.Log
     Distribution.Simple.UHC
     Distribution.Simple.UserHooks
     Distribution.Simple.Utils
@@ -221,7 +238,9 @@ library
 test-suite unit-tests
   type: exitcode-stdio-1.0
   hs-source-dirs: tests
-  other-modules: UnitTests.Distribution.Compat.ReadP
+  other-modules:
+    UnitTests.Distribution.Compat.CreatePipe
+    UnitTests.Distribution.Compat.ReadP
   main-is: UnitTests.hs
   build-depends:
     base,
@@ -229,7 +248,7 @@ test-suite unit-tests
     test-framework-hunit,
     test-framework-quickcheck2,
     HUnit,
-    QuickCheck,
+    QuickCheck < 2.8,
     Cabal
   ghc-options: -Wall
   default-language: Haskell98
@@ -239,7 +258,6 @@ test-suite package-tests
   type: exitcode-stdio-1.0
   main-is: PackageTests.hs
   other-modules:
-    Distribution.Compat.CreatePipe
     PackageTests.BenchmarkExeV10.Check
     PackageTests.BenchmarkOptions.Check
     PackageTests.BenchmarkStanza.Check
@@ -258,6 +276,7 @@ test-suite package-tests
     PackageTests.CMain.Check
     PackageTests.DeterministicAr.Check
     PackageTests.EmptyLib.Check
+    PackageTests.Haddock.Check
     PackageTests.OrderFlags.Check
     PackageTests.PackageTester
     PackageTests.PathsModule.Executable.Check
@@ -270,11 +289,13 @@ test-suite package-tests
   hs-source-dirs: tests
   build-depends:
     base,
+    binary     >= 0.7 && < 0.8,
+    containers,
     test-framework,
     test-framework-quickcheck2 >= 0.2.12,
     test-framework-hunit,
     HUnit,
-    QuickCheck >= 2.1.0.1,
+    QuickCheck >= 2.1.0.1 && < 2.8,
     Cabal,
     process,
     directory,

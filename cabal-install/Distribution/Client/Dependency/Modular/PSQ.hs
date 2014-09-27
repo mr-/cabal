@@ -1,13 +1,13 @@
+{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveFoldable, DeriveTraversable #-}
 module Distribution.Client.Dependency.Modular.PSQ where
 
 -- Priority search queues.
 --
--- I am not yet sure what exactly is needed. But we need a datastructure with
+-- I am not yet sure what exactly is needed. But we need a data structure with
 -- key-based lookup that can be sorted. We're using a sequence right now with
 -- (inefficiently implemented) lookup, because I think that queue-based
 -- operations and sorting turn out to be more efficiency-critical in practice.
 
-import Control.Applicative
 import Data.Foldable
 import Data.Ord (comparing)
 import Data.Function
@@ -16,16 +16,7 @@ import Data.Traversable
 import Prelude hiding (foldr)
 
 newtype PSQ k v = PSQ [(k, v)]
-  deriving (Eq, Show)
-
-instance Functor (PSQ k) where
-  fmap f (PSQ xs) = PSQ (fmap (\ (k, v) -> (k, f v)) xs)
-
-instance Foldable (PSQ k) where
-  foldr op e (PSQ xs) = foldr op e (fmap snd xs)
-
-instance Traversable (PSQ k) where
-  traverse f (PSQ xs) = PSQ <$> traverse (\ (k, v) -> (\ x -> (k, x)) <$> f v) xs
+  deriving (Eq, Show, Functor, Foldable, Traversable)
 
 sortPSQ :: Ord k => PSQ k v -> PSQ k v
 sortPSQ (PSQ xs) = PSQ $ L.sortBy (comparing fst) xs

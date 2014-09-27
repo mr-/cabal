@@ -117,7 +117,7 @@ getLanguages verbosity prog = do
 -- Other compilers do some kind of a packagedb stack check here. Not sure
 -- if we need something like that as well.
 getInstalledPackages :: Verbosity -> PackageDBStack -> ProgramConfiguration
-                     -> IO PackageIndex
+                     -> IO InstalledPackageIndex
 getInstalledPackages verbosity packagedbs conf =
   liftM (PackageIndex.fromList . concat) $ forM packagedbs $ \packagedb ->
     do str <-
@@ -172,6 +172,7 @@ buildLib verbosity pkg_descr lbi lib clbi = do
            | (ipkgid, _) <- componentPackageDeps clbi ] ++
     ["-G", display language] ++
     concat [ ["-X", display ex] | ex <- usedExtensions bi ] ++
+    cppOptions (libBuildInfo lib) ++
     [ display modu | modu <- libModules lib ]
 
 
@@ -180,7 +181,7 @@ installLib
   :: Verbosity
   -> LocalBuildInfo
   -> FilePath  -- ^install location
-  -> FilePath  -- ^install location for dynamic librarys
+  -> FilePath  -- ^install location for dynamic libraries
   -> FilePath  -- ^Build location
   -> PackageDescription
   -> Library

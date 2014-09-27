@@ -2,40 +2,11 @@
 -- |
 -- Module      :  Distribution.Simple.GHC.IPI642
 -- Copyright   :  (c) The University of Glasgow 2004
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
 --
-
-{- All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of the University nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
 
 module Distribution.Simple.GHC.IPI642 (
     InstalledPackageInfo,
@@ -48,7 +19,7 @@ module Distribution.Simple.GHC.IPI642 (
   ) where
 
 import qualified Distribution.InstalledPackageInfo as Current
-import qualified Distribution.Package as Current hiding (depends)
+import qualified Distribution.Package as Current hiding (depends, installedPackageId)
 import qualified Distribution.License as Current
 
 import Distribution.Version (Version)
@@ -129,9 +100,12 @@ convertLicense AllRightsReserved = Current.AllRightsReserved
 convertLicense OtherLicense = Current.OtherLicense
 
 toCurrent :: InstalledPackageInfo -> Current.InstalledPackageInfo
-toCurrent ipi@InstalledPackageInfo{} = Current.InstalledPackageInfo {
+toCurrent ipi@InstalledPackageInfo{} =
+  let pid = convertPackageId (package ipi)
+  in Current.InstalledPackageInfo {
     Current.installedPackageId = mkInstalledPackageId (convertPackageId (package ipi)),
-    Current.sourcePackageId    = convertPackageId (package ipi),
+    Current.sourcePackageId    = pid,
+    Current.packageKey         = Current.OldPackageKey pid,
     Current.license            = convertLicense (license ipi),
     Current.copyright          = copyright ipi,
     Current.maintainer         = maintainer ipi,
@@ -144,6 +118,7 @@ toCurrent ipi@InstalledPackageInfo{} = Current.InstalledPackageInfo {
     Current.category           = category ipi,
     Current.exposed            = exposed ipi,
     Current.exposedModules     = map convertModuleName (exposedModules ipi),
+    Current.reexportedModules  = [],
     Current.hiddenModules      = map convertModuleName (hiddenModules ipi),
     Current.trusted            = Current.trusted Current.emptyInstalledPackageInfo,
     Current.importDirs         = importDirs ipi,

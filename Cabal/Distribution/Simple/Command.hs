@@ -2,6 +2,7 @@
 -- |
 -- Module      :  Distribution.Simple.Command
 -- Copyright   :  Duncan Coutts 2007
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -13,36 +14,6 @@
 -- run. It handles some common stuff automatically, like the @--help@ and
 -- command line completion flags. It is designed to allow other tools make
 -- derived commands. This feature is used heavily in @cabal-install@.
-
-{- All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
 
 module Distribution.Simple.Command (
 
@@ -95,7 +66,8 @@ import Distribution.Text
 import Distribution.ParseUtils
 import Distribution.ReadE
 import Distribution.Simple.Utils (die, intercalate)
-import Text.PrettyPrint    ( punctuate, cat, comma, text, empty)
+import Text.PrettyPrint ( punctuate, cat, comma, text )
+import Text.PrettyPrint as PP ( empty )
 
 data CommandUI flags = CommandUI {
     -- | The name of the command as it would be entered on the command line.
@@ -118,11 +90,11 @@ data ShowOrParseArgs = ShowArgs | ParseArgs
 type Name        = String
 type Description = String
 
--- | We usually have a datatype for storing configuration values, where
+-- | We usually have a data type for storing configuration values, where
 --   every field stores a configuration option, and the user sets
 --   the value either via command line flags or a configuration file.
 --   An individual OptionField models such a field, and we usually
---   build a list of options associated to a configuration datatype.
+--   build a list of options associated to a configuration data type.
 data OptionField a = OptionField {
   optionName        :: Name,
   optionDescr       :: [OptDescr a] }
@@ -251,7 +223,11 @@ viewAsGetOpt (OptionField _n aa) = concatMap optDescrToGetOpt aa
                    set' (Just txt) = readEOrFail set txt
     optDescrToGetOpt (ChoiceOpt alts) =
          [GetOpt.Option sf lf (GetOpt.NoArg set) d | (d,(sf,lf),set,_) <- alts ]
-    optDescrToGetOpt (BoolOpt d (sfT,lfT) (sfF, lfF) set _) =
+    optDescrToGetOpt (BoolOpt d (sfT, lfT) ([],  [])  set _) =
+         [ GetOpt.Option sfT lfT (GetOpt.NoArg (set True))  d ]
+    optDescrToGetOpt (BoolOpt d ([],  [])  (sfF, lfF) set _) =
+         [ GetOpt.Option sfF lfF (GetOpt.NoArg (set False)) d ]
+    optDescrToGetOpt (BoolOpt d (sfT,lfT)  (sfF, lfF) set _) =
          [ GetOpt.Option sfT lfT (GetOpt.NoArg (set True))  ("Enable " ++ d)
          , GetOpt.Option sfF lfF (GetOpt.NoArg (set False)) ("Disable " ++ d) ]
 
@@ -283,15 +259,15 @@ viewAsFieldDescr (OptionField n dd) = FieldDescr n get set
           (cat . punctuate comma . map text . ppr) t
 
         OptArg _ _ _ _ _ ppr ->
-          case ppr t of []        -> empty
+          case ppr t of []        -> PP.empty
                         (Nothing : _) -> text "True"
                         (Just a  : _) -> text a
 
         ChoiceOpt alts ->
-          fromMaybe empty $ listToMaybe
+          fromMaybe PP.empty $ listToMaybe
           [ text lf | (_,(_,lf:_), _,enabled) <- alts, enabled t]
 
-        BoolOpt _ _ _ _ enabled -> (maybe empty disp . enabled) t
+        BoolOpt _ _ _ _ enabled -> (maybe PP.empty disp . enabled) t
 
 --    set :: LineNo -> String -> a -> ParseResult a
       set line val a =
@@ -358,12 +334,15 @@ commandShowOptions command v = concat
   [ showOptDescr v  od | o <- commandOptions command ParseArgs
                        , od <- optionDescr o]
   where
+    maybePrefix []       = []
+    maybePrefix (lOpt:_) = ["--" ++ lOpt]
+
     showOptDescr :: a -> OptDescr a -> [String]
-    showOptDescr x (BoolOpt _ (_,lfT:_) (_,lfF:_) _ enabled)
+    showOptDescr x (BoolOpt _ (_,lfTs) (_,lfFs) _ enabled)
       = case enabled x of
           Nothing -> []
-          Just True  -> ["--" ++ lfT]
-          Just False -> ["--" ++ lfF]
+          Just True  -> maybePrefix lfTs
+          Just False -> maybePrefix lfFs
     showOptDescr x c@ChoiceOpt{}
       = ["--" ++ val | val <- getCurrentChoice c x]
     showOptDescr x (ReqArg _ (_ssff,lf:_) _ _ showflag)
@@ -472,9 +451,11 @@ commandParseArgs command global args =
 
   where -- Note: It is crucial to use reverse function composition here or to
         -- reverse the flags here as we want to process the flags left to right
-        -- but data flow in function compsition is right to left.
+        -- but data flow in function composition is right to left.
         accum flags = foldr (flip (.)) id [ f | Right f <- flags ]
-        unrecognised opts = [ "unrecognized option `" ++ opt ++ "'\n"
+        unrecognised opts = [ "unrecognized "
+                              ++ "'" ++ (commandName command) ++ "'"
+                              ++ " option `" ++ opt ++ "'\n"
                             | opt <- opts ]
         -- For unrecognised global flags we put them in the position just after
         -- the command, if there is one. This gives us a chance to parse them

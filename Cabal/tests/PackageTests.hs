@@ -29,26 +29,30 @@ import PackageTests.TemplateHaskell.Check
 import PackageTests.CMain.Check
 import PackageTests.DeterministicAr.Check
 import PackageTests.EmptyLib.Check
+import PackageTests.Haddock.Check
 import PackageTests.TestOptions.Check
 import PackageTests.TestStanza.Check
 import PackageTests.TestSuiteExeV10.Check
 import PackageTests.OrderFlags.Check
+import PackageTests.ReexportedModules.Check
 
-import Distribution.Compat.Exception (catchIO)
+import Distribution.Package (PackageIdentifier)
 import Distribution.Simple.LocalBuildInfo (LocalBuildInfo(..))
 import Distribution.Simple.Program.Types (programPath)
-import Distribution.Simple.Program.Builtin (ghcProgram, ghcPkgProgram)
+import Distribution.Simple.Program.Builtin (ghcProgram, ghcPkgProgram,
+                                            haddockProgram)
 import Distribution.Simple.Program.Db (requireProgram)
-import Distribution.Simple.Utils (cabalVersion, die, withFileContents)
+import Distribution.Simple.Utils (cabalVersion, die)
 import Distribution.Text (display)
 import Distribution.Verbosity (normal)
 import Distribution.Version (Version(Version))
 
-import Data.Maybe (isJust)
+import Data.Binary (Binary, decodeOrFail)
+import qualified Data.ByteString.Lazy as BS
 import System.Directory (doesFileExist, getCurrentDirectory,
                          setCurrentDirectory)
-import System.Environment (getEnv)
 import System.FilePath ((</>))
+import System.IO (BufferMode(NoBuffering), hSetBuffering, stdout)
 import Test.Framework (Test, TestName, defaultMain, testGroup)
 import Test.Framework.Providers.HUnit (hUnitTestToTests)
 import qualified Test.HUnit as HUnit
@@ -57,8 +61,8 @@ import qualified Test.HUnit as HUnit
 hunit :: TestName -> HUnit.Test -> Test
 hunit name test = testGroup name $ hUnitTestToTests test
 
-tests :: Version -> PackageSpec -> FilePath -> FilePath -> Bool -> [Test]
-tests version inplaceSpec ghcPath ghcPkgPath runningOnTravis =
+tests :: Version -> PackageSpec -> FilePath -> FilePath -> [Test]
+tests version inplaceSpec ghcPath ghcPkgPath =
     [ hunit "BuildDeps/SameDepsAllRound"
       (PackageTests.BuildDeps.SameDepsAllRound.Check.suite ghcPath)
       -- The two following tests were disabled by Johan Tibell as
@@ -76,6 +80,10 @@ tests version inplaceSpec ghcPath ghcPkgPath runningOnTravis =
     , hunit "TestSuiteExeV10/Test" (PackageTests.TestSuiteExeV10.Check.checkTest ghcPath)
     , hunit "TestSuiteExeV10/TestWithHpc"
       (PackageTests.TestSuiteExeV10.Check.checkTestWithHpc ghcPath)
+    , hunit "TestSuiteExeV10/TestWithoutHpcNoTix"
+      (PackageTests.TestSuiteExeV10.Check.checkTestWithoutHpcNoTix ghcPath)
+    , hunit "TestSuiteExeV10/TestWithoutHpcNoMarkup"
+      (PackageTests.TestSuiteExeV10.Check.checkTestWithoutHpcNoMarkup ghcPath)
     , hunit "TestOptions" (PackageTests.TestOptions.Check.suite ghcPath)
     , hunit "BenchmarkStanza" (PackageTests.BenchmarkStanza.Check.suite ghcPath)
       -- ^ The benchmark stanza test will eventually be required
@@ -85,6 +93,8 @@ tests version inplaceSpec ghcPath ghcPkgPath runningOnTravis =
     , hunit "BenchmarkOptions" (PackageTests.BenchmarkOptions.Check.suite ghcPath)
     , hunit "TemplateHaskell/vanilla"
       (PackageTests.TemplateHaskell.Check.vanilla ghcPath)
+    , hunit "TemplateHaskell/profiling"
+      (PackageTests.TemplateHaskell.Check.profiling ghcPath)
     , hunit "PathsModule/Executable"
       (PackageTests.PathsModule.Executable.Check.suite ghcPath)
     , hunit "PathsModule/Library" (PackageTests.PathsModule.Library.Check.suite ghcPath)
@@ -92,20 +102,16 @@ tests version inplaceSpec ghcPath ghcPkgPath runningOnTravis =
         (PackageTests.DeterministicAr.Check.suite ghcPath ghcPkgPath)
     , hunit "EmptyLib/emptyLib"
       (PackageTests.EmptyLib.Check.emptyLib ghcPath)
+    , hunit "Haddock" (PackageTests.Haddock.Check.suite ghcPath)
     , hunit "BuildTestSuiteDetailedV09"
       (PackageTests.BuildTestSuiteDetailedV09.Check.suite inplaceSpec ghcPath)
     , hunit "OrderFlags"
       (PackageTests.OrderFlags.Check.suite ghcPath)
+    , hunit "TemplateHaskell/dynamic"
+      (PackageTests.TemplateHaskell.Check.dynamic ghcPath)
+    , hunit "ReexportedModules"
+      (PackageTests.ReexportedModules.Check.suite ghcPath)
     ] ++
-    -- These tests are expected to fail on Travis because hvr's PPA GHCs don't
-    -- include profiling and dynamic libs.
-    (if not runningOnTravis
-     then [ hunit "TemplateHaskell/profiling"
-            (PackageTests.TemplateHaskell.Check.profiling ghcPath)
-          , hunit "TemplateHaskell/dynamic"
-            (PackageTests.TemplateHaskell.Check.dynamic ghcPath)
-          ]
-     else []) ++
     -- These tests are only required to pass on cabal version >= 1.7
     (if version >= Version [1, 7] []
      then [ hunit "BuildDeps/TargetSpecificDeps1"
@@ -129,6 +135,10 @@ tests version inplaceSpec ghcPath ghcPkgPath runningOnTravis =
 
 main :: IO ()
 main = do
+    -- WORKAROUND: disable buffering on stdout to get streaming test logs
+    -- test providers _should_ do this themselves
+    hSetBuffering stdout NoBuffering
+
     wd <- getCurrentDirectory
     let dbFile = wd </> "dist/package.conf.inplace"
         inplaceSpec = PackageSpec
@@ -142,24 +152,17 @@ main = do
     lbi <- getPersistBuildConfig_ ("dist" </> "setup-config")
     (ghc, _) <- requireProgram normal ghcProgram (withPrograms lbi)
     (ghcPkg, _) <- requireProgram normal ghcPkgProgram (withPrograms lbi)
+    (haddock, _) <- requireProgram normal haddockProgram (withPrograms lbi)
     let ghcPath = programPath ghc
         ghcPkgPath = programPath ghcPkg
+        haddockPath = programPath haddock
     putStrLn $ "Using ghc: " ++ ghcPath
     putStrLn $ "Using ghc-pkg: " ++ ghcPkgPath
+    putStrLn $ "Using haddock: " ++ haddockPath
     setCurrentDirectory "tests"
-    -- Are we running on Travis-CI?
-    runningOnTravis <- checkRunningOnTravis
     -- Create a shared Setup executable to speed up Simple tests
     compileSetup "." ghcPath
-    defaultMain (tests cabalVersion inplaceSpec
-                 ghcPath ghcPkgPath runningOnTravis)
-
--- | Is the test suite running on the Travis-CI build bot?
-checkRunningOnTravis :: IO Bool
-checkRunningOnTravis = fmap isJust (lookupEnv "CABAL_TEST_RUNNING_ON_TRAVIS")
-  where
-    lookupEnv :: String -> IO (Maybe String)
-    lookupEnv name = (Just `fmap` getEnv name) `catchIO` const (return Nothing)
+    defaultMain (tests cabalVersion inplaceSpec ghcPath ghcPkgPath)
 
 -- Like Distribution.Simple.Configure.getPersistBuildConfig but
 -- doesn't check that the Cabal version matches, which it doesn't when
@@ -168,14 +171,28 @@ getPersistBuildConfig_ :: FilePath -> IO LocalBuildInfo
 getPersistBuildConfig_ filename = do
   exists <- doesFileExist filename
   if not exists
-    then die missing
-    else withFileContents filename $ \str ->
-      case lines str of
-        [_header, rest] -> case reads rest of
-          [(bi,_)] -> return bi
-          _        -> die cantParse
-        _            -> die cantParse
+    then die "Run the 'configure' command first."
+    else decodeBinHeader >>= decodeBody
+
   where
-    missing   = "Run the 'configure' command first."
-    cantParse = "Saved package config file seems to be corrupt. "
-             ++ "Try re-running the 'configure' command."
+    decodeB :: Binary a => BS.ByteString -> Either String (BS.ByteString, a)
+    decodeB str = either (const cantParse) return $ do
+        (next, _, x) <- decodeOrFail str
+        return (next, x)
+
+    decodeBody :: Either String BS.ByteString -> IO LocalBuildInfo
+    decodeBody (Left msg) = die msg
+    decodeBody (Right body) = either die (return . snd) $ decodeB body
+
+    decodeBinHeader :: IO (Either String BS.ByteString)
+    decodeBinHeader = do
+        pbc <- BS.readFile filename
+        return $ do
+            (body, _) <- decodeB pbc :: Either String ( BS.ByteString
+                                                      , ( PackageIdentifier
+                                                      , PackageIdentifier )
+                                                      )
+            return body
+
+    cantParse = Left $  "Saved package config file seems to be corrupt. "
+                     ++ "Try re-running the 'configure' command."

@@ -2,6 +2,7 @@
 -- |
 -- Module      :  Distribution.Simple.LHC
 -- Copyright   :  Isaac Jones 2003-2007
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -28,37 +29,6 @@
 -- remembering the layout of files in the build directory (which is not
 -- explicitly documented) and thus what search dirs are used for various kinds
 -- of files.
-
-{- Copyright (c) 2003-2005, Isaac Jones
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modiication, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
 
 module Distribution.Simple.LHC (
         configure, getInstalledPackages,
@@ -248,7 +218,7 @@ getExtensions verbosity lhcProg = do
              | Just ext <- map readExtension (lines exts) ]
 
 getInstalledPackages :: Verbosity -> PackageDBStack -> ProgramConfiguration
-                     -> IO PackageIndex
+                     -> IO InstalledPackageIndex
 getInstalledPackages verbosity packagedbs conf = do
   checkPackageDbStack packagedbs
   pkgss <- getInstalledPackages' lhcPkg verbosity packagedbs conf
@@ -363,7 +333,7 @@ buildLib verbosity pkg_descr lbi lib clbi = do
       -- TH always needs vanilla libs, even when building for profiling
 
   createDirectoryIfMissingVerbose verbosity True libTargetDir
-  -- TODO: do we need to put hs-boot files into place for mutually recurive modules?
+  -- TODO: do we need to put hs-boot files into place for mutually recursive modules?
   let ghcArgs =
              ["-package-name", display pkgid ]
           ++ constructGHCCmdLine lbi libBi clbi libTargetDir verbosity
@@ -490,10 +460,10 @@ buildLib verbosity pkg_descr lbi lib clbi = do
 
         runAr = rawSystemProgramConf verbosity arProgram (withPrograms lbi)
 
-         --TODO: discover this at configure time or runtime on unix
-         -- The value is 32k on Windows and posix specifies a minimum of 4k
-         -- but all sensible unixes use more than 4k.
-         -- we could use getSysVar ArgumentLimit but that's in the unix lib
+         --TODO: discover this at configure time or runtime on Unix
+         -- The value is 32k on Windows and POSIX specifies a minimum of 4k
+         -- but all sensible Unixes use more than 4k.
+         -- we could use getSysVar ArgumentLimit but that's in the Unix lib
         maxCommandLineSize = 30 * 1024
 
     ifVanillaLib False $ xargs maxCommandLineSize
@@ -758,7 +728,7 @@ stripExe verbosity lbi name path = when (stripExes lbi) $
 installLib    :: Verbosity
               -> LocalBuildInfo
               -> FilePath  -- ^install location
-              -> FilePath  -- ^install location for dynamic librarys
+              -> FilePath  -- ^install location for dynamic libraries
               -> FilePath  -- ^Build location
               -> PackageDescription
               -> Library

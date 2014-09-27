@@ -1,7 +1,10 @@
+{-# LANGUAGE DeriveGeneric #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Distribution.Simple.LocalBuildInfo
 -- Copyright   :  Isaac Jones 2003-2004
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -13,36 +16,6 @@
 -- programs, the package database to use and a bunch of miscellaneous configure
 -- flags. It gets saved and reloaded from a file (@dist\/setup-config@). It gets
 -- passed in to very many subsequent build actions.
-
-{- All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
 
 module Distribution.Simple.LocalBuildInfo (
         LocalBuildInfo(..),
@@ -92,24 +65,31 @@ import Distribution.Simple.Program (ProgramConfiguration)
 import Distribution.PackageDescription
          ( PackageDescription(..), withLib, Library(libBuildInfo), withExe
          , Executable(exeName, buildInfo), withTest, TestSuite(..)
-         , BuildInfo(buildable), Benchmark(..) )
+         , BuildInfo(buildable), Benchmark(..), ModuleRenaming(..) )
+import qualified Distribution.InstalledPackageInfo as Installed
+    ( ModuleReexport(..) )
 import Distribution.Package
-         ( PackageId, Package(..), InstalledPackageId(..) )
+         ( PackageId, Package(..), InstalledPackageId(..), PackageKey
+         , PackageName )
 import Distribution.Simple.Compiler
          ( Compiler(..), PackageDBStack, OptimisationLevel )
 import Distribution.Simple.PackageIndex
-         ( PackageIndex )
+         ( InstalledPackageIndex )
 import Distribution.Simple.Setup
          ( ConfigFlags )
 import Distribution.Text
          ( display )
 import Distribution.System
           ( Platform )
-import Data.List (nub, find)
-import Data.Graph
-import Data.Tree  (flatten)
+
 import Data.Array ((!))
+import Data.Binary (Binary)
+import Data.Graph
+import Data.List (nub, find)
 import Data.Maybe
+import Data.Tree  (flatten)
+import GHC.Generics (Generic)
+import Data.Map (Map)
 
 -- | Data cached after configuration step.  See also
 -- 'Distribution.Simple.Setup.ConfigFlags'.
@@ -121,7 +101,7 @@ data LocalBuildInfo = LocalBuildInfo {
         -- ^ Extra args on the command line for the configuration step.
         -- Needed to re-run configuration when .cabal is out of date
         installDirTemplates :: InstallDirTemplates,
-                -- ^ The installation directories for the various differnt
+                -- ^ The installation directories for the various different
                 -- kinds of files
         --TODO: inplaceDirTemplates :: InstallDirs FilePath
         compiler      :: Compiler,
@@ -136,7 +116,7 @@ data LocalBuildInfo = LocalBuildInfo {
         componentsConfigs   :: [(ComponentName, ComponentLocalBuildInfo, [ComponentName])],
                 -- ^ All the components to build, ordered by topological sort, and with their dependencies
                 -- over the intrapackage dependency graph
-        installedPkgs :: PackageIndex,
+        installedPkgs :: InstalledPackageIndex,
                 -- ^ All the info about the installed packages that the
                 -- current package depends on (directly or indirectly).
         pkgDescrFile  :: Maybe FilePath,
@@ -144,6 +124,9 @@ data LocalBuildInfo = LocalBuildInfo {
         localPkgDescr :: PackageDescription,
                 -- ^ The resolved package description, that does not contain
                 -- any conditionals.
+        pkgKey        :: PackageKey,
+                -- ^ The package key for the current build, calculated from
+                -- the package ID and the dependency graph.
         withPrograms  :: ProgramConfiguration, -- ^Location and args for all programs
         withPackageDB :: PackageDBStack,  -- ^What package database to use, global\/user
         withVanillaLib:: Bool,  -- ^Whether to build normal libs.
@@ -158,7 +141,9 @@ data LocalBuildInfo = LocalBuildInfo {
         stripLibs     :: Bool,  -- ^Whether to strip libraries during install
         progPrefix    :: PathTemplate, -- ^Prefix to be prepended to installed executables
         progSuffix    :: PathTemplate -- ^Suffix to be appended to installed executables
-  } deriving (Read, Show)
+  } deriving (Generic, Read, Show)
+
+instance Binary LocalBuildInfo
 
 -- | External package dependencies for the package as a whole. This is the
 -- union of the individual 'componentPackageDeps', less any internal deps.
@@ -193,7 +178,9 @@ data ComponentName = CLibName   -- currently only a single lib
                    | CExeName   String
                    | CTestName  String
                    | CBenchName String
-                   deriving (Show, Eq, Ord, Read)
+                   deriving (Eq, Generic, Ord, Read, Show)
+
+instance Binary ComponentName
 
 showComponentName :: ComponentName -> String
 showComponentName CLibName          = "library"
@@ -208,18 +195,25 @@ data ComponentLocalBuildInfo
     -- satisfied in terms of version ranges. This field fixes those dependencies
     -- to the specific versions available on this machine for this compiler.
     componentPackageDeps :: [(InstalledPackageId, PackageId)],
+    componentModuleReexports :: [Installed.ModuleReexport],
+    componentPackageRenaming :: Map PackageName ModuleRenaming,
     componentLibraries :: [LibraryName]
   }
   | ExeComponentLocalBuildInfo {
-    componentPackageDeps :: [(InstalledPackageId, PackageId)]
+    componentPackageDeps :: [(InstalledPackageId, PackageId)],
+    componentPackageRenaming :: Map PackageName ModuleRenaming
   }
   | TestComponentLocalBuildInfo {
-    componentPackageDeps :: [(InstalledPackageId, PackageId)]
+    componentPackageDeps :: [(InstalledPackageId, PackageId)],
+    componentPackageRenaming :: Map PackageName ModuleRenaming
   }
   | BenchComponentLocalBuildInfo {
-    componentPackageDeps :: [(InstalledPackageId, PackageId)]
+    componentPackageDeps :: [(InstalledPackageId, PackageId)],
+    componentPackageRenaming :: Map PackageName ModuleRenaming
   }
-  deriving (Read, Show)
+  deriving (Generic, Read, Show)
+
+instance Binary ComponentLocalBuildInfo
 
 foldComponent :: (Library -> a)
               -> (Executable -> a)
@@ -233,7 +227,9 @@ foldComponent _ _ f _ (CTest  tst) = f tst
 foldComponent _ _ _ f (CBench bch) = f bch
 
 data LibraryName = LibraryName String
-    deriving (Read, Show)
+    deriving (Generic, Read, Show)
+
+instance Binary LibraryName
 
 componentBuildInfo :: Component -> BuildInfo
 componentBuildInfo =
@@ -417,6 +413,7 @@ absoluteInstallDirs :: PackageDescription -> LocalBuildInfo -> CopyDest
 absoluteInstallDirs pkg lbi copydest =
   InstallDirs.absoluteInstallDirs
     (packageId pkg)
+    (pkgKey lbi)
     (compilerId (compiler lbi))
     copydest
     (hostPlatform lbi)
@@ -428,6 +425,7 @@ prefixRelativeInstallDirs :: PackageId -> LocalBuildInfo
 prefixRelativeInstallDirs pkg_descr lbi =
   InstallDirs.prefixRelativeInstallDirs
     (packageId pkg_descr)
+    (pkgKey lbi)
     (compilerId (compiler lbi))
     (hostPlatform lbi)
     (installDirTemplates lbi)
@@ -438,5 +436,6 @@ substPathTemplate pkgid lbi = fromPathTemplate
                                 . ( InstallDirs.substPathTemplate env )
     where env = initialPathTemplateEnv
                    pkgid
+                   (pkgKey lbi)
                    (compilerId (compiler lbi))
                    (hostPlatform lbi)

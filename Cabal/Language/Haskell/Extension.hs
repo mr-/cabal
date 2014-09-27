@@ -1,43 +1,16 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
+
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Language.Haskell.Extension
 -- Copyright   :  Isaac Jones 2003-2004
+-- License     :  BSD3
 --
 -- Maintainer  :  libraries@haskell.org
 -- Portability :  portable
 --
 -- Haskell language dialects and extensions
-
-{- All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
 
 module Language.Haskell.Extension (
         Language(..),
@@ -54,8 +27,10 @@ import qualified Distribution.Compat.ReadP as Parse
 import qualified Text.PrettyPrint as Disp
 import qualified Data.Char as Char (isAlphaNum)
 import Data.Array (Array, accumArray, bounds, Ix(inRange), (!))
+import Data.Binary (Binary)
 import Data.Data (Data)
 import Data.Typeable (Typeable)
+import GHC.Generics (Generic)
 
 -- ------------------------------------------------------------
 -- * Language
@@ -78,7 +53,9 @@ data Language =
 
   -- | An unknown language, identified by its name.
   | UnknownLanguage String
-  deriving (Show, Read, Eq, Typeable, Data)
+  deriving (Generic, Show, Read, Eq, Typeable, Data)
+
+instance Binary Language
 
 knownLanguages :: [Language]
 knownLanguages = [Haskell98, Haskell2010]
@@ -126,7 +103,9 @@ data Extension =
   -- pragma.
   | UnknownExtension String
 
-  deriving (Show, Read, Eq, Typeable, Data)
+  deriving (Generic, Show, Read, Eq, Typeable, Data)
+
+instance Binary Extension
 
 data KnownExtension =
 
@@ -684,6 +663,11 @@ data KnownExtension =
   -- * <http://www.haskell.org/ghc/docs/latest/html/users_guide/syntax-extns.html#negative-literals>
   | NegativeLiterals
 
+  -- | Allows the use of binary integer literal syntax (e.g. @0b11001001@ to denote @201@).
+  --
+  -- * <http://www.haskell.org/ghc/docs/latest/html/users_guide/syntax-extns.html#binary-literals>
+  | BinaryLiterals
+
   -- | Allows the use of floating literal syntax for all instances of 'Num', including 'Int' and 'Integer'.
   --
   -- * <http://www.haskell.org/ghc/docs/latest/html/users_guide/syntax-extns.html#num-decimals>
@@ -704,7 +688,9 @@ data KnownExtension =
   -- * <http://www.haskell.org/ghc/docs/latest/html/users_guide/other-type-extensions.html#ambiguity>
   | AllowAmbiguousTypes
 
-  deriving (Show, Read, Eq, Enum, Bounded, Typeable, Data)
+  deriving (Generic, Show, Read, Eq, Enum, Bounded, Typeable, Data)
+
+instance Binary KnownExtension
 
 {-# DEPRECATED knownExtensions
    "KnownExtension is an instance of Enum and Bounded, use those instead." #-}
@@ -721,7 +707,7 @@ deprecatedExtensions =
   ]
 -- NOTE: when adding deprecated extensions that have new alternatives
 -- we must be careful to make sure that the deprecation messages are
--- valid. We must not recomend aliases that cannot be used with older
+-- valid. We must not recommend aliases that cannot be used with older
 -- compilers, perhaps by adding support in Cabal to translate the new
 -- name to the old one for older compilers. Otherwise we are in danger
 -- of the scenario in ticket #689.

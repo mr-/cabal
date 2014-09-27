@@ -16,7 +16,7 @@ module Distribution.Client.Sandbox.Timestamp (
   listModifiedDeps,
   ) where
 
-import Control.Exception                             (finally)
+import Control.Exception                             (IOException)
 import Control.Monad                                 (filterM, forM, when)
 import Data.Char                                     (isSpace)
 import Data.List                                     (partition)
@@ -25,14 +25,14 @@ import System.FilePath                               ((<.>), (</>))
 import qualified Data.Map as M
 
 import Distribution.Compiler                         (CompilerId)
+import Distribution.Package                          (packageName)
 import Distribution.PackageDescription.Configuration (flattenPackageDescription)
 import Distribution.PackageDescription.Parse         (readPackageDescription)
 import Distribution.Simple.Setup                     (Flag (..),
                                                       SDistFlags (..),
                                                       defaultSDistFlags,
                                                       sdistCommand)
-import Distribution.Simple.Utils                     (debug, die,
-                                                      tryFindPackageDesc, warn)
+import Distribution.Simple.Utils                     (debug, die, warn)
 import Distribution.System                           (Platform)
 import Distribution.Text                             (display)
 import Distribution.Verbosity                        (Verbosity, lessVerbose,
@@ -46,8 +46,8 @@ import Distribution.Client.Sandbox.Index
 import Distribution.Client.SetupWrapper              (SetupScriptOptions (..),
                                                       defaultSetupScriptOptions,
                                                       setupWrapper)
-import Distribution.Client.Utils                     (inDir, removeExistingFile,
-                                                      tryCanonicalizePath)
+import Distribution.Client.Utils
+  (inDir, removeExistingFile, tryCanonicalizePath, tryFindAddSourcePackageDesc)
 
 import Distribution.Compat.Exception                 (catchIO)
 import Distribution.Client.Compat.Time               (EpochTime, getCurTime,
@@ -213,9 +213,10 @@ withActionOnCompilerTimestamps f sandboxDir compId platform act = do
 -- FIXME: This function is not thread-safe because of 'inDir'.
 allPackageSourceFiles :: Verbosity -> FilePath -> IO [FilePath]
 allPackageSourceFiles verbosity packageDir = inDir (Just packageDir) $ do
-  pkg <- fmap (flattenPackageDescription)
-         . readPackageDescription verbosity =<< tryFindPackageDesc packageDir
-
+  pkg <- do
+    let err = "Error reading source files of add-source dependency."
+    desc <- tryFindAddSourcePackageDesc packageDir err
+    flattenPackageDescription `fmap` readPackageDescription verbosity desc
   let file      = "cabal-sdist-list-sources"
       flags     = defaultSDistFlags {
         sDistVerbosity   = Flag $ if verbosity == normal
@@ -227,11 +228,24 @@ allPackageSourceFiles verbosity packageDir = inDir (Just packageDir) $ do
         useCabalVersion = orLaterVersion $ Version [1,18,0] []
         }
 
+      doListSources :: IO [FilePath]
+      doListSources = do
+        setupWrapper verbosity setupOpts (Just pkg) sdistCommand (const flags) []
+        srcs <- fmap lines . readFile $ file
+        mapM tryCanonicalizePath srcs
+
+      onFailedListSources :: IOException -> IO ()
+      onFailedListSources e = do
+        warn verbosity $
+          "Could not list sources of the add-source dependency '"
+          ++ display (packageName pkg) ++ "'. Skipping the timestamp check."
+        debug verbosity $
+          "Exception was: " ++ show e
+
   -- Run setup sdist --list-sources=TMPFILE
-  (flip finally) (removeExistingFile file) $ do
-    setupWrapper verbosity setupOpts (Just pkg) sdistCommand (const flags) []
-    srcs <- fmap lines . readFile $ file
-    mapM tryCanonicalizePath srcs
+  ret <- doListSources `catchIO` (\e -> onFailedListSources e >> return [])
+  removeExistingFile file
+  return ret
 
 -- | Has this dependency been modified since we have last looked at it?
 isDepModified :: Verbosity -> EpochTime -> AddSourceTimestamp -> IO Bool

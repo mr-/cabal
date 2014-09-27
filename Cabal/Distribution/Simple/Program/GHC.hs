@@ -12,6 +12,7 @@ module Distribution.Simple.Program.GHC (
   ) where
 
 import Distribution.Package
+import Distribution.PackageDescription hiding (Flag)
 import Distribution.ModuleName
 import Distribution.Simple.Compiler hiding (Flag)
 import Distribution.Simple.Setup    ( Flag(..), flagToMaybe, fromFlagOrDefault,
@@ -67,8 +68,8 @@ data GhcOptions = GhcOptions {
   -------------
   -- Packages
 
-  -- | The package name the modules will belong to; the @ghc -package-name@ flag
-  ghcOptPackageName   :: Flag PackageId,
+  -- | The package key the modules will belong to; the @ghc -this-package-key@ flag
+  ghcOptPackageKey   :: Flag PackageKey,
 
   -- | GHC package databases to use, the @ghc -package-conf@ flag
   ghcOptPackageDBs    :: PackageDBStack,
@@ -76,7 +77,7 @@ data GhcOptions = GhcOptions {
   -- | The GHC packages to use. For compatability with old and new ghc, this
   -- requires both the short and long form of the package id;
   -- the @ghc -package@ or @ghc -package-id@ flags.
-  ghcOptPackages      :: [(InstalledPackageId, PackageId)],
+  ghcOptPackages      :: [(InstalledPackageId, PackageId, ModuleRenaming)],
 
   -- | Start with a clean package set; the @ghc -hide-all-packages@ flag
   ghcOptHideAllPackages :: Flag Bool,
@@ -150,6 +151,9 @@ data GhcOptions = GhcOptions {
 
   -- | Run N jobs simultaneously (if possible).
   ghcOptNumJobs       :: Flag Int,
+
+  -- | Enable coverage analysis; the @ghc -fhpc -hpcdir@ flags.
+  ghcOptHPCDir        :: Flag FilePath,
 
   ----------------
   -- GHCi
@@ -263,6 +267,9 @@ renderGhcOptions comp opts
 
   , [ "-split-objs" | flagBool ghcOptSplitObjs ]
 
+  , case flagToMaybe (ghcOptHPCDir opts) of
+      Nothing -> []
+      Just hpcdir -> ["-fhpc", "-hpcdir", hpcdir]
 
   , if parmakeSupported comp
     then
@@ -322,7 +329,10 @@ renderGhcOptions comp opts
   -------------
   -- Packages
 
-  , concat [ ["-package-name", display pkgid] | pkgid <- flag ghcOptPackageName ]
+  , concat [ [if packageKeySupported comp
+                then "-this-package-key"
+                else "-package-name", display pkgid]
+             | pkgid <- flag ghcOptPackageKey ]
 
   , [ "-hide-all-packages"     | flagBool ghcOptHideAllPackages ]
   , [ "-no-auto-link-packages" | flagBool ghcOptNoAutoLinkPackages ]
@@ -330,8 +340,10 @@ renderGhcOptions comp opts
   , packageDbArgs version (flags ghcOptPackageDBs)
 
   , concat $ if ver >= [6,11]
-      then [ ["-package-id", display ipkgid] | (ipkgid,_) <- flags ghcOptPackages ]
-      else [ ["-package",    display  pkgid] | (_,pkgid)  <- flags ghcOptPackages ]
+      then let space "" = ""
+               space xs = ' ' : xs
+           in [ ["-package-id", display ipkgid ++ space (display rns)] | (ipkgid,_,rns) <- flags ghcOptPackages ]
+      else [ ["-package",    display  pkgid] | (_,pkgid,_)  <- flags ghcOptPackages ]
 
   ----------------------------
   -- Language and extensions
@@ -416,7 +428,7 @@ instance Monoid GhcOptions where
     ghcOptOutputDynFile      = mempty,
     ghcOptSourcePathClear    = mempty,
     ghcOptSourcePath         = mempty,
-    ghcOptPackageName        = mempty,
+    ghcOptPackageKey         = mempty,
     ghcOptPackageDBs         = mempty,
     ghcOptPackages           = mempty,
     ghcOptHideAllPackages    = mempty,
@@ -439,6 +451,7 @@ instance Monoid GhcOptions where
     ghcOptProfilingMode      = mempty,
     ghcOptSplitObjs          = mempty,
     ghcOptNumJobs            = mempty,
+    ghcOptHPCDir             = mempty,
     ghcOptGHCiScripts        = mempty,
     ghcOptHiSuffix           = mempty,
     ghcOptObjSuffix          = mempty,
@@ -465,7 +478,7 @@ instance Monoid GhcOptions where
     ghcOptOutputDynFile      = combine ghcOptOutputDynFile,
     ghcOptSourcePathClear    = combine ghcOptSourcePathClear,
     ghcOptSourcePath         = combine ghcOptSourcePath,
-    ghcOptPackageName        = combine ghcOptPackageName,
+    ghcOptPackageKey         = combine ghcOptPackageKey,
     ghcOptPackageDBs         = combine ghcOptPackageDBs,
     ghcOptPackages           = combine ghcOptPackages,
     ghcOptHideAllPackages    = combine ghcOptHideAllPackages,
@@ -488,6 +501,7 @@ instance Monoid GhcOptions where
     ghcOptProfilingMode      = combine ghcOptProfilingMode,
     ghcOptSplitObjs          = combine ghcOptSplitObjs,
     ghcOptNumJobs            = combine ghcOptNumJobs,
+    ghcOptHPCDir             = combine ghcOptHPCDir,
     ghcOptGHCiScripts        = combine ghcOptGHCiScripts,
     ghcOptHiSuffix           = combine ghcOptHiSuffix,
     ghcOptObjSuffix          = combine ghcOptObjSuffix,

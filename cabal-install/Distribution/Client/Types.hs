@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Distribution.Client.Types
@@ -14,9 +15,10 @@
 module Distribution.Client.Types where
 
 import Distribution.Package
-         ( PackageName, PackageId, Package(..), PackageFixedDeps(..) )
+         ( PackageName, PackageId, Package(..), PackageFixedDeps(..)
+         , mkPackageKey, PackageKey )
 import Distribution.InstalledPackageInfo
-         ( InstalledPackageInfo )
+         ( InstalledPackageInfo, packageKey )
 import Distribution.PackageDescription
          ( Benchmark(..), GenericPackageDescription(..), FlagAssignment
          , TestSuite(..) )
@@ -26,6 +28,8 @@ import Distribution.Client.PackageIndex
          ( PackageIndex )
 import Distribution.Version
          ( VersionRange )
+import Distribution.Simple.Compiler
+         ( Compiler, packageKeySupported )
 
 import Data.Map (Map)
 import Network.URI (URI)
@@ -106,6 +110,14 @@ instance Package ReadyPackage where
 instance PackageFixedDeps ReadyPackage where
   depends (ReadyPackage _ _ _ deps) = map packageId deps
 
+-- | Extracts a package key from ReadyPackage, a common operation needed
+-- to calculate build paths.
+readyPackageKey :: Compiler -> ReadyPackage -> PackageKey
+readyPackageKey comp (ReadyPackage pkg _ _ deps) =
+    mkPackageKey (packageKeySupported comp) (packageId pkg)
+                 (map packageKey deps)
+
+
 -- | Sometimes we need to convert a 'ReadyPackage' back to a
 -- 'ConfiguredPackage'. For example, a failed 'PlanPackage' can be *either*
 -- Ready or Configured.
@@ -172,14 +184,7 @@ data PackageLocation local =
 --TODO:
 --  * add support for darcs and other SCM style remote repos with a local cache
 --  | ScmPackage
-  deriving Show
-
-instance Functor PackageLocation where
-  fmap _ (LocalUnpackedPackage dir)      = LocalUnpackedPackage dir
-  fmap _ (LocalTarballPackage  file)     = LocalTarballPackage  file
-  fmap f (RemoteTarballPackage uri x)    = RemoteTarballPackage uri    (f x)
-  fmap f (RepoTarballPackage repo pkg x) = RepoTarballPackage repo pkg (f x)
-
+  deriving (Show, Functor)
 
 data LocalRepo = LocalRepo
   deriving (Show,Eq)
@@ -201,7 +206,8 @@ data Repo = Repo {
 -- ------------------------------------------------------------
 
 type BuildResult  = Either BuildFailure BuildSuccess
-data BuildFailure = DependentFailed PackageId
+data BuildFailure = PlanningFailed
+                  | DependentFailed PackageId
                   | DownloadFailed  SomeException
                   | UnpackFailed    SomeException
                   | ConfigureFailed SomeException

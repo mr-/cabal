@@ -2,6 +2,7 @@
 -- |
 -- Module      :  Distribution.Simple.PreProcess
 -- Copyright   :  (c) 2003-2005, Isaac Jones, Malcolm Wallace
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -15,37 +16,6 @@
 -- for actually preprocessing some sources given a bunch of known suffix
 -- handlers. This module is not as good as it could be, it could really do with
 -- a rewrite to address some of the problems we have with pre-processors.
-
-{- Copyright (c) 2003-2005, Isaac Jones, Malcolm Wallace
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
 
 module Distribution.Simple.PreProcess (preprocessComponent, knownSuffixHandlers,
                                 ppSuffixes, PPSuffixHandler, PreProcessor(..),
@@ -84,11 +54,12 @@ import Distribution.Simple.Utils
          , findFileWithExtension, findFileWithExtension' )
 import Distribution.Simple.Program
          ( Program(..), ConfiguredProgram(..), programPath
-         , lookupProgram, requireProgram, requireProgramVersion
+         , requireProgram, requireProgramVersion
          , rawSystemProgramConf, rawSystemProgram
          , greencardProgram, cpphsProgram, hsc2hsProgram, c2hsProgram
-         , happyProgram, alexProgram, haddockProgram, ghcProgram, gccProgram )
-import Distribution.Simple.Test ( writeSimpleTestStub, stubFilePath, stubName )
+         , happyProgram, alexProgram, ghcProgram, gccProgram )
+import Distribution.Simple.Test.LibV09
+         ( writeSimpleTestStub, stubFilePath, stubName )
 import Distribution.System
          ( OS(..), buildOS, Arch(..), Platform(..) )
 import Distribution.Text
@@ -126,12 +97,12 @@ import System.FilePath (splitExtension, dropExtensions, (</>), (<.>),
 --
 -- The reason for splitting it up this way is that some pre-processors don't
 -- simply generate one output .hs file from one input file but have
--- dependencies on other genereated files (notably c2hs, where building one
+-- dependencies on other generated files (notably c2hs, where building one
 -- .hs file may require reading other .chi files, and then compiling the .hs
 -- file may require reading a generated .h file). In these cases the generated
 -- files need to embed relative path names to each other (eg the generated .hs
 -- file mentions the .h file in the FFI imports). This path must be relative to
--- the base directory where the genereated files are located, it cannot be
+-- the base directory where the generated files are located, it cannot be
 -- relative to the top level of the build tree because the compilers do not
 -- look for .h files relative to there, ie we do not use \"-I .\", instead we
 -- use \"-I dist\/build\" (or whatever dist dir has been set by the user)
@@ -384,7 +355,6 @@ ppGhcCpp extraArgs _bi lbi =
           -- double-unlitted. In the future we might switch to
           -- using cpphs --unlit instead.
        ++ (if ghcVersion >= Version [6,6] [] then ["-x", "hs"] else [])
-       ++ (if use_optP_P lbi then ["-optP-P"] else [])
        ++ [ "-optP-include", "-optP"++ (autogenModulesDir lbi </> cppHeaderName) ]
        ++ ["-o", outFile, inFile]
        ++ extraArgs
@@ -405,16 +375,6 @@ ppCpphs extraArgs _bi lbi =
              else [])
         ++ extraArgs
   }
-
--- Haddock versions before 0.8 choke on #line and #file pragmas.  Those
--- pragmas are necessary for correct links when we preprocess.  So use
--- -optP-P only if the Haddock version is prior to 0.8.
-use_optP_P :: LocalBuildInfo -> Bool
-use_optP_P lbi
- = case lookupProgram haddockProgram (withPrograms lbi) of
-     Just (ConfiguredProgram { programVersion = Just version })
-       | version >= Version [0,8] [] -> False
-     _                               -> True
 
 ppHsc2hs :: BuildInfo -> LocalBuildInfo -> PreProcessor
 ppHsc2hs bi lbi =
@@ -580,6 +540,7 @@ platformDefines lbi =
       FreeBSD   -> ["freebsd"]
       OpenBSD   -> ["openbsd"]
       NetBSD    -> ["netbsd"]
+      DragonFly -> ["dragonfly"]
       Solaris   -> ["solaris2"]
       AIX       -> ["aix"]
       HPUX      -> ["hpux"]

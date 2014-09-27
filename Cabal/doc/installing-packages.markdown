@@ -216,7 +216,7 @@ $ cabal --ignore-sandbox install text
 
 ## Creating a binary package ##
 
-When creating binary packages (e.g. for RedHat or Debian) one needs to
+When creating binary packages (e.g. for Red Hat or Debian) one needs to
 create a tarball that can be sent to another system for unpacking in the
 root directory:
 
@@ -267,12 +267,13 @@ infrastructure, the values supplied via these options are recorded in a
 private file read by later stages.
 
 If a user-supplied `configure` script is run (see the section on
-[system-dependent parameters](#system-dependent-parameters) or on
-[complex packages](#complex-packages)), it is passed the
-`--with-hc-pkg`, `--prefix`, `--bindir`, `--libdir`, `--datadir`, `--libexecdir`
-and `--sysconfdir` options. In addition the value of the `--with-compiler`
-option is passed in a `--with-hc` option and all options specified with
-`--configure-option=` are passed on.
+[system-dependent
+parameters](developing-packages.html#system-dependent-parameters) or on
+[complex packages](developing-packages.html#more-complex-packages)), it
+is passed the `--with-hc-pkg`, `--prefix`, `--bindir`, `--libdir`,
+`--datadir`, `--libexecdir` and `--sysconfdir` options. In addition the
+value of the `--with-compiler` option is passed in a `--with-hc` option
+and all options specified with `--configure-option=` are passed on.
 
 ### Programs used for building ###
 
@@ -315,7 +316,7 @@ files of a package:
 :   Specify additional options to the program _prog_. Any program known
     to Cabal can be used in place of _prog_. For example:
     `--alex-options="--template=mytemplatedir/"`. The _options_ is split
-    into program options based on spaces. Any options containing embeded
+    into program options based on spaces. Any options containing embedded
     spaced need to be quoted, for example
     `--foo-options='--bar="C:\Program File\Bar"'`. As an alternative
     that takes only one option at a time but avoids the need to quote,
@@ -323,8 +324,8 @@ files of a package:
 
 `--`_`prog`_`-option=`_option_
 :   Specify a single additional option to the program _prog_. For
-    passing an option that contain embeded spaces, such as a file name
-    with embeded spaces, using this rather than `--`_`prog`_`-options`
+    passing an option that contain embedded spaces, such as a file name
+    with embedded spaces, using this rather than `--`_`prog`_`-options`
     means you do not need an additional level of quoting. Of course if
     you are using a command shell you may still need to quote, for
     example `--foo-options="--bar=C:\Program File\Bar"`.
@@ -444,7 +445,7 @@ independence](#prefix-independence)).
 
 `$prefix`
 :   The path variable that stands for the root of the installation. For
-    an installation to be relocatable, all other instllation paths must
+    an installation to be relocatable, all other installation paths must
     be relative to the `$prefix` variable.
 
 `$bindir`
@@ -467,23 +468,23 @@ independence](#prefix-independence)).
 :   As above but for `--docdir`
 
 `$pkgid`
-:   The name and version of the package, eg `mypkg-0.2`
+:   The name and version of the package, e.g. `mypkg-0.2`
 
 `$pkg`
-:   The name of the package, eg `mypkg`
+:   The name of the package, e.g. `mypkg`
 
 `$version`
-:   The version of the package, eg `0.2`
+:   The version of the package, e.g. `0.2`
 
 `$compiler`
-:   The compiler being used to build the package, eg `ghc-6.6.1`
+:   The compiler being used to build the package, e.g. `ghc-6.6.1`
 
 `$os`
 :   The operating system of the computer being used to build the
-    package, eg `linux`, `windows`, `osx`, `freebsd` or `solaris`
+    package, e.g. `linux`, `windows`, `osx`, `freebsd` or `solaris`
 
 `$arch`
-:   The architecture of the computer being used to build the package, eg
+:   The architecture of the computer being used to build the package, e.g.
     `i386`, `x86_64`, `ppc` or `sparc`
 
 #### Paths in the simple build system ####
@@ -528,8 +529,9 @@ have baked-in all absolute paths.
 
 The application need do nothing special to achieve prefix-independence.
 If it finds any files using `getDataFileName` and the [other functions
-provided for the purpose](#accessing-data-files-from-package-code), the
-files will be accessed relative to the location of the current
+provided for the
+purpose](developing-packages.html#accessing-data-files-from-package-code),
+the files will be accessed relative to the location of the current
 executable.
 
 A library cannot (currently) be prefix-independent, because it will be
@@ -539,8 +541,8 @@ to the library package.
 ### Controlling Flag Assignments ###
 
 Flag assignments (see the [resolution of conditions and
-flags](#resolution-of-conditions-and-flags)) can be controlled with the
-followingcommand line options.
+flags](developing-packages.html#resolution-of-conditions-and-flags)) can
+be controlled with the following command line options.
 
 `-f` _flagname_ or `-f` `-`_flagname_
 :   Force the specified flag to `true` or `false` (if preceded with a `-`). Later
@@ -582,7 +584,7 @@ followingcommand line options.
 :   (default) Does a global installation. In this case package
     dependencies must be satisfied by the global package database. All
     packages in the user's package database will be ignored. Typically
-    the final instllation step will require administrative privileges.
+    the final installation step will require administrative privileges.
 
 `--package-db=`_db_
 :   Allows package dependencies to be satisfied from this additional
@@ -673,7 +675,7 @@ followingcommand line options.
     example if you want to debug the C parts of a program containing
     both Haskell and C code. Another reason is if your are building a
     package for a system which has a policy of managing the stripping
-    itself (such as some linux distributions).
+    itself (such as some Linux distributions).
 
 `--enable-shared`
 :   Build shared library. This implies a separate compiler run to
@@ -685,8 +687,8 @@ followingcommand line options.
 `--configure-option=`_str_
 :   An extra option to an external `configure` script, if one is used
     (see the section on [system-dependent
-    parameters](#system-dependent-parameters)).  There can be several of
-    these options.
+    parameters](developing-packages.html#system-dependent-parameters)).
+    There can be several of these options.
 
 `--extra-include-dirs`[=_dir_]
 :   An extra directory to search for C header files. You can use this
@@ -988,8 +990,8 @@ suites, otherwise, Cabal will run all test suites in the package.
 
 `--show-details=`_filter_
 :   Determines if the results of individual test cases are shown on the
-    terminal.  May be `always` (always show), `never` (never show), or
-    `failures` (show only the test cases of failing test suites).
+    terminal.  May be `always` (always show), `never` (never show), `failures`
+    (show only failed results), or `streaming` (show all results in real time).
 
 `--test-options=`_options_
 :   Give extra options to the test executables.
@@ -1019,18 +1021,18 @@ This command takes the following option:
     the generated source package.  The original package is unaffected.
 
 
-[dist-simple]:  ../libraries/Cabal/Distribution-Simple.html
-[dist-make]:    ../libraries/Cabal/Distribution-Make.html
-[dist-license]: ../libraries/Cabal/Distribution-License.html#t:License
-[extension]:    ../libraries/Cabal/Language-Haskell-Extension.html#t:Extension
-[BuildType]:    ../libraries/Cabal/Distribution-PackageDescription.html#t:BuildType
+[dist-simple]:  ../release/cabal-latest/doc/API/Cabal/Distribution-Simple.html
+[dist-make]:    ../release/cabal-latest/doc/API/Cabal/Distribution-Make.html
+[dist-license]: ../release/cabal-latest/doc/API/Cabal/Distribution-License.html#t:License
+[extension]:    ../release/cabal-latest/doc/API/Cabal/Language-Haskell-Extension.html#t:Extension
+[BuildType]:    ../release/cabal-latest/doc/API/Cabal/Distribution-PackageDescription.html#t:BuildType
 [alex]:       http://www.haskell.org/alex/
 [autoconf]:   http://www.gnu.org/software/autoconf/
 [c2hs]:       http://www.cse.unsw.edu.au/~chak/haskell/c2hs/
-[cpphs]:      http://www.haskell.org/cpphs/
-[greencard]:  http://www.haskell.org/greencard/
+[cpphs]:      http://projects.haskell.org/cpphs/
+[greencard]:  http://hackage.haskell.org/package/greencard
 [haddock]:    http://www.haskell.org/haddock/
 [HsColour]:   http://www.cs.york.ac.uk/fp/darcs/hscolour/
 [happy]:      http://www.haskell.org/happy/
 [Hackage]:    http://hackage.haskell.org/
-[pkg-config]: http://pkg-config.freedesktop.org/
+[pkg-config]: http://www.freedesktop.org/wiki/Software/pkg-config/

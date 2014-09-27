@@ -31,6 +31,7 @@ import Distribution.Simple.Program (ProgramConfiguration)
 import Distribution.Simple.Utils
         ( equating, comparing, die, notice )
 import Distribution.Simple.Setup (fromFlag)
+import Distribution.Simple.PackageIndex (InstalledPackageIndex)
 import qualified Distribution.Simple.PackageIndex as InstalledPackageIndex
 import qualified Distribution.Client.PackageIndex as PackageIndex
 import Distribution.Version
@@ -186,7 +187,7 @@ info verbosity packageDBs repos comp conf
 
   where
     gatherPkgInfo :: (PackageName -> VersionRange) ->
-                     InstalledPackageIndex.PackageIndex ->
+                     InstalledPackageIndex ->
                      PackageIndex.PackageIndex SourcePackage ->
                      PackageSpecifier SourcePackage ->
                      Either String PackageDisplayInfo
@@ -228,7 +229,7 @@ info verbosity packageDBs repos comp conf
 sourcePkgsInfo ::
   (PackageName -> VersionRange)
   -> PackageName
-  -> InstalledPackageIndex.PackageIndex
+  -> InstalledPackageIndex
   -> PackageIndex.PackageIndex SourcePackage
   -> (VersionRange, [Installed.InstalledPackageInfo], [SourcePackage])
 sourcePkgsInfo prefs name installedPkgIndex sourcePkgIndex =
@@ -240,7 +241,7 @@ sourcePkgsInfo prefs name installedPkgIndex sourcePkgIndex =
 
 
 -- | The info that we can display for each package. It is information per
--- package name and covers all installed and avilable versions.
+-- package name and covers all installed and available versions.
 --
 data PackageDisplayInfo = PackageDisplayInfo {
     pkgName           :: PackageName,

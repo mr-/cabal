@@ -2,6 +2,7 @@
 -- |
 -- Module      :  Distribution.Simple.Bench
 -- Copyright   :  Johan Tibell 2011
+-- License     :  BSD3
 --
 -- Maintainer  :  cabal-devel@haskell.org
 -- Portability :  portable
@@ -9,36 +10,6 @@
 -- This is the entry point into running the benchmarks in a built
 -- package. It performs the \"@.\/setup bench@\" action. It runs
 -- benchmarks designated in the package description.
-
-{- All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-      notice, this list of conditions and the following disclaimer.
-
-    * Redistributions in binary form must reproduce the above
-      copyright notice, this list of conditions and the following
-      disclaimer in the documentation and/or other materials provided
-      with the distribution.
-
-    * Neither the name of Isaac Jones nor the names of other
-      contributors may be used to endorse or promote products derived
-      from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE. -}
 
 module Distribution.Simple.Bench
     ( bench
@@ -141,8 +112,8 @@ bench args pkg_descr lbi flags = do
                                         ExitFailure _ -> "ERROR")
 
 
--- TODO: This is abusing the notion of a 'PathTemplate'.  The result
--- isn't neccesarily a path.
+-- TODO: This is abusing the notion of a 'PathTemplate'.  The result isn't
+-- necessarily a path.
 benchOption :: PD.PackageDescription
             -> LBI.LocalBuildInfo
             -> PD.Benchmark
@@ -152,6 +123,6 @@ benchOption pkg_descr lbi bm template =
     fromPathTemplate $ substPathTemplate env template
   where
     env = initialPathTemplateEnv
-          (PD.package pkg_descr) (compilerId $ LBI.compiler lbi)
-          (LBI.hostPlatform lbi) ++
+          (PD.package pkg_descr) (LBI.pkgKey lbi)
+          (compilerId $ LBI.compiler lbi) (LBI.hostPlatform lbi) ++
           [(BenchmarkNameVar, toPathTemplate $ PD.benchmarkName bm)]

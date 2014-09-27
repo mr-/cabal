@@ -25,7 +25,7 @@ import System.IO
   ( hSetBuffering, stdout, BufferMode(..) )
 import System.Directory
   ( getCurrentDirectory, doesDirectoryExist, doesFileExist, copyFile
-  , getDirectoryContents )
+  , getDirectoryContents, createDirectoryIfMissing )
 import System.FilePath
   ( (</>), (<.>), takeBaseName )
 import Data.Time
@@ -36,7 +36,7 @@ import Data.Char
 import Data.List
   ( intercalate, nub, groupBy, (\\) )
 import Data.Maybe
-  ( fromMaybe, isJust, catMaybes )
+  ( fromMaybe, isJust, catMaybes, listToMaybe )
 import Data.Function
   ( on )
 import qualified Data.Map as M
@@ -45,7 +45,7 @@ import Data.Traversable
 import Control.Applicative
   ( (<$>) )
 import Control.Monad
-  ( when, unless, (>=>), join )
+  ( when, unless, (>=>), join, forM_ )
 import Control.Arrow
   ( (&&&), (***) )
 
@@ -67,9 +67,10 @@ import Language.Haskell.Extension ( Language(..) )
 import Distribution.Client.Init.Types
   ( InitFlags(..), PackageType(..), Category(..) )
 import Distribution.Client.Init.Licenses
-  ( bsd3, gplv2, gplv3, lgpl2, lgpl3, agplv3, apache20 )
+  ( bsd2, bsd3, gplv2, gplv3, lgpl21, lgpl3, agplv3, apache20, mit, mpl20 )
 import Distribution.Client.Init.Heuristics
-  ( guessPackageName, guessAuthorNameMail, SourceFileEntry(..),
+  ( guessPackageName, guessAuthorNameMail, guessMainFileCandidates,
+    SourceFileEntry(..),
     scanForModules, neededBuildPrograms )
 
 import Distribution.License
@@ -86,7 +87,7 @@ import Distribution.Simple.Compiler
 import Distribution.Simple.Program
   ( ProgramConfiguration )
 import Distribution.Simple.PackageIndex
-  ( PackageIndex, moduleNameIndex )
+  ( InstalledPackageIndex, moduleNameIndex )
 import Distribution.Text
   ( display, Text(..) )
 
@@ -106,6 +107,7 @@ initCabal verbosity packageDBs comp conf initFlags = do
 
   writeLicense initFlags'
   writeSetupFile initFlags'
+  createSourceDirectories initFlags'
   success <- writeCabalFile initFlags'
 
   when success $ generateWarnings initFlags'
@@ -116,7 +118,7 @@ initCabal verbosity packageDBs comp conf initFlags = do
 
 -- | Fill in more details by guessing, discovering, or prompting the
 --   user.
-extendFlags :: PackageIndex -> InitFlags -> IO InitFlags
+extendFlags :: InstalledPackageIndex -> InitFlags -> IO InitFlags
 extendFlags pkgIx =
       getPackageName
   >=> getVersion
@@ -154,7 +156,7 @@ getPackageName flags = do
               ?>> Just `fmap` (getCurrentDirectory >>= guessPackageName)
 
   pkgName' <-     return (flagToMaybe $ packageName flags)
-              ?>> maybePrompt flags (promptStr "Package name" guess)
+              ?>> maybePrompt flags (prompt "Package name" guess)
               ?>> return guess
 
   return $ flags { packageName = maybeToFlag pkgName' }
@@ -266,8 +268,28 @@ getLibOrExec flags = do
                                    [Library, Executable]
                                    Nothing display False)
            ?>> return (Just Library)
+  mainFile <- if isLib /= Just Executable then return Nothing else
+                    getMainFile flags
 
-  return $ flags { packageType = maybeToFlag isLib }
+  return $ flags { packageType = maybeToFlag isLib
+                 , mainIs = maybeToFlag mainFile
+                 }
+
+-- | Try to guess the main file of the executable, and prompt the user to choose
+-- one of them. Top-level modules including the word 'Main' in the file name
+-- will be candidates, and shorter filenames will be preferred.
+getMainFile :: InitFlags -> IO (Maybe FilePath)
+getMainFile flags =
+  return (flagToMaybe $ mainIs flags)
+  ?>> do
+    candidates <- guessMainFileCandidates flags
+    let showCandidate = either (++" (does not yet exist)") id
+        defaultFile = listToMaybe candidates
+    maybePrompt flags (either id (either id id) `fmap`
+                       promptList "What is the main module of the executable"
+                       candidates
+                       defaultFile showCandidate True)
+      ?>> return (fmap (either id id) defaultFile)
 
 -- | Ask for the base language of the package.
 getLanguage :: InitFlags -> IO InitFlags
@@ -292,27 +314,30 @@ getGenComments flags = do
   where
     promptMsg = "Include documentation on what each field means (y/n)"
 
--- | Try to guess the source root directory (don't prompt the user).
+-- | Ask for the source root directory.
 getSrcDir :: InitFlags -> IO InitFlags
 getSrcDir flags = do
-  srcDirs <-     return (sourceDirs flags)
-             ?>> Just `fmap` guessSourceDirs flags
+  srcDirs <- return (sourceDirs flags)
+             ?>> fmap (:[]) `fmap` guessSourceDir flags
+             ?>> fmap (fmap ((:[]) . either id id) . join) (maybePrompt
+                      flags
+                      (promptListOptional' "Source directory" ["src"] id))
 
   return $ flags { sourceDirs = srcDirs }
 
--- | Try to guess source directories.  Could try harder; for the
+-- | Try to guess source directory. Could try harder; for the
 --   moment just looks to see whether there is a directory called 'src'.
-guessSourceDirs :: InitFlags -> IO [String]
-guessSourceDirs flags = do
+guessSourceDir :: InitFlags -> IO (Maybe String)
+guessSourceDir flags = do
   dir      <-
     maybe getCurrentDirectory return . flagToMaybe $ packageDir flags
   srcIsDir <- doesDirectoryExist (dir </> "src")
-  if srcIsDir
-    then return ["src"]
-    else return []
+  return $ if srcIsDir
+             then Just "src"
+             else Nothing
 
 -- | Get the list of exposed modules and extra tools needed to build them.
-getModulesBuildToolsAndDeps :: PackageIndex -> InitFlags -> IO InitFlags
+getModulesBuildToolsAndDeps :: InstalledPackageIndex -> InitFlags -> IO InitFlags
 getModulesBuildToolsAndDeps pkgIx flags = do
   dir <- maybe getCurrentDirectory return . flagToMaybe $ packageDir flags
 
@@ -346,7 +371,7 @@ getModulesBuildToolsAndDeps pkgIx flags = do
                  , otherExts      = exts
                  }
 
-importsToDeps :: InitFlags -> [ModuleName] -> PackageIndex -> IO [P.Dependency]
+importsToDeps :: InitFlags -> [ModuleName] -> InstalledPackageIndex -> IO [P.Dependency]
 importsToDeps flags mods pkgIx = do
 
   let modMap :: M.Map ModuleName [InstalledPackageInfo]
@@ -477,10 +502,17 @@ promptListOptional :: (Text t, Eq t)
                    => String            -- ^ prompt
                    -> [t]               -- ^ choices
                    -> IO (Maybe (Either String t))
-promptListOptional pr choices =
+promptListOptional pr choices = promptListOptional' pr choices display
+
+promptListOptional' :: Eq t
+                   => String            -- ^ prompt
+                   -> [t]               -- ^ choices
+                   -> (t -> String)     -- ^ show an item
+                   -> IO (Maybe (Either String t))
+promptListOptional' pr choices displayItem =
     fmap rearrange
   $ promptList pr (Nothing : map Just choices) (Just Nothing)
-               (maybe "(none)" display) True
+               (maybe "(none)" displayItem) True
   where
     rearrange = either (Just . Left) (fmap Right)
 
@@ -534,14 +566,15 @@ readMaybe s = case reads s of
 writeLicense :: InitFlags -> IO ()
 writeLicense flags = do
   message flags "\nGenerating LICENSE..."
-  year <- getYear
+  year <- show <$> getYear
+  let authors = fromMaybe "???" . flagToMaybe . author $ flags
   let licenseFile =
         case license flags of
-          Flag BSD3 -> Just $ bsd3 (fromMaybe "???"
-                                  . flagToMaybe
-                                  . author
-                                  $ flags)
-                              (show year)
+          Flag BSD2
+            -> Just $ bsd2 authors year
+
+          Flag BSD3
+            -> Just $ bsd3 authors year
 
           Flag (GPL (Just (Version {versionBranch = [2]})))
             -> Just gplv2
@@ -549,8 +582,8 @@ writeLicense flags = do
           Flag (GPL (Just (Version {versionBranch = [3]})))
             -> Just gplv3
 
-          Flag (LGPL (Just (Version {versionBranch = [2]})))
-            -> Just lgpl2
+          Flag (LGPL (Just (Version {versionBranch = [2, 1]})))
+            -> Just lgpl21
 
           Flag (LGPL (Just (Version {versionBranch = [3]})))
             -> Just lgpl3
@@ -560,6 +593,12 @@ writeLicense flags = do
 
           Flag (Apache (Just (Version {versionBranch = [2, 0]})))
             -> Just apache20
+
+          Flag MIT
+            -> Just $ mit authors year
+
+          Flag (MPL (Version {versionBranch = [2, 0]}))
+            -> Just mpl20
 
           _ -> Nothing
 
@@ -590,7 +629,7 @@ writeCabalFile flags@(InitFlags{packageName = NoFlag}) = do
   message flags "Error: no package name provided."
   return False
 writeCabalFile flags@(InitFlags{packageName = Flag p}) = do
-  let cabalFileName = p ++ ".cabal"
+  let cabalFileName = display p ++ ".cabal"
   message flags $ "Generating " ++ cabalFileName ++ "..."
   writeFileSafe flags cabalFileName (generateCabalFile cabalFileName flags)
   return True
@@ -601,6 +640,12 @@ writeFileSafe :: InitFlags -> FilePath -> String -> IO ()
 writeFileSafe flags fileName content = do
   moveExistingFile flags fileName
   writeFile fileName content
+
+-- | Create source directories, if they were given.
+createSourceDirectories :: InitFlags -> IO ()
+createSourceDirectories flags = case sourceDirs flags of
+                                  Just dirs -> forM_ dirs (createDirectoryIfMissing True)
+                                  Nothing   -> return ()
 
 -- | Move an existing file, if there is one, and the overwrite flag is
 --   not set.
@@ -640,7 +685,7 @@ generateCabalFile fileName c =
          $$ text ""
     else empty)
   $$
-  vcat [ fieldS "name"          (packageName   c)
+  vcat [ field  "name"          (packageName   c)
                 (Just "The name of the package.")
                 True
 
@@ -705,8 +750,10 @@ generateCabalFile fileName c =
 
        , case packageType c of
            Flag Executable ->
-             text "\nexecutable" <+> text (fromMaybe "" . flagToMaybe $ packageName c) $$ nest 2 (vcat
-             [ fieldS "main-is" NoFlag (Just ".hs or .lhs file containing the Main module.") True
+             text "\nexecutable" <+>
+             text (maybe "" display . flagToMaybe $ packageName c) $$
+             nest 2 (vcat
+             [ fieldS "main-is" (mainIs c) (Just ".hs or .lhs file containing the Main module.") True
 
              , generateBuildInfo Executable c
              ])
