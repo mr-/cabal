@@ -160,7 +160,7 @@ type QGoalReasonChain = GoalReasonChain QPN
 goalReasonToVars :: GoalReason qpn -> ConflictSet qpn
 goalReasonToVars UserGoal                 = S.empty
 goalReasonToVars (PDependency (PI qpn _)) = S.singleton (P qpn)
-goalReasonToVars (FDependency qfn _)      = S.singleton (F qfn)
+goalReasonToVars (FDependency qfn _)      = S.singleton (simplifyVar (F qfn))
 goalReasonToVars (SDependency qsn)        = S.singleton (S qsn)
 
 goalReasonChainToVars :: Ord qpn => GoalReasonChain qpn -> ConflictSet qpn
