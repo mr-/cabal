@@ -95,7 +95,6 @@ backjumpInfo c m = m <|> case c of -- important to produce 'm' before matching o
 
 -- given a pointer, calculate the Assignment up to this point.
 
--- TODO: Check if that's ok..
 ptrToAssignment :: Pointer a -> Assignment
 ptrToAssignment ptr = intermediateAssignment (focusRoot ptr) ptr
 
@@ -181,9 +180,6 @@ exploreTreePtrLog offsetPtr conflictTree = explorePtrLog conflictTree offsetPtr
 
 
 -- | Interface. -- This is to consume the Log and give either a Done-Ptr or an error.
--- Where, oh where should you go? Here is Ok, I guess.. Now this module knows how to make Log Message (...) and it also knows
--- how to get information out of it.
--- Maybe we would also like the Assignment?
 runTreePtrLog :: Log Message a -> Either String a
 runTreePtrLog l = case runLog l of
                     (ms, Nothing) -> Left $ unlines $ showMessages (const True) True ms

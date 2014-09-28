@@ -102,11 +102,6 @@ handleCommands = do
       return (if InstallNow `elem` r then InstallNow else Continue)
 
 
--- probably more idiomatic, but depends on transformers.
--- import Data.Functor.Identity   (runIdentity)
--- stripT = mapStateT (return.runIdentity)
--- stripT = state . runState -- somewhere in transformers..
-
 stripT :: State UIState a -> AppState a
 stripT act = do
     uiState <- get

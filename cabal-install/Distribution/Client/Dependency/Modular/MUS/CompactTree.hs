@@ -86,33 +86,3 @@ removeDuplicates :: CompactTree -> CompactTree
 removeDuplicates (CGoalChoice psq) = CGoalChoice $ removeDuplicates <$> newPSQ
   where newPSQ = P.mergeDuplicatesWith mergeTree psq
 removeDuplicates x = x
-
-
-
-
-
--- For debugging purposes
--- dup :: Ord a => [a] -> Maybe a
--- dup l = dup' l S.empty
---   where dup' [] _ = Nothing
---         dup' (x:xs) s = if S.member x s
---                            then Just x
---                            else dup' xs (S.insert x s)
---
--- psqHasDuplicates :: Ord a => P.PSQ a b -> Bool
--- psqHasDuplicates (P.PSQ psq) = isJust $ dup $ map fst psq
---
---
--- treeHasDuplicates :: Int -> CompactTree -> Bool
--- treeHasDuplicates _ (CFail _ _)               = False
--- treeHasDuplicates _ CDone                     = False
--- treeHasDuplicates 0 (CGoalChoice psq) = psqHasDuplicates psq
--- treeHasDuplicates n (CGoalChoice psq) = psqHasDuplicates psq || or (map (treeHasDuplicates (n - 1)) (P.values psq))
-
-
--- baz :: Tree a -> String
--- baz x = show $ length d - length (L.nub d)
--- -- $ unwords $ map showPath $ d L.\\ (L.nub d)
---   where d = (pathsInBFSOrder $ thinner $ toCompact $ toSimple x) !! 2
---
---

@@ -199,12 +199,6 @@ fsSelection =
         flag    <- identifier
         return $ SelFSChoice package flag
 
--- data GoChoice = Package String
---               | Version String
---               | Number  Int
---               deriving (Show, Eq)
-
-
 goParser :: Parser GoChoice
 goParser = try goNumber
        <|> try goVersion
@@ -225,8 +219,7 @@ goNumber =
 
 goPackage :: Parser GoChoice
 goPackage =
-  do -- package <- many1 (choice [char '-', letter])
-     package <- many1 (alphaNum <|> oneOf "-")
+  do package <- many1 (alphaNum <|> oneOf "-")
      whiteSpace -- why is that necessary to
                 -- parse of "go cabal ; auto" correctly.
      return $ Package $ package

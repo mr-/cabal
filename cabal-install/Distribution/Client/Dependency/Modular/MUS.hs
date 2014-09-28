@@ -82,21 +82,3 @@ zipConc = foldr conc []
 
 showPath :: Path -> String
 showPath path = unwords $ L.intersperse "-" $ map showCOpenGoal path
-
-
--- Debugging output
-
-showThinnedPaths :: Tree a -> String
-showThinnedPaths x = unlines $ map (unwords . L.intersperse " - ") $
-            map (map (show . map showCOpenGoal )) $ pathsInBFSOrder $ thinner $ toCompact $ toSimple x
-
-showThinnedPathsBFS :: Tree a -> String
-showThinnedPathsBFS = showbfs' . bfs' id . thinner . toCompact . toSimple
-
-showbfs' :: [[(Path, IsDone)]] -> String
-showbfs' x = unlines $ map (unwords . L.intersperse " - ") $
-            map (map (\(path, isdone) -> show (map showCOpenGoal path) ++ " " ++ bool isdone "Done" "Fail")) x
-
-bool :: Bool -> a -> a -> a
-bool True x  _ = x
-bool False _ y = y
